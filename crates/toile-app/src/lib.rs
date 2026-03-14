@@ -34,7 +34,7 @@ pub use toile_platform::input::{Key, MouseButton};
 
 /// Context passed to all `Game` trait methods.
 pub struct GameContext<'a> {
-    pub input: &'a Input,
+    pub input: &'a mut Input,
     pub camera: &'a mut Camera2D,
     pub audio: &'a mut toile_audio::Audio,
     pub stats: &'a RenderStats,
@@ -228,7 +228,7 @@ struct AppHandler {
 macro_rules! make_ctx {
     ($self:ident, $fps:expr) => {
         GameContext {
-            input: &$self.input,
+            input: &mut $self.input,
             camera: $self.camera.as_mut().unwrap(),
             audio: $self.audio.as_mut().unwrap(),
             stats: &$self.last_stats,
