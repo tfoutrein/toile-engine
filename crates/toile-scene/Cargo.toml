@@ -1,0 +1,6 @@
+[package]
+name = "toile-scene"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Scene serialization for Toile Engine (JSON + JSON Schema)"

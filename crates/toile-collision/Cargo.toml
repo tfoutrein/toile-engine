@@ -1,0 +1,6 @@
+[package]
+name = "toile-collision"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "2D collision detection for Toile Engine"

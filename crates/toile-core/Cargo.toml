@@ -1,0 +1,12 @@
+[package]
+name = "toile-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Core types for Toile Engine: math, color, time, handles"
+
+[dependencies]
+glam = { workspace = true }
+log = { workspace = true }
+thiserror = { workspace = true }
+wgpu = { workspace = true }

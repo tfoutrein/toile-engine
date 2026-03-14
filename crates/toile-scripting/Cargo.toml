@@ -1,0 +1,6 @@
+[package]
+name = "toile-scripting"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Lua scripting for Toile Engine (mlua-based)"

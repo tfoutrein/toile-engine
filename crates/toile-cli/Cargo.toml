@@ -1,0 +1,10 @@
+[package]
+name = "toile-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "CLI for Toile Engine"
+
+[[bin]]
+name = "toile"
+path = "src/main.rs"

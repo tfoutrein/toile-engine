@@ -1,0 +1,6 @@
+[package]
+name = "toile-mcp"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "MCP server for AI-native control of Toile Engine"

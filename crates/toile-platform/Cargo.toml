@@ -1,0 +1,12 @@
+[package]
+name = "toile-platform"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Platform abstraction for Toile Engine (winit-based, SDL3 planned)"
+
+[dependencies]
+toile-core = { workspace = true }
+winit = { workspace = true }
+glam = { workspace = true }
+log = { workspace = true }

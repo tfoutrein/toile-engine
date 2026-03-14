@@ -1,0 +1,53 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/toile-core",
+    "crates/toile-platform",
+    "crates/toile-graphics",
+    "crates/toile-app",
+    "crates/toile-audio",
+    "crates/toile-collision",
+    "crates/toile-ecs",
+    "crates/toile-assets",
+    "crates/toile-scripting",
+    "crates/toile-scene",
+    "crates/toile-editor",
+    "crates/toile-mcp",
+    "crates/toile-cli",
+]
+
+[workspace.package]
+version = "0.1.0-dev"
+edition = "2024"
+license = "MIT"
+repository = "https://github.com/toile-engine/toile"
+
+[workspace.dependencies]
+# Math
+glam = "0.29"
+
+# Logging
+log = "0.4"
+env_logger = "0.11"
+
+# Error handling
+thiserror = "2"
+
+# Windowing (winit for now, SDL3 planned — see ADR-003)
+winit = "0.30"
+
+# Rendering
+wgpu = "28"
+pollster = "0.4"
+
+# Image loading
+image = { version = "0.25", default-features = false, features = ["png"] }
+
+# Data casting (vertex buffers, uniforms)
+bytemuck = { version = "1", features = ["derive"] }
+
+# Internal crates
+toile-core = { path = "crates/toile-core" }
+toile-platform = { path = "crates/toile-platform" }
+toile-graphics = { path = "crates/toile-graphics" }
+toile-app = { path = "crates/toile-app" }
