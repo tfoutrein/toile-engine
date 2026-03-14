@@ -46,8 +46,12 @@ image = { version = "0.25", default-features = false, features = ["png"] }
 # Data casting (vertex buffers, uniforms)
 bytemuck = { version = "1", features = ["derive"] }
 
+# Audio
+kira = "0.9"
+
 # Internal crates
 toile-core = { path = "crates/toile-core" }
 toile-platform = { path = "crates/toile-platform" }
 toile-graphics = { path = "crates/toile-graphics" }
 toile-app = { path = "crates/toile-app" }
+toile-audio = { path = "crates/toile-audio" }

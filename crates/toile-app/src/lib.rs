@@ -18,7 +18,9 @@ use toile_platform::WindowConfig;
 pub use toile_core as core;
 pub use toile_graphics as graphics;
 pub use toile_platform as platform;
+pub use toile_audio as audio;
 
+pub use toile_audio::{SoundId, MusicId, PlaybackId};
 pub use toile_graphics::camera::Camera2D as Camera;
 pub use toile_graphics::sprite_renderer::{DrawSprite as Sprite, COLOR_WHITE};
 pub use toile_graphics::texture::TextureHandle;
@@ -28,6 +30,7 @@ pub use toile_platform::input::{Key, MouseButton};
 pub struct GameContext<'a> {
     pub input: &'a Input,
     pub camera: &'a mut Camera2D,
+    pub audio: &'a mut toile_audio::Audio,
     pub stats: &'a RenderStats,
     pub fps: f64,
     gpu: &'a GpuContext,
@@ -103,6 +106,7 @@ impl App {
             gpu: None,
             renderer: None,
             camera: None,
+            audio: None,
             input: Input::new(),
             clock: None,
             draw_list: Vec::new(),
@@ -125,6 +129,7 @@ struct AppHandler {
     gpu: Option<GpuContext>,
     renderer: Option<SpriteRenderer>,
     camera: Option<Camera2D>,
+    audio: Option<toile_audio::Audio>,
     input: Input,
     clock: Option<GameClock>,
     draw_list: Vec<DrawSprite>,
@@ -156,12 +161,15 @@ impl ApplicationHandler for AppHandler {
         let (w, h) = gpu.size();
         let camera = Camera2D::new(w as f32, h as f32);
 
+        let audio = toile_audio::Audio::new().expect("Failed to initialize audio");
+
         log::info!("Window created: {}x{}", self.config.width, self.config.height);
 
         self.window = Some(window);
         self.gpu = Some(gpu);
         self.renderer = Some(renderer);
         self.camera = Some(camera);
+        self.audio = Some(audio);
         self.clock = Some(GameClock::new(self.update_hz));
     }
 
@@ -210,6 +218,7 @@ impl ApplicationHandler for AppHandler {
                     let mut ctx = GameContext {
                         input: &self.input,
                         camera: self.camera.as_mut().unwrap(),
+                        audio: self.audio.as_mut().unwrap(),
                         stats: &self.last_stats,
                         fps: 0.0,
                         gpu,
@@ -230,6 +239,7 @@ impl ApplicationHandler for AppHandler {
                     let mut ctx = GameContext {
                         input: &self.input,
                         camera: self.camera.as_mut().unwrap(),
+                        audio: self.audio.as_mut().unwrap(),
                         stats: &self.last_stats,
                         fps,
                         gpu,
@@ -246,6 +256,7 @@ impl ApplicationHandler for AppHandler {
                     let mut ctx = GameContext {
                         input: &self.input,
                         camera: self.camera.as_mut().unwrap(),
+                        audio: self.audio.as_mut().unwrap(),
                         stats: &self.last_stats,
                         fps,
                         gpu,
