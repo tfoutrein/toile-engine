@@ -348,6 +348,7 @@ impl Game for EditorApp {
             o
         });
 
+        log::debug!("render_overlay called, size: {:?}", size);
         overlay.begin_frame(window);
 
         let ctx = overlay.ctx().clone();
