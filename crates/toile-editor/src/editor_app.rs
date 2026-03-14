@@ -12,6 +12,7 @@ use crate::scene_data::{EntityData, SceneData};
 
 pub struct EditorApp {
     overlay: Option<EguiOverlay>,
+    surface_format: Option<wgpu::TextureFormat>,
     scene: SceneData,
     selected_id: Option<u64>,
     white_tex: Option<TextureHandle>,
@@ -37,6 +38,7 @@ impl EditorApp {
 
         Self {
             overlay: None,
+            surface_format: None,
             scene,
             selected_id: None,
             white_tex: None,
@@ -224,7 +226,8 @@ impl EditorApp {
 impl Game for EditorApp {
     fn init(&mut self, ctx: &mut GameContext) {
         self.white_tex = Some(ctx.load_texture(Path::new("assets/white.png")));
-        log::info!("Toile Editor ready");
+        self.surface_format = Some(ctx.surface_format());
+        log::info!("Toile Editor ready (surface format: {:?})", self.surface_format);
     }
 
     fn update(&mut self, ctx: &mut GameContext, _dt: f64) {
@@ -336,10 +339,9 @@ impl Game for EditorApp {
         window: &Window,
         size: (u32, u32),
     ) {
+        let surface_format = self.surface_format.unwrap_or(wgpu::TextureFormat::Bgra8UnormSrgb);
         let overlay = self.overlay.get_or_insert_with(|| {
-            let format = wgpu::TextureFormat::Bgra8UnormSrgb;
-            let o = EguiOverlay::new(device, format, window);
-            // Use a darker theme for better contrast with the viewport
+            let o = EguiOverlay::new(device, surface_format, window);
             let mut style = (*o.ctx().style()).clone();
             style.visuals = egui::Visuals::dark();
             o.ctx().set_style(style);
@@ -349,6 +351,47 @@ impl Game for EditorApp {
         overlay.begin_frame(window);
 
         let ctx = overlay.ctx().clone();
+
+        // Debug window to verify egui is rendering
+        egui::Window::new("Toile Editor").default_pos([20.0, 20.0]).show(&ctx, |ui| {
+            ui.heading("Welcome to Toile Editor!");
+            ui.label(format!("Entities: {}", self.scene.entities.len()));
+            ui.label(format!("Zoom: {:.1}x", self.camera_zoom));
+            ui.separator();
+            if ui.button("Add Entity").clicked() {
+                let id = self.scene.add_entity(
+                    &format!("Entity_{}", self.scene.next_id),
+                    self.camera_pos.x, self.camera_pos.y,
+                );
+                self.selected_id = Some(id);
+            }
+            ui.separator();
+            ui.label("Hierarchy:");
+            let mut click_id = None;
+            for entity in &self.scene.entities {
+                let selected = self.selected_id == Some(entity.id);
+                if ui.selectable_label(selected, &entity.name).clicked() {
+                    click_id = Some(entity.id);
+                }
+            }
+            if let Some(id) = click_id {
+                self.selected_id = Some(id);
+            }
+            if let Some(id) = self.selected_id {
+                ui.separator();
+                ui.label("Inspector:");
+                if let Some(entity) = self.scene.find_entity_mut(id) {
+                    ui.horizontal(|ui| {
+                        ui.label("X:"); ui.add(egui::DragValue::new(&mut entity.x).speed(1.0));
+                        ui.label("Y:"); ui.add(egui::DragValue::new(&mut entity.y).speed(1.0));
+                    });
+                    ui.horizontal(|ui| {
+                        ui.label("W:"); ui.add(egui::DragValue::new(&mut entity.width).speed(1.0));
+                        ui.label("H:"); ui.add(egui::DragValue::new(&mut entity.height).speed(1.0));
+                    });
+                }
+            }
+        });
 
         // Menu bar
         let mut new_scene = false;

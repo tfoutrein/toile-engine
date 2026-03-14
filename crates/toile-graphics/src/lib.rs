@@ -17,6 +17,7 @@ pub struct GpuContext {
 impl GpuContext {
     pub fn new(window: Arc<Window>) -> Self {
         let size = window.inner_size();
+        let scale = window.scale_factor();
         let (width, height) = (size.width.max(1), size.height.max(1));
 
         let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
@@ -25,7 +26,7 @@ impl GpuContext {
         });
 
         let surface = instance
-            .create_surface(window)
+            .create_surface(window.clone())
             .expect("Failed to create wgpu surface");
 
         let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
@@ -36,9 +37,12 @@ impl GpuContext {
         .expect("Failed to find a suitable GPU adapter");
 
         log::info!(
-            "GPU adapter: {} ({:?})",
+            "GPU adapter: {} ({:?}), surface: {}x{}, scale_factor: {}",
             adapter.get_info().name,
-            adapter.get_info().backend
+            adapter.get_info().backend,
+            width,
+            height,
+            scale,
         );
 
         let (device, queue) = pollster::block_on(adapter.request_device(

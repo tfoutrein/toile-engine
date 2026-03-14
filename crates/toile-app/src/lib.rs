@@ -50,6 +50,10 @@ pub struct GameContext<'a> {
 }
 
 impl<'a> GameContext<'a> {
+    pub fn surface_format(&self) -> wgpu::TextureFormat {
+        self.gpu.surface_format()
+    }
+
     pub fn load_texture(&mut self, path: &std::path::Path) -> TextureHandle {
         self.renderer
             .load_texture(self.gpu.device(), self.gpu.queue(), path)
