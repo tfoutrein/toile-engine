@@ -206,13 +206,13 @@ pub mod presets {
 
     pub fn fire() -> ParticleEmitter {
         ParticleEmitter {
-            rate: 80.0,
+            rate: 120.0,
             lifetime: (0.3, 0.8),
-            initial_speed: (30.0, 80.0),
+            initial_speed: (40.0, 100.0),
             direction: std::f32::consts::FRAC_PI_2,
             spread_angle: 0.5,
             gravity: Vec2::new(0.0, 20.0),
-            size_start: (6.0, 12.0),
+            size_start: (10.0, 20.0),
             size_over_life: Curve::linear(1.0, 0.0),
             color_over_life: Gradient::from_stops(vec![
                 (0.0, [1.0, 0.9, 0.2, 1.0]),
@@ -232,7 +232,7 @@ pub mod presets {
             direction: std::f32::consts::FRAC_PI_2,
             spread_angle: 0.8,
             gravity: Vec2::new(0.0, 15.0),
-            size_start: (8.0, 16.0),
+            size_start: (12.0, 24.0),
             size_over_life: Curve::linear(0.5, 2.0),
             color_over_life: Gradient::from_stops(vec![
                 (0.0, [0.5, 0.5, 0.5, 0.6]),
@@ -244,12 +244,12 @@ pub mod presets {
 
     pub fn sparks() -> ParticleEmitter {
         ParticleEmitter {
-            rate: 100.0,
+            rate: 150.0,
             lifetime: (0.2, 0.6),
             initial_speed: (100.0, 250.0),
             spread_angle: std::f32::consts::TAU,
             gravity: Vec2::new(0.0, -200.0),
-            size_start: (2.0, 4.0),
+            size_start: (3.0, 6.0),
             size_over_life: Curve::constant(1.0),
             color_over_life: Gradient::from_stops(vec![
                 (0.0, [1.0, 1.0, 0.5, 1.0]),
@@ -279,13 +279,13 @@ pub mod presets {
     pub fn snow() -> ParticleEmitter {
         ParticleEmitter {
             shape: EmitterShape::Line { length: 800.0 },
-            rate: 60.0,
+            rate: 80.0,
             lifetime: (2.0, 5.0),
             initial_speed: (10.0, 30.0),
             direction: -std::f32::consts::FRAC_PI_2,
             spread_angle: 0.5,
             gravity: Vec2::new(0.0, -5.0),
-            size_start: (3.0, 6.0),
+            size_start: (4.0, 8.0),
             size_over_life: Curve::constant(1.0),
             color_over_life: Gradient::solid(1.0, 1.0, 1.0, 0.8),
             rotation_speed: (-1.0, 1.0),
@@ -301,7 +301,7 @@ pub mod presets {
             initial_speed: (100.0, 300.0),
             spread_angle: std::f32::consts::TAU,
             gravity: Vec2::new(0.0, -50.0),
-            size_start: (4.0, 10.0),
+            size_start: (6.0, 16.0),
             size_over_life: Curve::linear(1.0, 0.0),
             color_over_life: Gradient::from_stops(vec![
                 (0.0, [1.0, 1.0, 0.8, 1.0]),

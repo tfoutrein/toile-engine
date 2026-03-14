@@ -53,6 +53,9 @@ impl Game for ParticlesDemo {
     fn update(&mut self, ctx: &mut GameContext, dt: f64) {
         let dt = dt as f32;
 
+        // Zoom camera so particles are bigger and fill the screen
+        ctx.camera.zoom = 2.0;
+
         // Move emitter with mouse
         let mouse_screen = ctx.input.mouse_position();
         self.emitter_pos = ctx.camera.screen_to_world(mouse_screen);
@@ -141,17 +144,17 @@ impl Game for ParticlesDemo {
 
             ctx.draw_text(
                 &format!("Preset: {}  |  Particles: {}", self.preset_name, count),
-                Vec2::new(-620.0, 340.0),
+                Vec2::new(-310.0, 170.0),
                 font,
-                12.0,
+                7.0,
                 COLOR_WHITE,
                 10,
             );
             ctx.draw_text(
                 "1:Fire 2:Smoke 3:Sparks 4:Rain 5:Snow 6:Dust Space:Boom",
-                Vec2::new(-620.0, 320.0),
+                Vec2::new(-310.0, 155.0),
                 font,
-                8.0,
+                5.0,
                 pack_color(180, 180, 180, 255),
                 10,
             );
