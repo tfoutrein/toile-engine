@@ -3,7 +3,7 @@ use std::future::Future;
 
 use rmcp::model::{
     CallToolRequestParams, CallToolResult, Content, ListToolsResult, PaginatedRequestParams,
-    ServerInfo, Tool, JsonObject,
+    ServerInfo, Tool, JsonObject, ServerCapabilities, ToolsCapability, Implementation,
 };
 use std::borrow::Cow;
 use std::sync::Arc;
@@ -212,7 +212,20 @@ impl ToileMcpServer {
 impl ServerHandler for ToileMcpServer {
     fn get_info(&self) -> ServerInfo {
         ServerInfo {
-            instructions: Some("Toile Engine MCP Server — create and manipulate 2D game scenes.".into()),
+            capabilities: ServerCapabilities {
+                tools: Some(ToolsCapability { list_changed: None }),
+                ..Default::default()
+            },
+            server_info: Implementation {
+                name: "toile-mcp-server".into(),
+                version: env!("CARGO_PKG_VERSION").into(),
+                title: None,
+                description: None,
+                icons: None,
+                website_url: None,
+            },
+            instructions: Some("Toile Engine MCP Server — create and manipulate 2D game scenes.\n\
+                Use list_scenes to discover scenes, then create/list/update entities.".into()),
             ..Default::default()
         }
     }

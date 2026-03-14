@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "toile": {
+      "command": "/Users/tfoutrein2/DEV/PERSO/2d-engine/target/debug/toile-mcp-server",
+      "args": ["/Users/tfoutrein2/DEV/PERSO/2d-engine"]
+    }
+  }
+}
