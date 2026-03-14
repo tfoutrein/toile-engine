@@ -34,6 +34,8 @@ struct EnemyData {
     vel_x: f32,
     patrol_left: f32,
     patrol_right: f32,
+    alive: bool,
+    death_timer: f32,
 }
 
 struct Platformer {
@@ -66,8 +68,16 @@ struct Platformer {
     enemies: Vec<EnemyData>,
     lua_vm: Option<ScriptVm>,
 
+    // Death / respawn
+    lives: u32,
+    dead: bool,
+    death_timer: f32,
+    spawn_pos: Vec2,
+
     // Audio
     sfx_jump: Option<toile_app::SoundId>,
+    sfx_die: Option<toile_app::SoundId>,
+    sfx_stomp: Option<toile_app::SoundId>,
 }
 
 impl Platformer {
@@ -92,7 +102,13 @@ impl Platformer {
             anim_elapsed: 0.0,
             enemies: Vec::new(),
             lua_vm: None,
+            lives: 3,
+            dead: false,
+            death_timer: 0.0,
+            spawn_pos: Vec2::ZERO,
             sfx_jump: None,
+            sfx_die: None,
+            sfx_stomp: None,
         }
     }
 
@@ -198,6 +214,7 @@ impl Game for Platformer {
                 match obj.obj_type.as_str() {
                     "spawn" => {
                         self.player_pos = pos;
+                        self.spawn_pos = pos;
                     }
                     "enemy" => {
                         let pl = obj
@@ -215,6 +232,8 @@ impl Game for Platformer {
                             vel_x: 60.0,
                             patrol_left: pl,
                             patrol_right: pr,
+                            alive: true,
+                            death_timer: 0.0,
                         });
                     }
                     _ => {}
@@ -236,6 +255,16 @@ impl Game for Platformer {
                 .load_sound(Path::new("assets/bounce.wav"))
                 .expect("Failed to load jump SFX"),
         );
+        self.sfx_die = Some(
+            ctx.audio
+                .load_sound(Path::new("assets/lose_life.wav"))
+                .expect("Failed to load die SFX"),
+        );
+        self.sfx_stomp = Some(
+            ctx.audio
+                .load_sound(Path::new("assets/brick_hit.wav"))
+                .expect("Failed to load stomp SFX"),
+        );
 
         // Music
         let music = ctx
@@ -253,6 +282,29 @@ impl Game for Platformer {
 
     fn update(&mut self, ctx: &mut GameContext, dt: f64) {
         let dt = dt as f32;
+
+        // --- Death animation ---
+        if self.dead {
+            self.death_timer -= dt;
+            // Float upward then fall during death
+            self.player_vel.y += GRAVITY * 0.5 * dt;
+            self.player_pos += self.player_vel * dt;
+
+            if self.death_timer <= 0.0 {
+                self.dead = false;
+                self.player_pos = self.spawn_pos;
+                self.player_vel = Vec2::ZERO;
+            }
+
+            // Update enemy death timers
+            for enemy in &mut self.enemies {
+                if !enemy.alive {
+                    enemy.death_timer -= dt;
+                }
+            }
+            self.enemies.retain(|e| e.alive || e.death_timer > 0.0);
+            return;
+        }
 
         // --- Player input ---
         let mut move_x = 0.0f32;
@@ -327,11 +379,50 @@ impl Game for Platformer {
             }
         }
 
-        // Fall off map
-        if self.player_pos.y < -100.0 {
-            self.player_pos = Vec2::new(80.0, self.map_height_px - 100.0);
-            self.player_vel = Vec2::ZERO;
+        // --- Collision with enemies ---
+        let player_col = Collider::aabb(PLAYER_HALF_W, PLAYER_HALF_H);
+        let enemy_half = Vec2::new(12.0, 12.0);
+        for enemy in &mut self.enemies {
+            if !enemy.alive {
+                continue;
+            }
+            let enemy_col = Collider::aabb(enemy_half.x, enemy_half.y);
+            if let Some(mtv) = overlap_test(self.player_pos, &player_col, enemy.pos, &enemy_col) {
+                if self.player_vel.y < -50.0 && mtv.y > 0.0 {
+                    // Stomp! Player is falling onto enemy
+                    enemy.alive = false;
+                    enemy.death_timer = 0.5;
+                    self.player_vel.y = JUMP_VEL * 0.6; // bounce up
+                    if let Some(sfx) = self.sfx_stomp {
+                        let _ = ctx.audio.play_sound(sfx);
+                    }
+                } else {
+                    // Player dies
+                    self.dead = true;
+                    self.death_timer = 1.0;
+                    self.lives = self.lives.saturating_sub(1);
+                    self.player_vel = Vec2::new(0.0, 300.0); // pop up
+                    if let Some(sfx) = self.sfx_die {
+                        let _ = ctx.audio.play_sound(sfx);
+                    }
+                    break;
+                }
+            }
         }
+
+        // Fall off map = death
+        if self.player_pos.y < -100.0 {
+            self.dead = true;
+            self.death_timer = 0.8;
+            self.lives = self.lives.saturating_sub(1);
+            self.player_vel = Vec2::ZERO;
+            if let Some(sfx) = self.sfx_die {
+                let _ = ctx.audio.play_sound(sfx);
+            }
+        }
+
+        // Remove fully dead enemies
+        self.enemies.retain(|e| e.alive || e.death_timer > 0.0);
 
         // --- Animation ---
         if !self.on_ground {
@@ -347,7 +438,9 @@ impl Game for Platformer {
         if let Some(vm) = &self.lua_vm {
             let script_path = Path::new("assets/platformer/scripts/enemy_patrol.lua");
             for (i, enemy) in self.enemies.iter_mut().enumerate() {
-                // Set globals for this enemy
+                if !enemy.alive {
+                    continue;
+                }
                 let lua = vm.lua();
                 let _ = lua.globals().set("pos_x", enemy.pos.x as f64);
                 let _ = lua.globals().set("pos_y", enemy.pos.y as f64);
@@ -357,7 +450,6 @@ impl Game for Platformer {
 
                 let _ = vm.call_on_update(script_path, i as u64, dt as f64);
 
-                // Read back velocity
                 if let Ok(vx) = lua.globals().get::<f64>("vel_x") {
                     enemy.vel_x = vx as f32;
                 }
@@ -390,52 +482,92 @@ impl Game for Platformer {
             }
         }
 
-        // Draw enemies
+        // Draw enemies (alive = normal, dead = shrink + fade)
         if let Some(enemy_tex) = self.enemy_tex {
             for enemy in &self.enemies {
+                if enemy.alive {
+                    ctx.draw_sprite(DrawSprite {
+                        texture: enemy_tex,
+                        position: enemy.pos,
+                        size: Vec2::new(32.0, 32.0),
+                        rotation: 0.0,
+                        color: COLOR_WHITE,
+                        layer: 5,
+                        uv_min: Vec2::ZERO,
+                        uv_max: Vec2::ONE,
+                    });
+                } else {
+                    // Death animation: flatten and fade
+                    let t = (enemy.death_timer / 0.5).clamp(0.0, 1.0);
+                    let alpha = (t * 255.0) as u8;
+                    ctx.draw_sprite(DrawSprite {
+                        texture: enemy_tex,
+                        position: enemy.pos,
+                        size: Vec2::new(32.0 * (1.0 + (1.0 - t) * 0.5), 32.0 * t),
+                        rotation: 0.0,
+                        color: pack_color(255, 255, 255, alpha),
+                        layer: 5,
+                        uv_min: Vec2::ZERO,
+                        uv_max: Vec2::ONE,
+                    });
+                }
+            }
+        }
+
+        // Draw player (animated, red tint when dead)
+        if let (Some(tex), Some(frame)) = (self.player_tex, self.current_anim_frame()) {
+            // Skip rendering during death blink (flash effect)
+            let visible = if self.dead {
+                ((self.death_timer * 10.0) as i32) % 2 == 0 // blink
+            } else {
+                true
+            };
+
+            if visible {
+                let mut uv_min = frame.uv_min;
+                let mut uv_max = frame.uv_max;
+                if !self.facing_right {
+                    std::mem::swap(&mut uv_min.x, &mut uv_max.x);
+                }
+                let color = if self.dead {
+                    pack_color(255, 80, 80, 255) // red tint
+                } else {
+                    COLOR_WHITE
+                };
                 ctx.draw_sprite(DrawSprite {
-                    texture: enemy_tex,
-                    position: enemy.pos,
+                    texture: tex,
+                    position: self.player_pos,
                     size: Vec2::new(32.0, 32.0),
                     rotation: 0.0,
-                    color: COLOR_WHITE,
-                    layer: 5,
-                    uv_min: Vec2::ZERO,
-                    uv_max: Vec2::ONE,
+                    color,
+                    layer: 10,
+                    uv_min,
+                    uv_max,
                 });
             }
         }
 
-        // Draw player (animated)
-        if let (Some(tex), Some(frame)) = (self.player_tex, self.current_anim_frame()) {
-            let mut uv_min = frame.uv_min;
-            let mut uv_max = frame.uv_max;
-            if !self.facing_right {
-                std::mem::swap(&mut uv_min.x, &mut uv_max.x);
-            }
-            ctx.draw_sprite(DrawSprite {
-                texture: tex,
-                position: self.player_pos,
-                size: Vec2::new(32.0, 32.0),
-                rotation: 0.0,
-                color: COLOR_WHITE,
-                layer: 10,
-                uv_min,
-                uv_max,
-            });
-        }
-
-        // HUD (positioned relative to camera, scaled for zoom)
+        // HUD
         if let Some(font) = self.font {
-            let hud_offset = Vec2::new(-300.0, 160.0); // in world units from camera center
+            let cam = ctx.camera.position;
             ctx.draw_text(
-                "PLATFORMER DEMO",
-                ctx.camera.position + hud_offset,
+                &format!("LIVES: {}", self.lives),
+                cam + Vec2::new(-300.0, 160.0),
                 font,
                 8.0,
                 COLOR_WHITE,
                 20,
             );
+            if self.lives == 0 && self.dead {
+                ctx.draw_text(
+                    "GAME OVER",
+                    cam + Vec2::new(-60.0, 20.0),
+                    font,
+                    12.0,
+                    pack_color(255, 60, 60, 255),
+                    20,
+                );
+            }
         }
     }
 }
