@@ -52,6 +52,19 @@
       "sprite_path": "",
       "width": 500.0,
       "height": 20.0
+    },
+    {
+      "id": 5,
+      "name": "soleil",
+      "x": -20.0,
+      "y": 178.0,
+      "rotation": 0.7,
+      "scale_x": 1.0,
+      "scale_y": 1.0,
+      "layer": 0,
+      "sprite_path": "",
+      "width": 115.0,
+      "height": 121.0
     }
   ]
 }

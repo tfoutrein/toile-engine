@@ -16,6 +16,7 @@ pub struct EditorApp {
     scene: SceneData,
     selected_id: Option<u64>,
     white_tex: Option<TextureHandle>,
+    logo_tex: Option<TextureHandle>,
     camera_pos: Vec2,
     camera_zoom: f32,
     dragging: Option<u64>,
@@ -26,6 +27,9 @@ pub struct EditorApp {
     file_path_input: String,
     show_load_dialog: bool,
     show_save_dialog: bool,
+    // Splash screen
+    splash_timer: f32,
+    show_splash: bool,
 }
 
 impl EditorApp {
@@ -56,6 +60,9 @@ impl EditorApp {
             file_path_input: String::new(),
             show_load_dialog: false,
             show_save_dialog: false,
+            logo_tex: None,
+            splash_timer: 2.5,
+            show_splash: true,
         }
     }
 
@@ -234,11 +241,21 @@ impl EditorApp {
 impl Game for EditorApp {
     fn init(&mut self, ctx: &mut GameContext) {
         self.white_tex = Some(ctx.load_texture(Path::new("assets/white.png")));
+        self.logo_tex = Some(ctx.load_texture(Path::new("assets/toile-logo-transparent.png")));
         self.surface_format = Some(ctx.surface_format());
-        log::info!("Toile Editor ready (surface format: {:?})", self.surface_format);
+        log::info!("Toile Editor ready");
     }
 
     fn update(&mut self, ctx: &mut GameContext, _dt: f64) {
+        // Splash screen countdown
+        if self.show_splash {
+            self.splash_timer -= _dt as f32;
+            if self.splash_timer <= 0.0 || ctx.input.is_key_just_pressed(Key::Space) || ctx.input.is_key_just_pressed(Key::Escape) {
+                self.show_splash = false;
+            }
+            return;
+        }
+
         // Camera zoom with scroll (when egui doesn't consume it)
         let scroll = ctx.input.scroll_delta();
         if scroll.y != 0.0 {
@@ -251,6 +268,26 @@ impl Game for EditorApp {
     }
 
     fn draw(&mut self, ctx: &mut GameContext) {
+        // Splash screen: centered logo
+        if self.show_splash {
+            if let Some(logo) = self.logo_tex {
+                let fade = ((2.5 - self.splash_timer) * 2.0).clamp(0.0, 1.0); // fade in
+                let alpha = (fade * 255.0) as u8;
+                let size = 256.0;
+                ctx.draw_sprite(Sprite {
+                    texture: logo,
+                    position: Vec2::ZERO,
+                    size: Vec2::new(size, size),
+                    rotation: 0.0,
+                    color: pack_color(255, 255, 255, alpha),
+                    layer: 100,
+                    uv_min: Vec2::ZERO,
+                    uv_max: Vec2::ONE,
+                });
+            }
+            return;
+        }
+
         let tex = match self.white_tex {
             Some(t) => t,
             None => return,
@@ -351,6 +388,11 @@ impl Game for EditorApp {
         window: &Window,
         size: (u32, u32),
     ) {
+        // Skip egui during splash screen
+        if self.show_splash {
+            return;
+        }
+
         let surface_format = self.surface_format.unwrap_or(wgpu::TextureFormat::Bgra8UnormSrgb);
         let overlay = self.overlay.get_or_insert_with(|| {
             let o = EguiOverlay::new(device, surface_format, window);
@@ -639,7 +681,13 @@ impl Game for EditorApp {
             ui.horizontal(|ui| {
                 ui.label(&self.status_msg);
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    ui.label(format!("Entities: {} | Zoom: {:.1}x", self.scene.entities.len(), self.camera_zoom));
+                    ui.label(format!(
+                        "Toile v{} | {} | Entities: {} | Zoom: {:.1}x",
+                        env!("CARGO_PKG_VERSION"),
+                        self.current_file,
+                        self.scene.entities.len(),
+                        self.camera_zoom
+                    ));
                 });
             });
         });
