@@ -180,6 +180,18 @@ impl Game for Breakout {
         let paddle = self.paddle.unwrap();
         let ball = self.ball.unwrap();
 
+        // Toggle music with M (always available, even before launch)
+        if ctx.first_tick && ctx.input.is_key_just_pressed(Key::KeyM) {
+            if let Some(pb) = self.music_playback {
+                if self.music_paused {
+                    ctx.audio.resume(pb);
+                } else {
+                    ctx.audio.pause(pb);
+                }
+                self.music_paused = !self.music_paused;
+            }
+        }
+
         // Paddle movement
         {
             let mut paddle_t = self.world.get::<&mut Transform>(paddle).unwrap();
@@ -325,18 +337,6 @@ impl Game for Breakout {
                 if let Some(sfx) = self.sfx_lose {
                     let _ = ctx.audio.play_sound(sfx);
                 }
-            }
-        }
-
-        // Toggle music with M (only on first tick to avoid double-toggle)
-        if ctx.first_tick && ctx.input.is_key_just_pressed(Key::KeyM) {
-            if let Some(pb) = self.music_playback {
-                if self.music_paused {
-                    ctx.audio.resume(pb);
-                } else {
-                    ctx.audio.pause(pb);
-                }
-                self.music_paused = !self.music_paused;
             }
         }
 
