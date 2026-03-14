@@ -338,7 +338,12 @@ impl Game for EditorApp {
     ) {
         let overlay = self.overlay.get_or_insert_with(|| {
             let format = wgpu::TextureFormat::Bgra8UnormSrgb;
-            EguiOverlay::new(device, format, window)
+            let o = EguiOverlay::new(device, format, window);
+            // Use a darker theme for better contrast with the viewport
+            let mut style = (*o.ctx().style()).clone();
+            style.visuals = egui::Visuals::dark();
+            o.ctx().set_style(style);
+            o
         });
 
         overlay.begin_frame(window);
@@ -506,6 +511,6 @@ pub fn run_editor() {
     App::new()
         .with_title("Toile Editor")
         .with_size(1280, 720)
-        .with_clear_color(Color::rgb(0.15, 0.15, 0.2))
+        .with_clear_color(Color::rgb(0.12, 0.12, 0.16))
         .run(EditorApp::new());
 }
