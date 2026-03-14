@@ -22,6 +22,10 @@ pub struct EditorApp {
     drag_offset: Vec2,
     show_grid: bool,
     status_msg: String,
+    current_file: String,
+    file_path_input: String,
+    show_load_dialog: bool,
+    show_save_dialog: bool,
 }
 
 impl EditorApp {
@@ -48,6 +52,10 @@ impl EditorApp {
             drag_offset: Vec2::ZERO,
             show_grid: true,
             status_msg: "Ready".to_string(),
+            current_file: "scene.json".to_string(),
+            file_path_input: String::new(),
+            show_load_dialog: false,
+            show_save_dialog: false,
         }
     }
 
@@ -367,8 +375,23 @@ impl Game for EditorApp {
             egui::menu::bar(ui, |ui| {
                 ui.menu_button("File", |ui| {
                     if ui.button("New Scene").clicked() { new_scene = true; ui.close_menu(); }
-                    if ui.button("Save (scene.json)").clicked() { save_scene = true; ui.close_menu(); }
-                    if ui.button("Load (scene.json)").clicked() { load_scene = true; ui.close_menu(); }
+                    if ui.button("Save...").clicked() {
+                        self.file_path_input = self.current_file.clone();
+                        self.show_save_dialog = true;
+                        ui.close_menu();
+                    }
+                    if ui.button("Load...").clicked() {
+                        self.file_path_input = self.current_file.clone();
+                        self.show_load_dialog = true;
+                        ui.close_menu();
+                    }
+                    ui.separator();
+                    if !self.current_file.is_empty() {
+                        if ui.button(format!("Quick Save ({})", self.current_file)).clicked() {
+                            save_scene = true;
+                            ui.close_menu();
+                        }
+                    }
                 });
                 ui.menu_button("Edit", |ui| {
                     if ui.button("Add Entity").clicked() { add_entity = true; ui.close_menu(); }
@@ -391,19 +414,78 @@ impl Game for EditorApp {
             self.selected_id = None;
             self.status_msg = "New scene".to_string();
         }
-        if save_scene {
+        if save_scene && !self.current_file.is_empty() {
             let json = serde_json::to_string_pretty(&self.scene).unwrap();
-            let _ = std::fs::write("scene.json", &json);
-            self.status_msg = format!("Saved ({} entities)", self.scene.entities.len());
-        }
-        if load_scene {
-            if let Ok(json) = std::fs::read_to_string("scene.json") {
-                if let Ok(data) = serde_json::from_str(&json) {
-                    self.scene = data;
-                    self.selected_id = None;
-                    self.status_msg = "Loaded scene.json".to_string();
-                }
+            match std::fs::write(&self.current_file, &json) {
+                Ok(()) => self.status_msg = format!("Saved to {} ({} entities)", self.current_file, self.scene.entities.len()),
+                Err(e) => self.status_msg = format!("Save failed: {e}"),
             }
+        }
+
+        // Load dialog
+        if self.show_load_dialog {
+            let mut open = true;
+            egui::Window::new("Load Scene")
+                .open(&mut open)
+                .collapsible(false)
+                .resizable(false)
+                .show(&ctx, |ui| {
+                    ui.label("File path:");
+                    ui.text_edit_singleline(&mut self.file_path_input);
+                    ui.horizontal(|ui| {
+                        if ui.button("Load").clicked() {
+                            let path = std::path::Path::new(&self.file_path_input);
+                            match toile_scene::load_scene(path) {
+                                Ok(data) => {
+                                    self.scene = data;
+                                    self.current_file = self.file_path_input.clone();
+                                    self.selected_id = None;
+                                    self.status_msg = format!("Loaded {}", self.current_file);
+                                    self.show_load_dialog = false;
+                                }
+                                Err(e) => {
+                                    self.status_msg = format!("Load failed: {e}");
+                                }
+                            }
+                        }
+                        if ui.button("Cancel").clicked() {
+                            self.show_load_dialog = false;
+                        }
+                    });
+                });
+            if !open { self.show_load_dialog = false; }
+        }
+
+        // Save dialog
+        if self.show_save_dialog {
+            let mut open = true;
+            egui::Window::new("Save Scene")
+                .open(&mut open)
+                .collapsible(false)
+                .resizable(false)
+                .show(&ctx, |ui| {
+                    ui.label("File path:");
+                    ui.text_edit_singleline(&mut self.file_path_input);
+                    ui.horizontal(|ui| {
+                        if ui.button("Save").clicked() {
+                            let json = serde_json::to_string_pretty(&self.scene).unwrap();
+                            match std::fs::write(&self.file_path_input, &json) {
+                                Ok(()) => {
+                                    self.current_file = self.file_path_input.clone();
+                                    self.status_msg = format!("Saved to {}", self.current_file);
+                                    self.show_save_dialog = false;
+                                }
+                                Err(e) => {
+                                    self.status_msg = format!("Save failed: {e}");
+                                }
+                            }
+                        }
+                        if ui.button("Cancel").clicked() {
+                            self.show_save_dialog = false;
+                        }
+                    });
+                });
+            if !open { self.show_save_dialog = false; }
         }
         if add_entity {
             let id = self.scene.add_entity(
