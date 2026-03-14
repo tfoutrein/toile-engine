@@ -128,7 +128,7 @@ impl SpriteRenderer {
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("sprite_pipeline_layout"),
             bind_group_layouts: &[&camera_bgl, &texture_bgl],
-            immediate_size: 0,
+            push_constant_ranges: &[],
         });
 
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
@@ -157,7 +157,7 @@ impl SpriteRenderer {
                     write_mask: wgpu::ColorWrites::ALL,
                 })],
             }),
-            multiview_mask: None,
+            multiview: None,
             cache: None,
         });
 

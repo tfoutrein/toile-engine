@@ -142,7 +142,30 @@ pub trait Game {
     fn init(&mut self, ctx: &mut GameContext);
     fn update(&mut self, ctx: &mut GameContext, dt: f64);
     fn draw(&mut self, ctx: &mut GameContext);
+
+    /// Optional: render an overlay (e.g., egui) after sprites, before frame submission.
+    fn render_overlay(
+        &mut self,
+        _device: &wgpu::Device,
+        _queue: &wgpu::Queue,
+        _encoder: &mut wgpu::CommandEncoder,
+        _view: &wgpu::TextureView,
+        _window: &winit::window::Window,
+        _size: (u32, u32),
+    ) {
+    }
+
+    /// Optional: filter a window event through overlay (return true if consumed).
+    fn handle_window_event(
+        &mut self,
+        _window: &winit::window::Window,
+        _event: &WindowEvent,
+    ) -> bool {
+        false
+    }
 }
+
+pub use wgpu;
 
 pub struct App {
     config: WindowConfig,
@@ -298,17 +321,34 @@ impl ApplicationHandler for AppHandler {
                     camera.resize(size.width as f32, size.height as f32);
                 }
             }
-            WindowEvent::KeyboardInput { event, .. } => {
-                self.input.handle_key_event(&event);
-            }
-            WindowEvent::MouseInput { button, state, .. } => {
-                self.input.handle_mouse_button(button, state);
-            }
-            WindowEvent::CursorMoved { position, .. } => {
-                self.input.handle_cursor_moved(position.x, position.y);
-            }
-            WindowEvent::MouseWheel { delta, .. } => {
-                self.input.handle_mouse_wheel(&delta);
+            // Let overlay (egui) consume events first
+            ref e @ (WindowEvent::KeyboardInput { .. }
+            | WindowEvent::MouseInput { .. }
+            | WindowEvent::CursorMoved { .. }
+            | WindowEvent::MouseWheel { .. }
+            | WindowEvent::ModifiersChanged { .. }) => {
+                let consumed = if let Some(window) = &self.window {
+                    self.game.handle_window_event(window, e)
+                } else {
+                    false
+                };
+                if !consumed {
+                    match e {
+                        WindowEvent::KeyboardInput { event, .. } => {
+                            self.input.handle_key_event(event);
+                        }
+                        WindowEvent::MouseInput { button, state, .. } => {
+                            self.input.handle_mouse_button(*button, *state);
+                        }
+                        WindowEvent::CursorMoved { position, .. } => {
+                            self.input.handle_cursor_moved(position.x, position.y);
+                        }
+                        WindowEvent::MouseWheel { delta, .. } => {
+                            self.input.handle_mouse_wheel(delta);
+                        }
+                        _ => {}
+                    }
+                }
             }
             WindowEvent::RedrawRequested => {
                 if !self.initialized {
@@ -347,6 +387,16 @@ impl ApplicationHandler for AppHandler {
                         &self.draw_list,
                         &self.clear_color,
                     );
+
+                    // Overlay rendering (egui for editor, no-op for regular games)
+                    let size = gpu.size();
+                    let device = gpu.device();
+                    let queue = gpu.queue();
+                    if let Some(window) = &self.window {
+                        self.game
+                            .render_overlay(device, queue, &mut encoder, &view, window, size);
+                    }
+
                     gpu.end_frame(frame, encoder);
                 }
 

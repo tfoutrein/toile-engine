@@ -4,3 +4,17 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 description = "Visual editor for Toile Engine (egui-based)"
+
+[dependencies]
+toile-app = { workspace = true }
+toile-core = { workspace = true }
+toile-graphics = { workspace = true }
+egui = { workspace = true }
+egui-wgpu = { workspace = true }
+egui-winit = { workspace = true }
+wgpu = { workspace = true }
+winit = { workspace = true }
+glam = { workspace = true }
+log = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
