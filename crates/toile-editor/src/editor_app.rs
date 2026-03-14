@@ -352,51 +352,9 @@ impl Game for EditorApp {
             o
         });
 
-        log::debug!("render_overlay called, size: {:?}", size);
         overlay.begin_frame(window);
 
         let ctx = overlay.ctx().clone();
-
-        // Debug window to verify egui is rendering
-        egui::Window::new("Toile Editor").default_pos([20.0, 20.0]).show(&ctx, |ui| {
-            ui.heading("Welcome to Toile Editor!");
-            ui.label(format!("Entities: {}", self.scene.entities.len()));
-            ui.label(format!("Zoom: {:.1}x", self.camera_zoom));
-            ui.separator();
-            if ui.button("Add Entity").clicked() {
-                let id = self.scene.add_entity(
-                    &format!("Entity_{}", self.scene.next_id),
-                    self.camera_pos.x, self.camera_pos.y,
-                );
-                self.selected_id = Some(id);
-            }
-            ui.separator();
-            ui.label("Hierarchy:");
-            let mut click_id = None;
-            for entity in &self.scene.entities {
-                let selected = self.selected_id == Some(entity.id);
-                if ui.selectable_label(selected, &entity.name).clicked() {
-                    click_id = Some(entity.id);
-                }
-            }
-            if let Some(id) = click_id {
-                self.selected_id = Some(id);
-            }
-            if let Some(id) = self.selected_id {
-                ui.separator();
-                ui.label("Inspector:");
-                if let Some(entity) = self.scene.find_entity_mut(id) {
-                    ui.horizontal(|ui| {
-                        ui.label("X:"); ui.add(egui::DragValue::new(&mut entity.x).speed(1.0));
-                        ui.label("Y:"); ui.add(egui::DragValue::new(&mut entity.y).speed(1.0));
-                    });
-                    ui.horizontal(|ui| {
-                        ui.label("W:"); ui.add(egui::DragValue::new(&mut entity.width).speed(1.0));
-                        ui.label("H:"); ui.add(egui::DragValue::new(&mut entity.height).speed(1.0));
-                    });
-                }
-            }
-        });
 
         // Menu bar
         let mut new_scene = false;
