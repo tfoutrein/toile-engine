@@ -54,6 +54,8 @@ struct Platformer {
     player_vel: Vec2,
     on_ground: bool,
     facing_right: bool,
+    coyote_timer: f32,   // time since last on_ground (allows late jump)
+    jump_buffer: f32,    // time since jump was pressed (allows early jump)
 
     // Animation
     current_clip: String,
@@ -83,6 +85,8 @@ impl Platformer {
             player_vel: Vec2::ZERO,
             on_ground: false,
             facing_right: true,
+            coyote_timer: 0.0,
+            jump_buffer: 0.0,
             current_clip: "idle".into(),
             current_frame: 0,
             anim_elapsed: 0.0,
@@ -263,8 +267,25 @@ impl Game for Platformer {
 
         self.player_vel.x = move_x * PLAYER_SPEED;
 
-        if ctx.first_tick && ctx.input.is_key_just_pressed(Key::Space) && self.on_ground {
+        // Coyote time: allow jump shortly after leaving ground
+        if self.on_ground {
+            self.coyote_timer = 0.08; // 80ms grace period
+        } else {
+            self.coyote_timer -= dt;
+        }
+
+        // Jump buffer: remember jump press for a short window
+        if ctx.input.is_key_just_pressed(Key::Space) {
+            self.jump_buffer = 0.12; // 120ms buffer
+        } else {
+            self.jump_buffer -= dt;
+        }
+
+        // Jump if either coyote time or ground is active, AND jump was buffered
+        if self.jump_buffer > 0.0 && self.coyote_timer > 0.0 {
             self.player_vel.y = JUMP_VEL;
+            self.coyote_timer = 0.0;
+            self.jump_buffer = 0.0;
             self.on_ground = false;
             if let Some(sfx) = self.sfx_jump {
                 let _ = ctx.audio.play_sound(sfx);
@@ -345,8 +366,10 @@ impl Game for Platformer {
         }
 
         // --- Camera follow ---
-        let half_view_w = 400.0; // half of 800 window
-        let half_view_h = 240.0;
+        // Zoom 2x so tiles are bigger (64px on screen instead of 32px)
+        ctx.camera.zoom = 2.0;
+        let half_view_w = 1280.0 / (2.0 * ctx.camera.zoom); // effective half viewport in world pixels
+        let half_view_h = 720.0 / (2.0 * ctx.camera.zoom);
         let target_x = self
             .player_pos
             .x
@@ -402,22 +425,15 @@ impl Game for Platformer {
             });
         }
 
-        // HUD
+        // HUD (positioned relative to camera, scaled for zoom)
         if let Some(font) = self.font {
+            let hud_offset = Vec2::new(-300.0, 160.0); // in world units from camera center
             ctx.draw_text(
                 "PLATFORMER DEMO",
-                ctx.camera.position + Vec2::new(-380.0, 210.0),
+                ctx.camera.position + hud_offset,
                 font,
-                16.0,
+                8.0,
                 COLOR_WHITE,
-                20,
-            );
-            ctx.draw_text(
-                "Arrows/AD: Move  Space: Jump",
-                ctx.camera.position + Vec2::new(-380.0, 190.0),
-                font,
-                10.0,
-                pack_color(180, 180, 180, 255),
                 20,
             );
         }
@@ -427,7 +443,7 @@ impl Game for Platformer {
 fn main() {
     App::new()
         .with_title("Toile — Platformer Demo")
-        .with_size(800, 480)
+        .with_size(1280, 720)
         .with_clear_color(Color::rgb(0.2, 0.3, 0.5))
         .run(Platformer::new());
 }
