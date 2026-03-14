@@ -78,6 +78,15 @@ egui-wgpu = "0.33"
 egui-winit = { version = "0.33", features = ["wayland", "x11"] }
 
 toile-editor = { path = "crates/toile-editor" }
+toile-scene = { path = "crates/toile-scene" }
+
+# MCP server
+rmcp = { version = "0.16", features = ["server", "transport-io", "macros"] }
+tokio = { version = "1", features = ["full"] }
+schemars = "0.8"
+
+# CLI
+clap = { version = "4", features = ["derive"] }
 
 toile-scripting = { path = "crates/toile-scripting" }
 

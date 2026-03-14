@@ -8,3 +8,8 @@ description = "CLI for Toile Engine"
 [[bin]]
 name = "toile"
 path = "src/main.rs"
+
+[dependencies]
+toile-scene = { workspace = true }
+clap = { workspace = true }
+serde_json = { workspace = true }

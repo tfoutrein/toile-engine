@@ -7,6 +7,7 @@ description = "Visual editor for Toile Engine (egui-based)"
 
 [dependencies]
 toile-app = { workspace = true }
+toile-scene = { workspace = true }
 toile-core = { workspace = true }
 toile-graphics = { workspace = true }
 egui = { workspace = true }
