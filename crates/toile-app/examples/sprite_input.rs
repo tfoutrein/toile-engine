@@ -57,6 +57,7 @@ impl Game for MyGame {
                 size: Vec2::new(64.0, 64.0),
                 rotation: 0.0,
                 color: COLOR_WHITE,
+                layer: 0,
             });
         }
     }

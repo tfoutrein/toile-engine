@@ -32,6 +32,7 @@ pub struct DrawSprite {
     pub size: Vec2,
     pub rotation: f32,
     pub color: u32,
+    pub layer: i32,
 }
 
 pub fn pack_color(r: u8, g: u8, b: u8, a: u8) -> u32 {
@@ -39,6 +40,13 @@ pub fn pack_color(r: u8, g: u8, b: u8, a: u8) -> u32 {
 }
 
 pub const COLOR_WHITE: u32 = 0xFFFF_FFFF;
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct RenderStats {
+    pub sprite_count: u32,
+    pub draw_calls: u32,
+    pub batch_count: u32,
+}
 
 pub struct SpriteRenderer {
     pipeline: wgpu::RenderPipeline,
@@ -53,6 +61,7 @@ pub struct SpriteRenderer {
     index_buffer: wgpu::Buffer,
     vertex_capacity: usize,
     index_capacity: usize,
+    sort_order: Vec<usize>,
 }
 
 impl SpriteRenderer {
@@ -166,7 +175,7 @@ impl SpriteRenderer {
         });
         let index_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("sprite_ibo"),
-            size: (cap * 6 * std::mem::size_of::<u16>()) as u64,
+            size: (cap * 6 * std::mem::size_of::<u32>()) as u64,
             usage: wgpu::BufferUsages::INDEX | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -184,6 +193,7 @@ impl SpriteRenderer {
             index_buffer,
             vertex_capacity: cap * 4,
             index_capacity: cap * 6,
+            sort_order: Vec::new(),
         }
     }
 
@@ -217,7 +227,7 @@ impl SpriteRenderer {
         handle
     }
 
-    fn build_quad(sprite: &DrawSprite, base_vertex: u16) -> ([SpriteVertex; 4], [u16; 6]) {
+    fn build_quad(sprite: &DrawSprite, base_vertex: u32) -> ([SpriteVertex; 4], [u32; 6]) {
         let half = sprite.size * 0.5;
         let (sin, cos) = sprite.rotation.sin_cos();
 
@@ -251,6 +261,7 @@ impl SpriteRenderer {
         (verts, indices)
     }
 
+    /// Render all sprites with sort-and-batch. Returns render statistics.
     pub fn draw(
         &mut self,
         device: &wgpu::Device,
@@ -260,19 +271,55 @@ impl SpriteRenderer {
         camera: &Camera2D,
         sprites: &[DrawSprite],
         clear_color: &Color,
-    ) {
+    ) -> RenderStats {
+        let mut stats = RenderStats {
+            sprite_count: sprites.len() as u32,
+            ..Default::default()
+        };
+
         // Update camera
         let cam_uniform = CameraUniform::from_camera(camera);
         queue.write_buffer(&self.camera_buffer, 0, bytemuck::bytes_of(&cam_uniform));
 
-        // Build vertex/index data
+        if sprites.is_empty() {
+            // Still need to clear
+            let _clear_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("clear_pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear((*clear_color).into()),
+                        store: wgpu::StoreOp::Store,
+                    },
+                    depth_slice: None,
+                })],
+                depth_stencil_attachment: None,
+                ..Default::default()
+            });
+            drop(_clear_pass);
+            return stats;
+        }
+
+        // Sort by (layer, texture) for batching. Stable sort preserves submission order.
+        self.sort_order.clear();
+        self.sort_order.extend(0..sprites.len());
+        self.sort_order.sort_by(|&a, &b| {
+            let sa = &sprites[a];
+            let sb = &sprites[b];
+            sa.layer
+                .cmp(&sb.layer)
+                .then(sa.texture.0.cmp(&sb.texture.0))
+        });
+
+        // Build vertex/index data in sorted order
         let total_verts = sprites.len() * 4;
         let total_indices = sprites.len() * 6;
         let mut vertices: Vec<SpriteVertex> = Vec::with_capacity(total_verts);
-        let mut indices: Vec<u16> = Vec::with_capacity(total_indices);
+        let mut indices: Vec<u32> = Vec::with_capacity(total_indices);
 
-        for (i, sprite) in sprites.iter().enumerate() {
-            let (verts, idx) = Self::build_quad(sprite, (i * 4) as u16);
+        for (quad_idx, &sprite_idx) in self.sort_order.iter().enumerate() {
+            let (verts, idx) = Self::build_quad(&sprites[sprite_idx], (quad_idx * 4) as u32);
             vertices.extend_from_slice(&verts);
             indices.extend_from_slice(&idx);
         }
@@ -290,19 +337,18 @@ impl SpriteRenderer {
         if total_indices > self.index_capacity {
             self.index_buffer = device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("sprite_ibo"),
-                size: (total_indices * std::mem::size_of::<u16>()) as u64,
+                size: (total_indices * std::mem::size_of::<u32>()) as u64,
                 usage: wgpu::BufferUsages::INDEX | wgpu::BufferUsages::COPY_DST,
                 mapped_at_creation: false,
             });
             self.index_capacity = total_indices;
         }
 
-        if !vertices.is_empty() {
-            queue.write_buffer(&self.vertex_buffer, 0, bytemuck::cast_slice(&vertices));
-            queue.write_buffer(&self.index_buffer, 0, bytemuck::cast_slice(&indices));
-        }
+        // Upload
+        queue.write_buffer(&self.vertex_buffer, 0, bytemuck::cast_slice(&vertices));
+        queue.write_buffer(&self.index_buffer, 0, bytemuck::cast_slice(&indices));
 
-        // Render pass
+        // Render pass with batched draw calls
         {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("sprite_pass"),
@@ -322,17 +368,37 @@ impl SpriteRenderer {
             pass.set_pipeline(&self.pipeline);
             pass.set_bind_group(0, &self.camera_bind_group, &[]);
             pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
-            pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
+            pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
 
-            // Draw per texture (no batching yet — Week 3)
-            let mut idx_offset = 0u32;
-            for sprite in sprites {
-                if let Some(bg) = self.texture_bind_groups.get(&sprite.texture) {
-                    pass.set_bind_group(1, bg, &[]);
-                    pass.draw_indexed(idx_offset..idx_offset + 6, 0, 0..1);
+            // Batched draw: group consecutive sprites with same texture
+            let mut batch_start: u32 = 0;
+            let mut batch_texture = sprites[self.sort_order[0]].texture;
+
+            for i in 1..=self.sort_order.len() {
+                let at_end = i == self.sort_order.len();
+                let texture_changed =
+                    !at_end && sprites[self.sort_order[i]].texture != batch_texture;
+
+                if at_end || texture_changed {
+                    let batch_end = i as u32;
+                    let index_start = batch_start * 6;
+                    let index_end = batch_end * 6;
+
+                    if let Some(bg) = self.texture_bind_groups.get(&batch_texture) {
+                        pass.set_bind_group(1, bg, &[]);
+                        pass.draw_indexed(index_start..index_end, 0, 0..1);
+                        stats.draw_calls += 1;
+                    }
+                    stats.batch_count += 1;
+
+                    if !at_end {
+                        batch_start = batch_end;
+                        batch_texture = sprites[self.sort_order[i]].texture;
+                    }
                 }
-                idx_offset += 6;
             }
         }
+
+        stats
     }
 }

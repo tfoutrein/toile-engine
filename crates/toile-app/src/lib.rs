@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::time::Duration;
 
 use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
@@ -9,7 +10,7 @@ use winit::window::{Window, WindowAttributes, WindowId};
 use toile_core::color::Color;
 use toile_core::time::GameClock;
 use toile_graphics::camera::Camera2D;
-use toile_graphics::sprite_renderer::{DrawSprite, SpriteRenderer};
+use toile_graphics::sprite_renderer::{DrawSprite, RenderStats, SpriteRenderer};
 use toile_graphics::GpuContext;
 use toile_platform::input::Input;
 use toile_platform::WindowConfig;
@@ -18,30 +19,28 @@ pub use toile_core as core;
 pub use toile_graphics as graphics;
 pub use toile_platform as platform;
 
-// Re-export commonly used types for convenience.
 pub use toile_graphics::camera::Camera2D as Camera;
 pub use toile_graphics::sprite_renderer::{DrawSprite as Sprite, COLOR_WHITE};
 pub use toile_graphics::texture::TextureHandle;
 pub use toile_platform::input::{Key, MouseButton};
 
 /// Context passed to all `Game` trait methods.
-/// Provides access to input, rendering, and camera.
 pub struct GameContext<'a> {
     pub input: &'a Input,
     pub camera: &'a mut Camera2D,
+    pub stats: &'a RenderStats,
+    pub fps: f64,
     gpu: &'a GpuContext,
     renderer: &'a mut SpriteRenderer,
     draw_list: &'a mut Vec<DrawSprite>,
 }
 
 impl<'a> GameContext<'a> {
-    /// Load a texture from a PNG file. Returns a handle for use in `draw_sprite`.
     pub fn load_texture(&mut self, path: &std::path::Path) -> TextureHandle {
         self.renderer
             .load_texture(self.gpu.device(), self.gpu.queue(), path)
     }
 
-    /// Queue a sprite for drawing this frame.
     pub fn draw_sprite(&mut self, sprite: DrawSprite) {
         self.draw_list.push(sprite);
     }
@@ -49,17 +48,11 @@ impl<'a> GameContext<'a> {
 
 /// Implement this trait to define your game.
 pub trait Game {
-    /// Called once after GPU context is ready. Load assets here.
     fn init(&mut self, ctx: &mut GameContext);
-
-    /// Called at fixed timestep (default 60 Hz). Update game logic here.
     fn update(&mut self, ctx: &mut GameContext, dt: f64);
-
-    /// Called each frame before rendering. Queue draw commands here.
     fn draw(&mut self, ctx: &mut GameContext);
 }
 
-/// Builder for the Toile application.
 pub struct App {
     config: WindowConfig,
     clear_color: Color,
@@ -96,7 +89,6 @@ impl App {
         self
     }
 
-    /// Run the application with the given game. Blocks until the window is closed.
     pub fn run(self, game: impl Game + 'static) {
         env_logger::init();
         log::info!("Toile Engine v{}", env!("CARGO_PKG_VERSION"));
@@ -114,7 +106,10 @@ impl App {
             input: Input::new(),
             clock: None,
             draw_list: Vec::new(),
+            last_stats: RenderStats::default(),
             initialized: false,
+            debug_overlay: false,
+            debug_title_timer: Duration::ZERO,
         };
 
         event_loop.run_app(&mut handler).expect("Event loop error");
@@ -133,7 +128,10 @@ struct AppHandler {
     input: Input,
     clock: Option<GameClock>,
     draw_list: Vec<DrawSprite>,
+    last_stats: RenderStats,
     initialized: bool,
+    debug_overlay: bool,
+    debug_title_timer: Duration,
 }
 
 impl ApplicationHandler for AppHandler {
@@ -205,13 +203,15 @@ impl ApplicationHandler for AppHandler {
             }
 
             WindowEvent::RedrawRequested => {
-                // Init game on first frame (GPU is ready)
+                // Init game on first frame
                 if !self.initialized {
                     self.initialized = true;
                     let gpu = self.gpu.as_ref().unwrap();
                     let mut ctx = GameContext {
                         input: &self.input,
                         camera: self.camera.as_mut().unwrap(),
+                        stats: &self.last_stats,
+                        fps: 0.0,
                         gpu,
                         renderer: self.renderer.as_mut().unwrap(),
                         draw_list: &mut self.draw_list,
@@ -220,21 +220,23 @@ impl ApplicationHandler for AppHandler {
                 }
 
                 // Fixed timestep updates
-                if let Some(clock) = &mut self.clock {
-                    let (ticks, _alpha) = clock.advance();
-                    let dt = clock.fixed_dt_secs();
+                let clock = self.clock.as_mut().unwrap();
+                let (ticks, _alpha) = clock.advance();
+                let dt = clock.fixed_dt_secs();
+                let fps = clock.fps();
 
-                    for _ in 0..ticks {
-                        let gpu = self.gpu.as_ref().unwrap();
-                        let mut ctx = GameContext {
-                            input: &self.input,
-                            camera: self.camera.as_mut().unwrap(),
-                            gpu,
-                            renderer: self.renderer.as_mut().unwrap(),
-                            draw_list: &mut self.draw_list,
-                        };
-                        self.game.update(&mut ctx, dt);
-                    }
+                for _ in 0..ticks {
+                    let gpu = self.gpu.as_ref().unwrap();
+                    let mut ctx = GameContext {
+                        input: &self.input,
+                        camera: self.camera.as_mut().unwrap(),
+                        stats: &self.last_stats,
+                        fps,
+                        gpu,
+                        renderer: self.renderer.as_mut().unwrap(),
+                        draw_list: &mut self.draw_list,
+                    };
+                    self.game.update(&mut ctx, dt);
                 }
 
                 // Draw phase
@@ -244,6 +246,8 @@ impl ApplicationHandler for AppHandler {
                     let mut ctx = GameContext {
                         input: &self.input,
                         camera: self.camera.as_mut().unwrap(),
+                        stats: &self.last_stats,
+                        fps,
                         gpu,
                         renderer: self.renderer.as_mut().unwrap(),
                         draw_list: &mut self.draw_list,
@@ -251,12 +255,12 @@ impl ApplicationHandler for AppHandler {
                     self.game.draw(&mut ctx);
                 }
 
-                // Render
+                // Render with batching
                 let gpu = self.gpu.as_mut().unwrap();
                 if let Some((frame, view, mut encoder)) = gpu.begin_frame() {
                     let camera = self.camera.as_ref().unwrap();
                     let renderer = self.renderer.as_mut().unwrap();
-                    renderer.draw(
+                    self.last_stats = renderer.draw(
                         gpu.device(),
                         gpu.queue(),
                         &mut encoder,
@@ -268,10 +272,38 @@ impl ApplicationHandler for AppHandler {
                     gpu.end_frame(frame, encoder);
                 }
 
-                // End-of-frame input snapshot
+                // F3 toggles debug overlay in window title
+                if self.input.is_key_just_pressed(toile_platform::input::Key::F3) {
+                    self.debug_overlay = !self.debug_overlay;
+                    if !self.debug_overlay {
+                        if let Some(window) = &self.window {
+                            window.set_title(&self.config.title);
+                        }
+                    }
+                }
+
+                if self.debug_overlay {
+                    self.debug_title_timer += Duration::from_secs_f64(clock.frame_time_ms() / 1000.0);
+                    if self.debug_title_timer >= Duration::from_millis(250) {
+                        self.debug_title_timer = Duration::ZERO;
+                        let s = &self.last_stats;
+                        if let Some(window) = &self.window {
+                            window.set_title(&format!(
+                                "{} | FPS: {:.0} | {:.1}ms | sprites: {} | batches: {} | draws: {}",
+                                self.config.title,
+                                fps,
+                                clock.frame_time_ms(),
+                                s.sprite_count,
+                                s.batch_count,
+                                s.draw_calls,
+                            ));
+                        }
+                    }
+                }
+
+                // End-of-frame
                 self.input.end_frame();
 
-                // Request next frame
                 if let Some(window) = &self.window {
                     window.request_redraw();
                 }
