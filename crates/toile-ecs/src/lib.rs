@@ -1,2 +1,4 @@
-// Toile Engine — Entity Component System
-// TODO: hecs re-export + Toile components (see ADR-005)
+pub mod components;
+
+pub use hecs;
+pub use hecs::{Entity, World};

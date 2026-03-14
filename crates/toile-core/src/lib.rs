@@ -1,4 +1,5 @@
 pub mod color;
+pub mod rect;
 pub mod time;
 
 pub use glam;

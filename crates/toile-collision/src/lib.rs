@@ -1,2 +1,7 @@
-// Toile Engine — Collision detection
-// TODO: AABB, circle, spatial grid (Week 5)
+pub mod narrow;
+pub mod shape;
+pub mod spatial_grid;
+
+pub use narrow::{overlap_test, point_in_aabb, point_in_circle};
+pub use shape::{Collider, Shape};
+pub use spatial_grid::SpatialGrid;

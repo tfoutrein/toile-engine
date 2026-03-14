@@ -55,3 +55,8 @@ toile-platform = { path = "crates/toile-platform" }
 toile-graphics = { path = "crates/toile-graphics" }
 toile-app = { path = "crates/toile-app" }
 toile-audio = { path = "crates/toile-audio" }
+toile-collision = { path = "crates/toile-collision" }
+toile-ecs = { path = "crates/toile-ecs" }
+
+# ECS
+hecs = "0.11"

@@ -19,6 +19,8 @@ pub use toile_core as core;
 pub use toile_graphics as graphics;
 pub use toile_platform as platform;
 pub use toile_audio as audio;
+pub use toile_collision as collision;
+pub use toile_ecs as ecs;
 
 pub use toile_audio::{SoundId, MusicId, PlaybackId};
 pub use toile_graphics::camera::Camera2D as Camera;

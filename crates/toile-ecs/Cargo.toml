@@ -4,3 +4,10 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 description = "ECS layer for Toile Engine (hecs-based)"
+
+[dependencies]
+hecs = { workspace = true }
+toile-core = { workspace = true }
+toile-collision = { workspace = true }
+toile-graphics = { workspace = true }
+glam = { workspace = true }

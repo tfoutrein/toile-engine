@@ -10,6 +10,8 @@ toile-core = { workspace = true }
 toile-platform = { workspace = true }
 toile-graphics = { workspace = true }
 toile-audio = { workspace = true }
+toile-collision = { workspace = true }
+toile-ecs = { workspace = true }
 winit = { workspace = true }
 log = { workspace = true }
 env_logger = { workspace = true }
