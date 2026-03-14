@@ -96,6 +96,8 @@ impl Game for BenchGame {
                 rotation: 0.0,
                 color: COLOR_WHITE,
                 layer: s.layer,
+                uv_min: Vec2::ZERO,
+                uv_max: Vec2::ONE,
             });
         }
     }

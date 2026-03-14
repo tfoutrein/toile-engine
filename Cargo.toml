@@ -57,6 +57,10 @@ toile-app = { path = "crates/toile-app" }
 toile-audio = { path = "crates/toile-audio" }
 toile-collision = { path = "crates/toile-collision" }
 toile-ecs = { path = "crates/toile-ecs" }
+toile-assets = { path = "crates/toile-assets" }
+
+# Font rasterization
+fontdue = "0.9"
 
 # ECS
 hecs = "0.11"

@@ -10,7 +10,7 @@ use std::path::Path;
 use toile_app::ecs::components::{ColliderComponent, SpriteComponent, Transform};
 use toile_app::ecs::{Entity, World};
 use toile_app::graphics::sprite_renderer::pack_color;
-use toile_app::{App, Game, GameContext, Key, Sprite, TextureHandle, COLOR_WHITE};
+use toile_app::{App, FontHandle, Game, GameContext, Key, Sprite, TextureHandle, COLOR_WHITE};
 use toile_collision::{overlap_test, Collider, Shape};
 use toile_core::glam::Vec2;
 
@@ -39,6 +39,7 @@ struct Breakout {
     score: u32,
     lives: u32,
     tex: Option<TextureHandle>,
+    font: Option<FontHandle>,
 }
 
 impl Game for Breakout {
@@ -125,6 +126,8 @@ impl Game for Breakout {
             SpriteComponent { texture: tex, size: Vec2::new(HALF_W * 2.0 + wall_thickness * 2.0, wall_thickness), color: wall_color, layer: 0 },
             ColliderComponent::aabb(HALF_W + wall_thickness, wall_thickness / 2.0),
         ));
+
+        self.font = Some(ctx.load_ttf(Path::new("assets/fonts/PressStart2P.ttf"), 32.0));
 
         self.lives = 3;
         self.score = 0;
@@ -307,7 +310,29 @@ impl Game for Breakout {
                 rotation: transform.rotation,
                 color: sprite.color,
                 layer: sprite.layer,
+                uv_min: Vec2::ZERO,
+                uv_max: Vec2::ONE,
             });
+        }
+
+        // HUD text
+        if let Some(font) = self.font {
+            ctx.draw_text(
+                &format!("SCORE: {}", self.score),
+                Vec2::new(-HALF_W + 20.0, HALF_H - 30.0),
+                font,
+                20.0,
+                COLOR_WHITE,
+                10,
+            );
+            ctx.draw_text(
+                &format!("LIVES: {}", self.lives),
+                Vec2::new(HALF_W - 220.0, HALF_H - 30.0),
+                font,
+                20.0,
+                COLOR_WHITE,
+                10,
+            );
         }
     }
 }
@@ -325,5 +350,6 @@ fn main() {
             score: 0,
             lives: 3,
             tex: None,
+            font: None,
         });
 }

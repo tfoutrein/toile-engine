@@ -4,3 +4,9 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 description = "Asset management for Toile Engine"
+
+[dependencies]
+glam = { workspace = true }
+log = { workspace = true }
+fontdue = { workspace = true }
+toile-graphics = { workspace = true }

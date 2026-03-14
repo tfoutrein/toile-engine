@@ -58,6 +58,8 @@ impl Game for MyGame {
                 rotation: 0.0,
                 color: COLOR_WHITE,
                 layer: 0,
+                uv_min: Vec2::ZERO,
+                uv_max: Vec2::ONE,
             });
         }
     }

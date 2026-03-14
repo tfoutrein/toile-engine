@@ -1,12 +1,14 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use glam::Vec2;
 use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
 use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, EventLoop};
 use winit::window::{Window, WindowAttributes, WindowId};
 
+use toile_assets::font::Font;
 use toile_core::color::Color;
 use toile_core::time::GameClock;
 use toile_graphics::camera::Camera2D;
@@ -21,8 +23,10 @@ pub use toile_platform as platform;
 pub use toile_audio as audio;
 pub use toile_collision as collision;
 pub use toile_ecs as ecs;
+pub use toile_assets as assets;
 
-pub use toile_audio::{SoundId, MusicId, PlaybackId};
+pub use toile_assets::font::FontHandle;
+pub use toile_audio::{MusicId, PlaybackId, SoundId};
 pub use toile_graphics::camera::Camera2D as Camera;
 pub use toile_graphics::sprite_renderer::{DrawSprite as Sprite, COLOR_WHITE};
 pub use toile_graphics::texture::TextureHandle;
@@ -37,6 +41,7 @@ pub struct GameContext<'a> {
     pub fps: f64,
     gpu: &'a GpuContext,
     renderer: &'a mut SpriteRenderer,
+    fonts: &'a mut Vec<Font>,
     draw_list: &'a mut Vec<DrawSprite>,
 }
 
@@ -46,12 +51,89 @@ impl<'a> GameContext<'a> {
             .load_texture(self.gpu.device(), self.gpu.queue(), path)
     }
 
+    pub fn create_texture_from_rgba(
+        &mut self,
+        data: &[u8],
+        width: u32,
+        height: u32,
+    ) -> TextureHandle {
+        self.renderer
+            .create_texture_from_rgba(self.gpu.device(), self.gpu.queue(), data, width, height)
+    }
+
+    /// Load a TTF font, rasterizing ASCII glyphs at the given pixel size.
+    pub fn load_ttf(&mut self, path: &std::path::Path, px_size: f32) -> FontHandle {
+        let ttf_bytes = std::fs::read(path)
+            .unwrap_or_else(|e| panic!("Failed to read TTF {}: {e}", path.display()));
+        let result = toile_assets::ttf::rasterize_ascii(&ttf_bytes, px_size);
+        let tex = self.create_texture_from_rgba(
+            &result.atlas_rgba,
+            result.atlas_width,
+            result.atlas_height,
+        );
+        let font = Font {
+            texture: tex,
+            line_height: result.line_height,
+            glyphs: result.glyphs,
+        };
+        let handle = FontHandle(self.fonts.len() as u32);
+        self.fonts.push(font);
+        log::info!("Loaded TTF: {} at {}px -> {:?}", path.display(), px_size, handle);
+        handle
+    }
+
     pub fn draw_sprite(&mut self, sprite: DrawSprite) {
         self.draw_list.push(sprite);
     }
+
+    /// Draw text at the given position (top-left corner in world space).
+    pub fn draw_text(
+        &mut self,
+        text: &str,
+        position: Vec2,
+        font_handle: FontHandle,
+        size: f32,
+        color: u32,
+        layer: i32,
+    ) {
+        let font = &self.fonts[font_handle.0 as usize];
+        let scale = size / font.line_height;
+        let texture = font.texture;
+
+        let mut pen_x = position.x;
+        let pen_y = position.y;
+
+        for ch in text.chars() {
+            let codepoint = ch as u32;
+            let Some(glyph) = font.glyphs.get(&codepoint) else {
+                continue;
+            };
+
+            if glyph.size.x > 0.0 && glyph.size.y > 0.0 {
+                let gw = glyph.size.x * scale;
+                let gh = glyph.size.y * scale;
+
+                // Center position for the sprite renderer
+                let cx = pen_x + glyph.offset.x * scale + gw / 2.0;
+                let cy = pen_y + glyph.offset.y * scale + gh / 2.0;
+
+                self.draw_list.push(DrawSprite {
+                    texture,
+                    position: Vec2::new(cx, cy),
+                    size: Vec2::new(gw, gh),
+                    rotation: 0.0,
+                    color,
+                    layer,
+                    uv_min: glyph.uv_min,
+                    uv_max: glyph.uv_max,
+                });
+            }
+
+            pen_x += glyph.advance * scale;
+        }
+    }
 }
 
-/// Implement this trait to define your game.
 pub trait Game {
     fn init(&mut self, ctx: &mut GameContext);
     fn update(&mut self, ctx: &mut GameContext, dt: f64);
@@ -109,6 +191,7 @@ impl App {
             renderer: None,
             camera: None,
             audio: None,
+            fonts: Vec::new(),
             input: Input::new(),
             clock: None,
             draw_list: Vec::new(),
@@ -132,6 +215,7 @@ struct AppHandler {
     renderer: Option<SpriteRenderer>,
     camera: Option<Camera2D>,
     audio: Option<toile_audio::Audio>,
+    fonts: Vec<Font>,
     input: Input,
     clock: Option<GameClock>,
     draw_list: Vec<DrawSprite>,
@@ -139,6 +223,22 @@ struct AppHandler {
     initialized: bool,
     debug_overlay: bool,
     debug_title_timer: Duration,
+}
+
+macro_rules! make_ctx {
+    ($self:ident, $fps:expr) => {
+        GameContext {
+            input: &$self.input,
+            camera: $self.camera.as_mut().unwrap(),
+            audio: $self.audio.as_mut().unwrap(),
+            stats: &$self.last_stats,
+            fps: $fps,
+            gpu: $self.gpu.as_ref().unwrap(),
+            renderer: $self.renderer.as_mut().unwrap(),
+            fonts: &mut $self.fonts,
+            draw_list: &mut $self.draw_list,
+        }
+    };
 }
 
 impl ApplicationHandler for AppHandler {
@@ -162,7 +262,6 @@ impl ApplicationHandler for AppHandler {
         let renderer = SpriteRenderer::new(gpu.device(), gpu.surface_format());
         let (w, h) = gpu.size();
         let camera = Camera2D::new(w as f32, h as f32);
-
         let audio = toile_audio::Audio::new().expect("Failed to initialize audio");
 
         log::info!("Window created: {}x{}", self.config.width, self.config.height);
@@ -186,7 +285,6 @@ impl ApplicationHandler for AppHandler {
                 log::info!("Exiting");
                 event_loop.exit();
             }
-
             WindowEvent::Resized(size) => {
                 if let Some(gpu) = &mut self.gpu {
                     gpu.resize(size.width, size.height);
@@ -195,80 +293,41 @@ impl ApplicationHandler for AppHandler {
                     camera.resize(size.width as f32, size.height as f32);
                 }
             }
-
             WindowEvent::KeyboardInput { event, .. } => {
                 self.input.handle_key_event(&event);
             }
-
             WindowEvent::MouseInput { button, state, .. } => {
                 self.input.handle_mouse_button(button, state);
             }
-
             WindowEvent::CursorMoved { position, .. } => {
                 self.input.handle_cursor_moved(position.x, position.y);
             }
-
             WindowEvent::MouseWheel { delta, .. } => {
                 self.input.handle_mouse_wheel(&delta);
             }
-
             WindowEvent::RedrawRequested => {
-                // Init game on first frame
                 if !self.initialized {
                     self.initialized = true;
-                    let gpu = self.gpu.as_ref().unwrap();
-                    let mut ctx = GameContext {
-                        input: &self.input,
-                        camera: self.camera.as_mut().unwrap(),
-                        audio: self.audio.as_mut().unwrap(),
-                        stats: &self.last_stats,
-                        fps: 0.0,
-                        gpu,
-                        renderer: self.renderer.as_mut().unwrap(),
-                        draw_list: &mut self.draw_list,
-                    };
+                    let mut ctx = make_ctx!(self, 0.0);
                     self.game.init(&mut ctx);
                 }
 
-                // Fixed timestep updates
                 let clock = self.clock.as_mut().unwrap();
                 let (ticks, _alpha) = clock.advance();
                 let dt = clock.fixed_dt_secs();
                 let fps = clock.fps();
 
                 for _ in 0..ticks {
-                    let gpu = self.gpu.as_ref().unwrap();
-                    let mut ctx = GameContext {
-                        input: &self.input,
-                        camera: self.camera.as_mut().unwrap(),
-                        audio: self.audio.as_mut().unwrap(),
-                        stats: &self.last_stats,
-                        fps,
-                        gpu,
-                        renderer: self.renderer.as_mut().unwrap(),
-                        draw_list: &mut self.draw_list,
-                    };
+                    let mut ctx = make_ctx!(self, fps);
                     self.game.update(&mut ctx, dt);
                 }
 
-                // Draw phase
                 self.draw_list.clear();
                 {
-                    let gpu = self.gpu.as_ref().unwrap();
-                    let mut ctx = GameContext {
-                        input: &self.input,
-                        camera: self.camera.as_mut().unwrap(),
-                        audio: self.audio.as_mut().unwrap(),
-                        stats: &self.last_stats,
-                        fps,
-                        gpu,
-                        renderer: self.renderer.as_mut().unwrap(),
-                        draw_list: &mut self.draw_list,
-                    };
+                    let mut ctx = make_ctx!(self, fps);
                     self.game.draw(&mut ctx);
                 }
 
-                // Render with batching
                 let gpu = self.gpu.as_mut().unwrap();
                 if let Some((frame, view, mut encoder)) = gpu.begin_frame() {
                     let camera = self.camera.as_ref().unwrap();
@@ -285,7 +344,6 @@ impl ApplicationHandler for AppHandler {
                     gpu.end_frame(frame, encoder);
                 }
 
-                // F3 toggles debug overlay in window title
                 if self.input.is_key_just_pressed(toile_platform::input::Key::F3) {
                     self.debug_overlay = !self.debug_overlay;
                     if !self.debug_overlay {
@@ -296,7 +354,8 @@ impl ApplicationHandler for AppHandler {
                 }
 
                 if self.debug_overlay {
-                    self.debug_title_timer += Duration::from_secs_f64(clock.frame_time_ms() / 1000.0);
+                    self.debug_title_timer +=
+                        Duration::from_secs_f64(clock.frame_time_ms() / 1000.0);
                     if self.debug_title_timer >= Duration::from_millis(250) {
                         self.debug_title_timer = Duration::ZERO;
                         let s = &self.last_stats;
@@ -314,14 +373,12 @@ impl ApplicationHandler for AppHandler {
                     }
                 }
 
-                // End-of-frame
                 self.input.end_frame();
 
                 if let Some(window) = &self.window {
                     window.request_redraw();
                 }
             }
-
             _ => {}
         }
     }

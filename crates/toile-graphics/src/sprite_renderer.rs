@@ -33,6 +33,23 @@ pub struct DrawSprite {
     pub rotation: f32,
     pub color: u32,
     pub layer: i32,
+    pub uv_min: Vec2,
+    pub uv_max: Vec2,
+}
+
+impl DrawSprite {
+    pub fn new(texture: TextureHandle, position: Vec2, size: Vec2) -> Self {
+        Self {
+            texture,
+            position,
+            size,
+            rotation: 0.0,
+            color: COLOR_WHITE,
+            layer: 0,
+            uv_min: Vec2::ZERO,
+            uv_max: Vec2::ONE,
+        }
+    }
 }
 
 pub fn pack_color(r: u8, g: u8, b: u8, a: u8) -> u32 {
@@ -227,6 +244,38 @@ impl SpriteRenderer {
         handle
     }
 
+    pub fn create_texture_from_rgba(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        data: &[u8],
+        width: u32,
+        height: u32,
+    ) -> TextureHandle {
+        let entry = texture::create_texture_from_rgba(device, queue, data, width, height);
+        let handle = TextureHandle(self.next_texture_id);
+        self.next_texture_id += 1;
+
+        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("texture_bg"),
+            layout: &self.texture_bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&entry.view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&self.sampler),
+                },
+            ],
+        });
+
+        self.texture_bind_groups.insert(handle, bind_group);
+        self.textures.push(entry);
+        handle
+    }
+
     fn build_quad(sprite: &DrawSprite, base_vertex: u32) -> ([SpriteVertex; 4], [u32; 6]) {
         let half = sprite.size * 0.5;
         let (sin, cos) = sprite.rotation.sin_cos();
@@ -237,7 +286,12 @@ impl SpriteRenderer {
             Vec2::new(half.x, -half.y),
             Vec2::new(-half.x, -half.y),
         ];
-        let uvs = [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]];
+        let uvs = [
+            [sprite.uv_min.x, sprite.uv_min.y],
+            [sprite.uv_max.x, sprite.uv_min.y],
+            [sprite.uv_max.x, sprite.uv_max.y],
+            [sprite.uv_min.x, sprite.uv_max.y],
+        ];
 
         let mut verts = [SpriteVertex {
             position: [0.0; 2],
