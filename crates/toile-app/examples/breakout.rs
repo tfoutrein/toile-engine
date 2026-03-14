@@ -1,7 +1,10 @@
-//! Toile Engine — Breakout (Week 5)
+//! Toile Engine — Breakout
 //!
-//! Arrow keys or A/D to move paddle. Press Space to launch ball.
-//! F3 for debug overlay. Score/lives shown in window title.
+//! Showcases all engine features: sprites, input, ECS, collision,
+//! audio (SFX + music), text rendering, camera, batching.
+//!
+//! Arrow keys or A/D to move paddle. Space to launch ball.
+//! M to toggle music. F3 for debug overlay.
 //!
 //! Run with: `cargo run --example breakout`
 
@@ -10,7 +13,10 @@ use std::path::Path;
 use toile_app::ecs::components::{ColliderComponent, SpriteComponent, Transform};
 use toile_app::ecs::{Entity, World};
 use toile_app::graphics::sprite_renderer::pack_color;
-use toile_app::{App, FontHandle, Game, GameContext, Key, Sprite, TextureHandle, COLOR_WHITE};
+use toile_app::{
+    App, FontHandle, Game, GameContext, Key, PlaybackId, SoundId, Sprite, TextureHandle,
+    COLOR_WHITE,
+};
 use toile_collision::{overlap_test, Collider, Shape};
 use toile_core::glam::Vec2;
 
@@ -40,6 +46,12 @@ struct Breakout {
     lives: u32,
     tex: Option<TextureHandle>,
     font: Option<FontHandle>,
+    // Audio
+    sfx_bounce: Option<SoundId>,
+    sfx_brick: Option<SoundId>,
+    sfx_lose: Option<SoundId>,
+    music_playback: Option<PlaybackId>,
+    music_paused: bool,
 }
 
 impl Game for Breakout {
@@ -129,9 +141,38 @@ impl Game for Breakout {
 
         self.font = Some(ctx.load_ttf(Path::new("assets/fonts/PressStart2P.ttf"), 32.0));
 
+        // Audio
+        self.sfx_bounce = Some(
+            ctx.audio
+                .load_sound(Path::new("assets/bounce.wav"))
+                .expect("Failed to load bounce.wav"),
+        );
+        self.sfx_brick = Some(
+            ctx.audio
+                .load_sound(Path::new("assets/brick_hit.wav"))
+                .expect("Failed to load brick_hit.wav"),
+        );
+        self.sfx_lose = Some(
+            ctx.audio
+                .load_sound(Path::new("assets/lose_life.wav"))
+                .expect("Failed to load lose_life.wav"),
+        );
+
+        // Background music (looped, quiet)
+        let music = ctx
+            .audio
+            .load_sound(Path::new("assets/music_test.wav"))
+            .expect("Failed to load music");
+        let pb = ctx
+            .audio
+            .play_sound_looped(music)
+            .expect("Failed to play music");
+        ctx.audio.set_volume(pb, 0.15);
+        self.music_playback = Some(pb);
+
         self.lives = 3;
         self.score = 0;
-        log::info!("Breakout! Arrow keys to move, Space to launch. F3 for debug.");
+        log::info!("Breakout! Arrows/AD=move, Space=launch, M=music, F3=debug");
     }
 
     fn update(&mut self, ctx: &mut GameContext, dt: f64) {
@@ -186,15 +227,18 @@ impl Game for Breakout {
                 let mut ball_t = self.world.get::<&mut Transform>(ball).unwrap();
                 ball_t.position += mtv;
 
-                // Bounce up, angle based on where ball hit paddle
                 let hit_x = (ball_t.position.x - paddle_t.position.x) / (PADDLE_W / 2.0);
                 self.ball_vel.y = self.ball_vel.y.abs();
                 self.ball_vel.x = hit_x * BALL_SPEED;
 
-                // Ensure consistent speed
                 let speed = self.ball_vel.length();
                 if speed > 0.0 {
                     self.ball_vel = self.ball_vel / speed * BALL_SPEED;
+                }
+
+                // Paddle bounce SFX
+                if let Some(sfx) = self.sfx_bounce {
+                    let _ = ctx.audio.play_sound(sfx);
                 }
             }
         }
@@ -235,6 +279,12 @@ impl Game for Breakout {
             ball_t.position += *mtv;
         }
 
+        if !to_despawn.is_empty() {
+            // Brick hit SFX
+            if let Some(sfx) = self.sfx_brick {
+                let _ = ctx.audio.play_sound(sfx);
+            }
+        }
         for (entity, _) in &to_despawn {
             let _ = self.world.despawn(*entity);
             self.score += 10;
@@ -270,6 +320,23 @@ impl Game for Breakout {
                 let mut bt = self.world.get::<&mut Transform>(ball).unwrap();
                 bt.position = Vec2::new(0.0, -HALF_H + 70.0);
                 self.ball_vel = Vec2::ZERO;
+
+                // Lose life SFX
+                if let Some(sfx) = self.sfx_lose {
+                    let _ = ctx.audio.play_sound(sfx);
+                }
+            }
+        }
+
+        // Toggle music with M
+        if ctx.input.is_key_just_pressed(Key::KeyM) {
+            if let Some(pb) = self.music_playback {
+                if self.music_paused {
+                    ctx.audio.resume(pb);
+                } else {
+                    ctx.audio.pause(pb);
+                }
+                self.music_paused = !self.music_paused;
             }
         }
 
@@ -351,5 +418,10 @@ fn main() {
             lives: 3,
             tex: None,
             font: None,
+            sfx_bounce: None,
+            sfx_brick: None,
+            sfx_lose: None,
+            music_playback: None,
+            music_paused: false,
         });
 }
