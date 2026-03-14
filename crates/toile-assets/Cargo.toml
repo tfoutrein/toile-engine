@@ -9,4 +9,6 @@ description = "Asset management for Toile Engine"
 glam = { workspace = true }
 log = { workspace = true }
 fontdue = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
 toile-graphics = { workspace = true }

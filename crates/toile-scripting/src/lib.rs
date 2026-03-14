@@ -1,2 +1,2 @@
-// Toile Engine — Lua scripting
-// TODO: mlua integration, hot-reload (see ADR-006)
+pub mod vm;
+pub mod hot_reload;

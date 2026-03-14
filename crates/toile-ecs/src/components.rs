@@ -1,4 +1,7 @@
+use std::path::PathBuf;
+
 use glam::Vec2;
+use toile_assets::animation::SpriteSheetHandle;
 use toile_collision::Shape;
 use toile_graphics::texture::TextureHandle;
 
@@ -56,6 +59,42 @@ impl ColliderComponent {
         Self {
             shape: Shape::Circle { radius },
             offset: Vec2::ZERO,
+        }
+    }
+}
+
+/// Animator: tracks current animation state for an entity.
+pub struct AnimatorComponent {
+    pub sheet: SpriteSheetHandle,
+    pub current_clip: String,
+    pub current_frame: usize,
+    pub elapsed: f32,
+    pub playing: bool,
+}
+
+impl AnimatorComponent {
+    pub fn new(sheet: SpriteSheetHandle, clip: &str) -> Self {
+        Self {
+            sheet,
+            current_clip: clip.to_string(),
+            current_frame: 0,
+            elapsed: 0.0,
+            playing: true,
+        }
+    }
+}
+
+/// Script: references a Lua script file for entity behavior.
+pub struct ScriptComponent {
+    pub script_path: PathBuf,
+    pub initialized: bool,
+}
+
+impl ScriptComponent {
+    pub fn new(path: impl Into<PathBuf>) -> Self {
+        Self {
+            script_path: path.into(),
+            initialized: false,
         }
     }
 }

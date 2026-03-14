@@ -24,6 +24,7 @@ pub use toile_audio as audio;
 pub use toile_collision as collision;
 pub use toile_ecs as ecs;
 pub use toile_assets as assets;
+pub use toile_scripting as scripting;
 
 pub use toile_assets::font::FontHandle;
 pub use toile_audio::{MusicId, PlaybackId, SoundId};

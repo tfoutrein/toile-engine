@@ -10,4 +10,5 @@ hecs = { workspace = true }
 toile-core = { workspace = true }
 toile-collision = { workspace = true }
 toile-graphics = { workspace = true }
+toile-assets = { workspace = true }
 glam = { workspace = true }

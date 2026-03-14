@@ -4,3 +4,9 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 description = "Lua scripting for Toile Engine (mlua-based)"
+
+[dependencies]
+mlua = { workspace = true }
+notify = { workspace = true }
+glam = { workspace = true }
+log = { workspace = true }
