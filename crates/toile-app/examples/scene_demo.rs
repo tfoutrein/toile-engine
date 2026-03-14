@@ -50,15 +50,15 @@ impl Scene for MenuScene {
         let Some(assets) = &self.assets else { return };
 
         // Title
-        ctx.draw_text("TOILE ENGINE", Vec2::new(-120.0, 60.0), assets.font, 14.0, COLOR_WHITE, 10);
+        ctx.draw_text("TOILE ENGINE", Vec2::new(-90.0, 40.0), assets.font, 10.0, COLOR_WHITE, 10);
 
         // Blinking "Press Enter"
         if (self.blink_timer * 2.0) as i32 % 2 == 0 {
             ctx.draw_text(
                 "Press Enter to Play",
-                Vec2::new(-110.0, -20.0),
+                Vec2::new(-90.0, -10.0),
                 assets.font,
-                7.0,
+                5.0,
                 pack_color(200, 200, 100, 255),
                 10,
             );
@@ -66,9 +66,9 @@ impl Scene for MenuScene {
 
         ctx.draw_text(
             "Scene Stack Demo",
-            Vec2::new(-80.0, -80.0),
+            Vec2::new(-65.0, -50.0),
             assets.font,
-            5.0,
+            4.0,
             pack_color(120, 120, 150, 255),
             10,
         );
@@ -121,8 +121,8 @@ impl Scene for GameplayScene {
         // Ground line
         ctx.draw_sprite(DrawSprite {
             texture: self.assets.white_tex,
-            position: Vec2::new(0.0, -100.0),
-            size: Vec2::new(600.0, 4.0),
+            position: Vec2::new(0.0, -80.0),
+            size: Vec2::new(300.0, 3.0),
             rotation: 0.0,
             color: pack_color(80, 120, 80, 255),
             layer: 0,
@@ -159,9 +159,9 @@ impl Scene for GameplayScene {
         // HUD
         ctx.draw_text(
             &format!("Score: {} | Escape = Pause", self.score / 60),
-            Vec2::new(-280.0, 160.0),
+            Vec2::new(-300.0, 160.0),
             self.assets.font,
-            6.0,
+            5.0,
             COLOR_WHITE,
             10,
         );
@@ -183,7 +183,7 @@ impl Scene for PauseScene {
         ctx.draw_sprite(DrawSprite {
             texture: self.white_tex,
             position: Vec2::ZERO,
-            size: Vec2::new(800.0, 600.0),
+            size: Vec2::new(700.0, 400.0),
             rotation: 0.0,
             color: pack_color(0, 0, 0, 150),
             layer: 50,
@@ -191,12 +191,12 @@ impl Scene for PauseScene {
             uv_max: Vec2::ONE,
         });
 
-        ctx.draw_text("PAUSED", Vec2::new(-55.0, 20.0), self.font, 14.0, COLOR_WHITE, 60);
+        ctx.draw_text("PAUSED", Vec2::new(-45.0, 20.0), self.font, 10.0, COLOR_WHITE, 60);
         ctx.draw_text(
-            "Enter = Resume  |  Q = Quit to Menu",
-            Vec2::new(-170.0, -30.0),
+            "Enter=Resume  Q=Menu",
+            Vec2::new(-80.0, -20.0),
             self.font,
-            5.0,
+            4.0,
             pack_color(180, 180, 180, 255),
             60,
         );
@@ -222,6 +222,9 @@ impl Game for SceneDemo {
     }
 
     fn update(&mut self, ctx: &mut GameContext, dt: f64) {
+        // Zoom to fill the screen properly on Retina displays
+        ctx.camera.zoom = 2.0;
+
         let stack = self.stack.as_mut().unwrap();
 
         // Handle scene transitions based on input
