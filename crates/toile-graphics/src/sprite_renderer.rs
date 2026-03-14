@@ -26,6 +26,7 @@ impl SpriteVertex {
     };
 }
 
+#[derive(Clone)]
 pub struct DrawSprite {
     pub texture: TextureHandle,
     pub position: Vec2,
