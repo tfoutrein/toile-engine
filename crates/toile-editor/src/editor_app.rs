@@ -447,40 +447,72 @@ impl Game for EditorApp {
         });
 
         // Inspector panel
-        egui::SidePanel::right("inspector").default_width(250.0).show(&ctx, |ui| {
+        egui::SidePanel::right("inspector").default_width(260.0).show(&ctx, |ui| {
             ui.heading("Inspector");
             ui.separator();
             if let Some(id) = self.selected_id {
                 if let Some(entity) = self.scene.find_entity_mut(id) {
-                    ui.label(format!("ID: {}", entity.id));
-                    ui.horizontal(|ui| {
-                        ui.label("Name:");
-                        ui.text_edit_singleline(&mut entity.name);
-                    });
+                    egui::Grid::new("inspector_grid")
+                        .num_columns(2)
+                        .spacing([8.0, 6.0])
+                        .striped(true)
+                        .show(ui, |ui| {
+                            ui.label("ID");
+                            ui.label(format!("{}", entity.id));
+                            ui.end_row();
+
+                            ui.label("Name");
+                            ui.text_edit_singleline(&mut entity.name);
+                            ui.end_row();
+                        });
+
+                    ui.add_space(8.0);
+                    ui.label(egui::RichText::new("Transform").strong());
                     ui.separator();
-                    ui.label("Transform");
-                    ui.horizontal(|ui| {
-                        ui.label("X:"); ui.add(egui::DragValue::new(&mut entity.x).speed(1.0));
-                        ui.label("Y:"); ui.add(egui::DragValue::new(&mut entity.y).speed(1.0));
-                    });
-                    ui.horizontal(|ui| {
-                        ui.label("Rot:");
-                        ui.add(egui::DragValue::new(&mut entity.rotation).speed(0.1).suffix("°"));
-                    });
-                    ui.horizontal(|ui| {
-                        ui.label("Scale:");
-                        ui.add(egui::DragValue::new(&mut entity.scale_x).speed(0.05));
-                        ui.add(egui::DragValue::new(&mut entity.scale_y).speed(0.05));
-                    });
+
+                    egui::Grid::new("transform_grid")
+                        .num_columns(4)
+                        .spacing([4.0, 6.0])
+                        .show(ui, |ui| {
+                            ui.label("X");
+                            ui.add(egui::DragValue::new(&mut entity.x).speed(1.0).min_decimals(0));
+                            ui.label("Y");
+                            ui.add(egui::DragValue::new(&mut entity.y).speed(1.0).min_decimals(0));
+                            ui.end_row();
+
+                            ui.label("Rot");
+                            ui.add(egui::DragValue::new(&mut entity.rotation).speed(0.1).suffix("°"));
+                            ui.label("");
+                            ui.label("");
+                            ui.end_row();
+
+                            ui.label("Sx");
+                            ui.add(egui::DragValue::new(&mut entity.scale_x).speed(0.05).min_decimals(1));
+                            ui.label("Sy");
+                            ui.add(egui::DragValue::new(&mut entity.scale_y).speed(0.05).min_decimals(1));
+                            ui.end_row();
+                        });
+
+                    ui.add_space(8.0);
+                    ui.label(egui::RichText::new("Sprite").strong());
                     ui.separator();
-                    ui.label("Size");
-                    ui.horizontal(|ui| {
-                        ui.label("W:"); ui.add(egui::DragValue::new(&mut entity.width).speed(1.0));
-                        ui.label("H:"); ui.add(egui::DragValue::new(&mut entity.height).speed(1.0));
-                    });
-                    ui.horizontal(|ui| {
-                        ui.label("Layer:"); ui.add(egui::DragValue::new(&mut entity.layer));
-                    });
+
+                    egui::Grid::new("sprite_grid")
+                        .num_columns(4)
+                        .spacing([4.0, 6.0])
+                        .show(ui, |ui| {
+                            ui.label("W");
+                            ui.add(egui::DragValue::new(&mut entity.width).speed(1.0).min_decimals(0));
+                            ui.label("H");
+                            ui.add(egui::DragValue::new(&mut entity.height).speed(1.0).min_decimals(0));
+                            ui.end_row();
+
+                            ui.label("Layer");
+                            ui.add(egui::DragValue::new(&mut entity.layer));
+                            ui.label("");
+                            ui.label("");
+                            ui.end_row();
+                        });
                 } else {
                     self.selected_id = None;
                     ui.label("No entity selected");
