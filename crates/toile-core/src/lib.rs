@@ -1,6 +1,7 @@
 pub mod color;
 pub mod curve;
 pub mod gradient;
+pub mod particles;
 pub mod rect;
 pub mod time;
 pub mod tween;
