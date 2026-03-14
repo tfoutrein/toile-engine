@@ -248,10 +248,14 @@ impl Game for EditorApp {
             None => return,
         };
 
-        // Draw grid
+        // Draw grid — use actual viewport size from camera
         if self.show_grid {
             let grid_size = 32.0;
-            let half_view = Vec2::new(640.0 / self.camera_zoom, 360.0 / self.camera_zoom);
+            let vp = ctx.camera.viewport_size();
+            let half_view = Vec2::new(
+                vp.x / (2.0 * self.camera_zoom),
+                vp.y / (2.0 * self.camera_zoom),
+            );
             let min_x = ((self.camera_pos.x - half_view.x) / grid_size).floor() as i32;
             let max_x = ((self.camera_pos.x + half_view.x) / grid_size).ceil() as i32;
             let min_y = ((self.camera_pos.y - half_view.y) / grid_size).floor() as i32;
