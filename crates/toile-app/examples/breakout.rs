@@ -200,7 +200,7 @@ impl Game for Breakout {
             ball_t.position.x = paddle_x;
             ball_t.position.y = -HALF_H + 70.0;
 
-            if ctx.input.is_key_just_pressed(Key::Space) {
+            if ctx.first_tick && ctx.input.is_key_just_pressed(Key::Space) {
                 self.launched = true;
                 self.ball_vel = Vec2::new(BALL_SPEED * 0.7, BALL_SPEED);
             }
@@ -328,8 +328,8 @@ impl Game for Breakout {
             }
         }
 
-        // Toggle music with M
-        if ctx.input.is_key_just_pressed(Key::KeyM) {
+        // Toggle music with M (only on first tick to avoid double-toggle)
+        if ctx.first_tick && ctx.input.is_key_just_pressed(Key::KeyM) {
             if let Some(pb) = self.music_playback {
                 if self.music_paused {
                     ctx.audio.resume(pb);

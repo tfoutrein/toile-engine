@@ -15,17 +15,14 @@ pub enum MouseButton {
 
 /// Per-frame input state. Collects winit events and exposes a polling API.
 ///
-/// Usage pattern:
-/// 1. During winit event dispatch: call `handle_*` methods
-/// 2. During update/draw: call `is_key_down`, `mouse_position`, etc.
-/// 3. At end of frame: call `end_frame` to snapshot state for next-frame diffing
+/// Call `handle_*` during event dispatch, query during update/draw,
+/// then `end_frame()` at end of frame.
 pub struct Input {
     keys_down: HashSet<KeyCode>,
-    keys_down_prev: HashSet<KeyCode>,
-    keys_just_pressed: HashSet<KeyCode>,
-    keys_just_released: HashSet<KeyCode>,
+    keys_pressed_this_frame: HashSet<KeyCode>,
+    keys_released_this_frame: HashSet<KeyCode>,
     mouse_down: HashSet<MouseButton>,
-    mouse_down_prev: HashSet<MouseButton>,
+    mouse_pressed_this_frame: HashSet<MouseButton>,
     mouse_position: Vec2,
     scroll_delta: Vec2,
 }
@@ -34,11 +31,10 @@ impl Input {
     pub fn new() -> Self {
         Self {
             keys_down: HashSet::new(),
-            keys_down_prev: HashSet::new(),
-            keys_just_pressed: HashSet::new(),
-            keys_just_released: HashSet::new(),
+            keys_pressed_this_frame: HashSet::new(),
+            keys_released_this_frame: HashSet::new(),
             mouse_down: HashSet::new(),
-            mouse_down_prev: HashSet::new(),
+            mouse_pressed_this_frame: HashSet::new(),
             mouse_position: Vec2::ZERO,
             scroll_delta: Vec2::ZERO,
         }
@@ -47,8 +43,6 @@ impl Input {
     // --- Event handlers (called from AppHandler) ---
 
     pub fn handle_key_event(&mut self, event: &KeyEvent) {
-        // Ignore key repeats (auto-repeat when held) — they would
-        // cause is_key_just_pressed to mis-fire on held keys.
         if event.repeat {
             return;
         }
@@ -56,13 +50,12 @@ impl Input {
             match event.state {
                 ElementState::Pressed => {
                     if self.keys_down.insert(code) {
-                        // insert returns true if the key was NOT already present
-                        self.keys_just_pressed.insert(code);
+                        self.keys_pressed_this_frame.insert(code);
                     }
                 }
                 ElementState::Released => {
                     self.keys_down.remove(&code);
-                    self.keys_just_released.insert(code);
+                    self.keys_released_this_frame.insert(code);
                 }
             }
         }
@@ -77,7 +70,9 @@ impl Input {
         };
         match state {
             ElementState::Pressed => {
-                self.mouse_down.insert(btn);
+                if self.mouse_down.insert(btn) {
+                    self.mouse_pressed_this_frame.insert(btn);
+                }
             }
             ElementState::Released => {
                 self.mouse_down.remove(&btn);
@@ -100,12 +95,11 @@ impl Input {
         }
     }
 
-    /// Call at the end of each frame to clear per-frame state.
+    /// Call at the end of each frame.
     pub fn end_frame(&mut self) {
-        self.keys_down_prev.clone_from(&self.keys_down);
-        self.keys_just_pressed.clear();
-        self.keys_just_released.clear();
-        self.mouse_down_prev.clone_from(&self.mouse_down);
+        self.keys_pressed_this_frame.clear();
+        self.keys_released_this_frame.clear();
+        self.mouse_pressed_this_frame.clear();
         self.scroll_delta = Vec2::ZERO;
     }
 
@@ -115,14 +109,15 @@ impl Input {
         self.keys_down.contains(&key)
     }
 
-    /// True only once per press (safe to call in multi-tick update loops).
-    pub fn is_key_just_pressed(&mut self, key: KeyCode) -> bool {
-        self.keys_just_pressed.remove(&key)
+    /// True for the entire frame the key was first pressed.
+    /// Safe to call multiple times per frame — always returns the same value.
+    pub fn is_key_just_pressed(&self, key: KeyCode) -> bool {
+        self.keys_pressed_this_frame.contains(&key)
     }
 
-    /// True only once per release (safe to call in multi-tick update loops).
-    pub fn is_key_just_released(&mut self, key: KeyCode) -> bool {
-        self.keys_just_released.remove(&key)
+    /// True for the entire frame the key was released.
+    pub fn is_key_just_released(&self, key: KeyCode) -> bool {
+        self.keys_released_this_frame.contains(&key)
     }
 
     pub fn is_mouse_down(&self, button: MouseButton) -> bool {
@@ -130,7 +125,7 @@ impl Input {
     }
 
     pub fn is_mouse_just_pressed(&self, button: MouseButton) -> bool {
-        self.mouse_down.contains(&button) && !self.mouse_down_prev.contains(&button)
+        self.mouse_pressed_this_frame.contains(&button)
     }
 
     pub fn mouse_position(&self) -> Vec2 {

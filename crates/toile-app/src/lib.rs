@@ -39,6 +39,9 @@ pub struct GameContext<'a> {
     pub audio: &'a mut toile_audio::Audio,
     pub stats: &'a RenderStats,
     pub fps: f64,
+    /// True only during the first fixed-update tick of each frame.
+    /// Use this to guard one-shot actions (toggles) in update().
+    pub first_tick: bool,
     gpu: &'a GpuContext,
     renderer: &'a mut SpriteRenderer,
     fonts: &'a mut Vec<Font>,
@@ -235,6 +238,7 @@ macro_rules! make_ctx {
             fps: $fps,
             gpu: $self.gpu.as_ref().unwrap(),
             renderer: $self.renderer.as_mut().unwrap(),
+            first_tick: true,
             fonts: &mut $self.fonts,
             draw_list: &mut $self.draw_list,
         }
@@ -317,8 +321,9 @@ impl ApplicationHandler for AppHandler {
                 let dt = clock.fixed_dt_secs();
                 let fps = clock.fps();
 
-                for _ in 0..ticks {
+                for tick_idx in 0..ticks {
                     let mut ctx = make_ctx!(self, fps);
+                    ctx.first_tick = tick_idx == 0;
                     self.game.update(&mut ctx, dt);
                 }
 
