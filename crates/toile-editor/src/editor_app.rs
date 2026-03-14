@@ -425,13 +425,43 @@ impl Game for EditorApp {
         // Load dialog
         if self.show_load_dialog {
             let mut open = true;
+            // Scan for JSON files in current directory
+            let json_files: Vec<String> = std::fs::read_dir(".")
+                .into_iter()
+                .flatten()
+                .filter_map(|e| e.ok())
+                .filter(|e| {
+                    e.path().extension().is_some_and(|ext| ext == "json")
+                        && e.path().file_name().is_some_and(|n| n != ".mcp.json")
+                })
+                .filter_map(|e| e.file_name().into_string().ok())
+                .collect::<std::collections::BTreeSet<_>>()
+                .into_iter()
+                .collect();
+
             egui::Window::new("Load Scene")
                 .open(&mut open)
                 .collapsible(false)
-                .resizable(false)
+                .default_width(350.0)
                 .show(&ctx, |ui| {
                     ui.label("File path:");
                     ui.text_edit_singleline(&mut self.file_path_input);
+
+                    if !json_files.is_empty() {
+                        ui.add_space(4.0);
+                        ui.label(egui::RichText::new("Available scenes:").strong());
+                        ui.separator();
+                        egui::ScrollArea::vertical().max_height(200.0).show(ui, |ui| {
+                            for file in &json_files {
+                                let selected = self.file_path_input == *file;
+                                if ui.selectable_label(selected, file).clicked() {
+                                    self.file_path_input = file.clone();
+                                }
+                            }
+                        });
+                    }
+
+                    ui.add_space(8.0);
                     ui.horizontal(|ui| {
                         if ui.button("Load").clicked() {
                             let path = std::path::Path::new(&self.file_path_input);
