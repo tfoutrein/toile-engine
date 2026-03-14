@@ -17,6 +17,8 @@ use toile_graphics::GpuContext;
 use toile_platform::input::Input;
 use toile_platform::WindowConfig;
 
+pub mod scene;
+
 pub use toile_core as core;
 pub use toile_graphics as graphics;
 pub use toile_platform as platform;
@@ -92,6 +94,11 @@ impl<'a> GameContext<'a> {
 
     pub fn draw_sprite(&mut self, sprite: DrawSprite) {
         self.draw_list.push(sprite);
+    }
+
+    /// Access the last sprite in the draw list (for post-modification).
+    pub fn draw_list_last_mut(&mut self) -> Option<&mut DrawSprite> {
+        self.draw_list.last_mut()
     }
 
     /// Draw text at the given position (top-left corner in world space).

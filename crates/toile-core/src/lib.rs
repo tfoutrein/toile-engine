@@ -3,6 +3,7 @@ pub mod curve;
 pub mod gradient;
 pub mod particles;
 pub mod rect;
+pub mod scene_stack;
 pub mod time;
 pub mod tween;
 
