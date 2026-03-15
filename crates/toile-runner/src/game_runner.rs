@@ -103,6 +103,8 @@ pub struct GameRunner {
     pending_scene: Option<String>,
     next_id: u64,
     scene_settings: toile_scene::SceneSettings,
+    /// Initial AABB of the scene for auto-fit camera (recalculated on scene load).
+    scene_aabb: Option<(Vec2, Vec2)>, // (min, max)
 }
 
 impl GameRunner {
@@ -120,6 +122,7 @@ impl GameRunner {
             pending_scene: None,
             next_id: 1,
             scene_settings: Default::default(),
+            scene_aabb: None,
         })
     }
 
@@ -323,19 +326,12 @@ impl Game for GameRunner {
                         min_y = min_y.min(ent.es.position.y - hh);
                         max_y = max_y.max(ent.es.position.y + hh);
                     }
-                    let center = Vec2::new((min_x + max_x) * 0.5, (min_y + max_y) * 0.5);
+                    let bb_min = Vec2::new(min_x, min_y);
+                    let bb_max = Vec2::new(max_x, max_y);
+                    self.scene_aabb = Some((bb_min, bb_max));
+                    let center = (bb_min + bb_max) * 0.5;
                     ctx.camera.position = center;
-                    // Auto-fit zoom: viewport_size is in physical pixels
-                    let vp = ctx.camera.viewport_size();
-                    let content_w = (max_x - min_x) * 1.1; // 10% padding
-                    let content_h = (max_y - min_y) * 1.1;
-                    if content_w > 0.0 && content_h > 0.0 {
-                        let zoom_w = vp.x / content_w;
-                        let zoom_h = vp.y / content_h;
-                        let auto_zoom = zoom_w.min(zoom_h).max(0.5);
-                        ctx.camera.zoom = auto_zoom;
-                        log::info!("Auto-fit camera: center=({:.0},{:.0}), zoom={:.2}", center.x, center.y, auto_zoom);
-                    }
+                    log::info!("Scene AABB: ({:.0},{:.0})..({:.0},{:.0}), center=({:.0},{:.0})", min_x, min_y, max_x, max_y, center.x, center.y);
                 }
             }
             Err(e) => log::error!("Failed to load scene {}: {e}", scene_path.display()),
@@ -343,6 +339,20 @@ impl Game for GameRunner {
     }
 
     fn update(&mut self, ctx: &mut GameContext, dt: f64) {
+        // Auto-fit camera to scene AABB (adapts to window resize)
+        if let Some((bb_min, bb_max)) = self.scene_aabb {
+            let center = (bb_min + bb_max) * 0.5;
+            ctx.camera.position = center;
+            let vp = ctx.camera.viewport_size();
+            let content_w = (bb_max.x - bb_min.x) * 1.1;
+            let content_h = (bb_max.y - bb_min.y) * 1.1;
+            if content_w > 0.0 && content_h > 0.0 {
+                let zoom_w = vp.x / content_w;
+                let zoom_h = vp.y / content_h;
+                ctx.camera.zoom = zoom_w.min(zoom_h).max(0.5);
+            }
+        }
+
         let dt_f = dt as f32;
         let input = Self::build_behavior_input(ctx);
 
