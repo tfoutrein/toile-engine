@@ -38,21 +38,24 @@
 | **Particles** | CPU particle system with 8 presets (fire, smoke, sparks, rain, snow, explosion, dust, confetti) |
 | **Tweening** | 15 easing functions, Curve/Gradient interpolation, RepeatMode (Once/Loop/PingPong) |
 | **Scene Stack** | Push/pop/replace scenes with fade transitions (menu, gameplay, pause overlay) |
-| **Animation** | Aseprite JSON import, frame-based animation with playback modes |
-| **Tilemap** | Tiled JSON import + in-editor tilemap painting (brush, eraser, fill) |
+| **Animation** | Aseprite JSON import + binary .ase/.aseprite parser, frame-based animation with playback modes |
+| **Tilemap** | Tiled JSON + LDtk import, in-editor tilemap painting (brush, eraser, fill) |
 | **Lua Scripting** | Embedded Lua 5.4 with hot-reload for game logic |
 | **Text Rendering** | TTF rasterization via fontdue, draw_text API |
 | **Async Loading** | Background asset loading with progress tracking |
+| **Event Sheets** | Visual scripting: condition-action rules (overlap, key press, timer, variables) |
+| **Behaviors** | 7 pre-built behaviors: Platform, TopDown, Bullet, Sine, Fade, Wrap, Solid |
+| **Prefabs** | Reusable entity templates with behaviors, instantiate with overrides |
 | **Visual Editor** | egui-based editor with hierarchy, inspector, drag & drop, resize handles, rotation, tilemap painting, save/load |
-| **MCP Server** | 12 tools for AI-driven scene + tilemap manipulation |
-| **CLI** | `toile new`, `toile list-entities`, `toile add-entity` |
+| **MCP Server** | 15 tools for AI-driven scene, tilemap, and prefab manipulation |
+| **CLI** | `toile new --template platformer`, `toile list-entities`, `toile add-entity`, `toile templates` |
 
 ## Quick Start
 
 ```bash
 # Clone and build
-git clone https://github.com/toile-engine/toile.git
-cd toile
+git clone https://github.com/tfoutrein/toile-engine.git
+cd toile-engine
 cargo build
 
 # Run the Breakout demo
@@ -112,6 +115,42 @@ Background asset loading with progress bar.
 cargo run --example loading_demo
 ```
 
+### Event Sheets
+Data-driven game rules with conditions and actions.
+```bash
+cargo run --example event_sheet_demo
+```
+
+### Behaviors
+All 7 pre-built behaviors in action: Platform, Sine, Bullet, Fade, Wrap.
+```bash
+cargo run --example behaviors_demo
+```
+
+### Prefabs
+Place prefab instances in Edit mode, then play as a platformer character with shooting.
+```bash
+cargo run --example prefab_demo
+```
+
+### Project Templates
+Load and play each of the 4 project templates live (Empty, Platformer, TopDown, Shmup).
+```bash
+cargo run --example template_demo
+```
+
+### LDtk Import
+Import LDtk levels with IntGrid collision, entities, and multi-level navigation.
+```bash
+cargo run --example ldtk_demo
+```
+
+### Aseprite Binary Import
+Parse .ase files directly — animated sprite with tags, filmstrip view.
+```bash
+cargo run --example aseprite_demo
+```
+
 ### Visual Editor
 Scene editor with hierarchy, inspector, drag & drop, resize handles, rotation, tilemap painting.
 ```bash
@@ -123,7 +162,7 @@ cargo run --example editor -p toile-editor
 Toile is designed from the ground up to be controlled by AI assistants.
 
 ### MCP Server
-The built-in MCP server exposes 8 tools for scene manipulation:
+The built-in MCP server exposes 15 tools for scene manipulation:
 
 | Tool | Description |
 |------|-------------|
@@ -139,6 +178,9 @@ The built-in MCP server exposes 8 tools for scene manipulation:
 | `set_tile` | Set a tile at a position |
 | `fill_rect` | Fill a rectangle of tiles |
 | `get_tile` | Read a tile at a position |
+| `create_prefab` | Save an entity as a reusable prefab |
+| `list_prefabs` | List all prefab files |
+| `instantiate_prefab` | Create an entity from a prefab template |
 
 Configure in `.mcp.json`:
 ```json
@@ -155,9 +197,13 @@ Configure in `.mcp.json`:
 
 ### CLI
 ```bash
-toile new my-game              # Scaffold a project
-toile list-entities scene.json  # List entities
-toile add-entity scene.json Player 100 200  # Add entity
+toile new my-game                          # Empty project
+toile new my-game --template platformer    # Platformer template
+toile new my-game --template topdown       # Top-down template
+toile new my-game --template shmup         # Shoot-em-up template
+toile templates                            # List available templates
+toile list-entities scene.json             # List entities
+toile add-entity scene.json Player 100 200 # Add entity
 ```
 
 ### JSON Scene Format
@@ -189,13 +235,15 @@ toile/
     toile-audio/       Audio playback (kira)
     toile-collision/   AABB/Circle detection, spatial grid
     toile-ecs/         Entity Component System (hecs)
-    toile-assets/      Asset loading, fonts, animation, tilemap
+    toile-assets/      Asset loading, fonts, animation, tilemap, LDtk, Aseprite
     toile-scripting/   Lua VM + hot-reload (mlua)
-    toile-scene/       Scene serialization (JSON)
+    toile-scene/       Scene serialization (JSON), prefabs
+    toile-events/      Event sheet system (visual scripting)
+    toile-behaviors/   Pre-built behaviors (Platform, TopDown, Bullet, etc.)
     toile-editor/      Visual editor (egui)
     toile-physics/     Rapier2D physics (optional)
     toile-mcp/         MCP server for AI control (rmcp)
-    toile-cli/         CLI binary
+    toile-cli/         CLI binary + project templates
     toile-app/         Application framework, game loop
 ```
 
