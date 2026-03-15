@@ -444,6 +444,16 @@ impl Game for GameRunner {
                 }
             }
 
+            // Clamp entity position to scene bounds (if set via PlatformerFollow)
+            if let toile_scene::CameraMode::PlatformerFollow { bounds, .. } = &self.scene_settings.camera_mode {
+                if *bounds != [0.0, 0.0, 0.0, 0.0] {
+                    let hw = ent.es.size.x * 0.5;
+                    let hh = ent.es.size.y * 0.5;
+                    ent.es.position.x = ent.es.position.x.clamp(bounds[0] + hw, bounds[2] - hw);
+                    ent.es.position.y = ent.es.position.y.clamp(bounds[1] + hh, bounds[3] - hh);
+                }
+            }
+
             // Sync entity state back to data
             ent.data.x = ent.es.position.x;
             ent.data.y = ent.es.position.y;
