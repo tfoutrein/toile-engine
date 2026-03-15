@@ -384,9 +384,20 @@ impl Game for GameRunner {
 
                     // Clamp to scene bounds if set (non-zero)
                     if *bounds != [0.0, 0.0, 0.0, 0.0] {
-                        let (bmin_x, bmin_y, bmax_x, bmax_y) = (bounds[0], bounds[1], bounds[2], bounds[3]);
-                        self.camera_pos.x = self.camera_pos.x.clamp(bmin_x + half_vp_w, bmax_x - half_vp_w);
-                        self.camera_pos.y = self.camera_pos.y.clamp(bmin_y + half_vp_h, bmax_y - half_vp_h);
+                        let cam_min_x = bounds[0] + half_vp_w;
+                        let cam_max_x = bounds[2] - half_vp_w;
+                        let cam_min_y = bounds[1] + half_vp_h;
+                        let cam_max_y = bounds[3] - half_vp_h;
+                        if cam_min_x < cam_max_x {
+                            self.camera_pos.x = self.camera_pos.x.clamp(cam_min_x, cam_max_x);
+                        } else {
+                            self.camera_pos.x = (bounds[0] + bounds[2]) * 0.5;
+                        }
+                        if cam_min_y < cam_max_y {
+                            self.camera_pos.y = self.camera_pos.y.clamp(cam_min_y, cam_max_y);
+                        } else {
+                            self.camera_pos.y = (bounds[1] + bounds[3]) * 0.5;
+                        }
                     }
                 }
             }
@@ -449,8 +460,17 @@ impl Game for GameRunner {
                 if *bounds != [0.0, 0.0, 0.0, 0.0] {
                     let hw = ent.es.size.x * 0.5;
                     let hh = ent.es.size.y * 0.5;
-                    ent.es.position.x = ent.es.position.x.clamp(bounds[0] + hw, bounds[2] - hw);
-                    ent.es.position.y = ent.es.position.y.clamp(bounds[1] + hh, bounds[3] - hh);
+                    let min_x = bounds[0] + hw;
+                    let max_x = bounds[2] - hw;
+                    let min_y = bounds[1] + hh;
+                    let max_y = bounds[3] - hh;
+                    // Only clamp if bounds are valid (bigger than entity)
+                    if min_x < max_x {
+                        ent.es.position.x = ent.es.position.x.clamp(min_x, max_x);
+                    }
+                    if min_y < max_y {
+                        ent.es.position.y = ent.es.position.y.clamp(min_y, max_y);
+                    }
                 }
             }
 
