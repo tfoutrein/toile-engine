@@ -4,15 +4,15 @@
     {
       "id": 1,
       "name": "Entity_1",
-      "x": -606.00024,
-      "y": -245.64987,
+      "x": -596.7932,
+      "y": -250.57568,
       "rotation": 0.0,
       "scale_x": 1.0,
       "scale_y": 1.0,
       "layer": 0,
       "sprite_path": "/Users/tfoutrein2/DEV/PERSO/2d-engine/game2/assets/player.png",
-      "width": 28.839859,
-      "height": 66.87552,
+      "width": 64.0,
+      "height": 64.0,
       "behaviors": [
         {
           "type": "Platform",
@@ -38,10 +38,10 @@
       "event_sheet": "scripts/entity_1.event.json",
       "particle_emitter": null,
       "sprite_sheet": {
-        "frame_width": 32,
-        "frame_height": 32,
-        "columns": 4,
-        "rows": 4
+        "frame_width": 64,
+        "frame_height": 64,
+        "columns": 8,
+        "rows": 8
       },
       "animations": [],
       "default_animation": null,

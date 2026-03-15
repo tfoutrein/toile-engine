@@ -1433,13 +1433,22 @@ impl Game for EditorApp {
                 (Vec2::ZERO, Vec2::ONE)
             };
 
+            // Render size: use frame size if sprite sheet, else entity size
+            let render_size = if has_sprite {
+                if let Some(ref sheet) = entity.sprite_sheet {
+                    Vec2::new(sheet.frame_width as f32 * entity.scale_x,
+                              sheet.frame_height as f32 * entity.scale_y)
+                } else {
+                    Vec2::new(entity.width * entity.scale_x, entity.height * entity.scale_y)
+                }
+            } else {
+                Vec2::new(entity.width * entity.scale_x, entity.height * entity.scale_y)
+            };
+
             ctx.draw_sprite(Sprite {
                 texture: entity_tex,
                 position: Vec2::new(entity.x, entity.y),
-                size: Vec2::new(
-                    entity.width * entity.scale_x,
-                    entity.height * entity.scale_y,
-                ),
+                size: render_size,
                 rotation: entity.rotation,
                 color,
                 layer: entity.layer,
@@ -2548,9 +2557,6 @@ impl Game for EditorApp {
                             if ui.checkbox(&mut enabled, "Enable sprite sheet").changed() {
                                 if enabled && entity.sprite_sheet.is_none() {
                                     let sheet = auto_detect_sprite_sheet(&entity.sprite_path, &pdir);
-                                    // Auto-size entity to match frame size
-                                    entity.width = sheet.frame_width as f32;
-                                    entity.height = sheet.frame_height as f32;
                                     entity.sprite_sheet = Some(sheet);
                                 } else if !enabled {
                                     entity.sprite_sheet = None;
@@ -2581,17 +2587,13 @@ impl Game for EditorApp {
                                                     sheet.rows = (dims.1 / *fh).max(1);
                                                 }
                                             }
-                                            // Auto-size entity to match frame
-                                            entity.width = *fw as f32;
-                                            entity.height = *fh as f32;
+                                            // Don't auto-resize entity — user controls display size
                                         }
                                     }
                                 });
                                 // Auto-detect button
                                 if ui.small_button("Auto-detect from image").clicked() {
                                     *sheet = auto_detect_sprite_sheet(&entity.sprite_path, &pdir);
-                                    entity.width = sheet.frame_width as f32;
-                                    entity.height = sheet.frame_height as f32;
                                 }
 
                                 ui.add_space(4.0);

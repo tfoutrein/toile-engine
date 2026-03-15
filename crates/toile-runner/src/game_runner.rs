@@ -801,10 +801,18 @@ impl Game for GameRunner {
                 std::mem::swap(&mut uv_min.x, &mut uv_max.x);
             }
 
+            // Render at frame size if sprite sheet, else entity size
+            let render_size = if let Some(ref sheet) = ent.data.sprite_sheet {
+                Vec2::new(sheet.frame_width as f32 * ent.data.scale_x,
+                          sheet.frame_height as f32 * ent.data.scale_y)
+            } else {
+                ent.es.size
+            };
+
             ctx.draw_sprite(DrawSprite {
                 texture: tex,
                 position: ent.es.position,
-                size: ent.es.size,
+                size: render_size,
                 rotation: ent.es.rotation,
                 color,
                 layer: ent.data.layer,
