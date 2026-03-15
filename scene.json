@@ -1,57 +1,45 @@
 {
-  "name": "demo_mcp",
+  "name": "Untitled",
   "entities": [
     {
       "id": 1,
-      "name": "Hero",
-      "x": -100.0,
-      "y": 50.0,
+      "name": "Player",
+      "x": -178.19923,
+      "y": 43.837875,
       "rotation": 0.0,
       "scale_x": 1.0,
       "scale_y": 1.0,
       "layer": 0,
       "sprite_path": "",
-      "width": 32.0,
-      "height": 32.0
+      "width": 136.01566,
+      "height": 114.70705
     },
     {
       "id": 2,
-      "name": "Fire Dragon",
-      "x": 150.0,
-      "y": 50.0,
-      "rotation": 0.0,
+      "name": "Enemy",
+      "x": -214.87437,
+      "y": -60.769264,
+      "rotation": 0.33483028,
       "scale_x": 1.0,
       "scale_y": 1.0,
       "layer": 0,
       "sprite_path": "",
-      "width": 64.0,
-      "height": 64.0
+      "width": 232.6748,
+      "height": 150.43608
     },
     {
       "id": 3,
-      "name": "Treasure Chest",
-      "x": 300.0,
-      "y": 100.0,
-      "rotation": 0.0,
+      "name": "Platform",
+      "x": -137.18361,
+      "y": 0.519536,
+      "rotation": -0.4884516,
       "scale_x": 1.0,
       "scale_y": 1.0,
       "layer": 0,
       "sprite_path": "",
-      "width": 32.0,
-      "height": 32.0
-    },
-    {
-      "id": 4,
-      "name": "Ground",
-      "x": 0.0,
-      "y": 0.0,
-      "rotation": 0.0,
-      "scale_x": 1.0,
-      "scale_y": 1.0,
-      "layer": -1,
-      "sprite_path": "",
-      "width": 500.0,
+      "width": 200.0,
       "height": 20.0
     }
-  ]
+  ],
+  "tilemap": null
 }

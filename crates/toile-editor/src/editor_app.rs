@@ -27,6 +27,7 @@ pub struct EditorApp {
     resize_start_size: Vec2,
     resize_start_pos: Vec2,
     resize_start_mouse: Vec2,
+    resize_start_rot: f32,
     rotating: bool,
     rotate_start_angle: f32,
     rotate_start_mouse_angle: f32,
@@ -90,6 +91,7 @@ impl EditorApp {
             resize_start_size: Vec2::ZERO,
             resize_start_pos: Vec2::ZERO,
             resize_start_mouse: Vec2::ZERO,
+            resize_start_rot: 0.0,
             rotating: false,
             rotate_start_angle: 0.0,
             rotate_start_mouse_angle: 0.0,
@@ -401,6 +403,7 @@ impl Game for EditorApp {
                         if let Some(entity) = self.scene.entities.iter().find(|e| e.id == sel_id) {
                             self.resize_start_size = Vec2::new(entity.width, entity.height);
                             self.resize_start_pos = Vec2::new(entity.x, entity.y);
+                            self.resize_start_rot = entity.rotation;
                         }
                     }
                 } else {
@@ -446,11 +449,20 @@ impl Game for EditorApp {
                 }
 
                 // Continue resize
-                // Default: asymmetric (only the dragged face moves, position shifts)
-                // Shift held: symmetric (both faces move, position stays centered)
+                // Transform mouse delta into entity's local space (undo rotation)
+                // Default: asymmetric (only the dragged face moves)
+                // Shift: symmetric (both faces move, center stays)
                 if let Some(handle) = self.resizing {
                     if let Some(sel_id) = self.selected_id {
-                        let delta = world_pos - self.resize_start_mouse;
+                        let world_delta = world_pos - self.resize_start_mouse;
+                        // Project delta into entity's local axes
+                        let rot = self.resize_start_rot;
+                        let (sin, cos) = (-rot).sin_cos();
+                        let ld = Vec2::new(
+                            world_delta.x * cos - world_delta.y * sin,
+                            world_delta.x * sin + world_delta.y * cos,
+                        );
+
                         let symmetric = ctx.input.is_key_down(Key::ShiftLeft)
                             || ctx.input.is_key_down(Key::ShiftRight);
 
@@ -459,94 +471,49 @@ impl Game for EditorApp {
                             let sh = self.resize_start_size.y;
                             let sp = self.resize_start_pos;
 
+                            // Compute size deltas in local space based on handle
+                            let (dw, dh) = match handle {
+                                ResizeHandle::Right => (ld.x, 0.0),
+                                ResizeHandle::Left => (-ld.x, 0.0),
+                                ResizeHandle::Top => (0.0, ld.y),
+                                ResizeHandle::Bottom => (0.0, -ld.y),
+                                ResizeHandle::TopRight => (ld.x, ld.y),
+                                ResizeHandle::BottomRight => (ld.x, -ld.y),
+                                ResizeHandle::BottomLeft => (-ld.x, -ld.y),
+                                ResizeHandle::TopLeft => (-ld.x, ld.y),
+                            };
+
                             if symmetric {
-                                // Symmetric: both sides move, center stays
-                                match handle {
-                                    ResizeHandle::TopRight => {
-                                        entity.width = (sw + delta.x * 2.0).max(4.0);
-                                        entity.height = (sh + delta.y * 2.0).max(4.0);
-                                        entity.x = sp.x;
-                                        entity.y = sp.y;
-                                    }
-                                    ResizeHandle::BottomRight => {
-                                        entity.width = (sw + delta.x * 2.0).max(4.0);
-                                        entity.height = (sh - delta.y * 2.0).max(4.0);
-                                        entity.x = sp.x;
-                                        entity.y = sp.y;
-                                    }
-                                    ResizeHandle::BottomLeft => {
-                                        entity.width = (sw - delta.x * 2.0).max(4.0);
-                                        entity.height = (sh - delta.y * 2.0).max(4.0);
-                                        entity.x = sp.x;
-                                        entity.y = sp.y;
-                                    }
-                                    ResizeHandle::TopLeft => {
-                                        entity.width = (sw - delta.x * 2.0).max(4.0);
-                                        entity.height = (sh + delta.y * 2.0).max(4.0);
-                                        entity.x = sp.x;
-                                        entity.y = sp.y;
-                                    }
-                                    ResizeHandle::Right => {
-                                        entity.width = (sw + delta.x * 2.0).max(4.0);
-                                        entity.x = sp.x;
-                                    }
-                                    ResizeHandle::Left => {
-                                        entity.width = (sw - delta.x * 2.0).max(4.0);
-                                        entity.x = sp.x;
-                                    }
-                                    ResizeHandle::Top => {
-                                        entity.height = (sh + delta.y * 2.0).max(4.0);
-                                        entity.y = sp.y;
-                                    }
-                                    ResizeHandle::Bottom => {
-                                        entity.height = (sh - delta.y * 2.0).max(4.0);
-                                        entity.y = sp.y;
-                                    }
-                                }
+                                entity.width = (sw + dw * 2.0).max(4.0);
+                                entity.height = (sh + dh * 2.0).max(4.0);
+                                entity.x = sp.x;
+                                entity.y = sp.y;
                             } else {
-                                // Asymmetric: only the dragged face moves, position shifts
-                                match handle {
-                                    ResizeHandle::Right => {
-                                        entity.width = (sw + delta.x).max(4.0);
-                                        entity.x = sp.x + delta.x * 0.5;
-                                    }
-                                    ResizeHandle::Left => {
-                                        entity.width = (sw - delta.x).max(4.0);
-                                        entity.x = sp.x + delta.x * 0.5;
-                                    }
-                                    ResizeHandle::Top => {
-                                        entity.height = (sh + delta.y).max(4.0);
-                                        entity.y = sp.y + delta.y * 0.5;
-                                    }
-                                    ResizeHandle::Bottom => {
-                                        entity.height = (sh - delta.y).max(4.0);
-                                        entity.y = sp.y + delta.y * 0.5;
-                                    }
-                                    ResizeHandle::TopRight => {
-                                        entity.width = (sw + delta.x).max(4.0);
-                                        entity.height = (sh + delta.y).max(4.0);
-                                        entity.x = sp.x + delta.x * 0.5;
-                                        entity.y = sp.y + delta.y * 0.5;
-                                    }
-                                    ResizeHandle::BottomRight => {
-                                        entity.width = (sw + delta.x).max(4.0);
-                                        entity.height = (sh - delta.y).max(4.0);
-                                        entity.x = sp.x + delta.x * 0.5;
-                                        entity.y = sp.y - delta.y * 0.5;
-                                    }
-                                    ResizeHandle::BottomLeft => {
-                                        entity.width = (sw - delta.x).max(4.0);
-                                        entity.height = (sh - delta.y).max(4.0);
-                                        entity.x = sp.x + delta.x * 0.5;
-                                        entity.y = sp.y - delta.y * 0.5;
-                                    }
-                                    ResizeHandle::TopLeft => {
-                                        entity.width = (sw - delta.x).max(4.0);
-                                        entity.height = (sh + delta.y).max(4.0);
-                                        entity.x = sp.x + delta.x * 0.5;
-                                        entity.y = sp.y + delta.y * 0.5;
-                                    }
-                                }
+                                entity.width = (sw + dw).max(4.0);
+                                entity.height = (sh + dh).max(4.0);
+
+                                // Shift position in world space so the opposite edge stays fixed
+                                // Local offset = half the size change along each axis
+                                let local_shift = Vec2::new(
+                                    match handle {
+                                        ResizeHandle::Right | ResizeHandle::TopRight | ResizeHandle::BottomRight => dw * 0.5,
+                                        ResizeHandle::Left | ResizeHandle::TopLeft | ResizeHandle::BottomLeft => -dw * 0.5,
+                                        _ => 0.0,
+                                    },
+                                    match handle {
+                                        ResizeHandle::Top | ResizeHandle::TopRight | ResizeHandle::TopLeft => dh * 0.5,
+                                        ResizeHandle::Bottom | ResizeHandle::BottomRight | ResizeHandle::BottomLeft => -dh * 0.5,
+                                        _ => 0.0,
+                                    },
+                                );
+                                // Rotate the local shift back to world space
+                                let (sin, cos) = rot.sin_cos();
+                                let world_shift = Vec2::new(
+                                    local_shift.x * cos - local_shift.y * sin,
+                                    local_shift.x * sin + local_shift.y * cos,
+                                );
+                                entity.x = sp.x + world_shift.x;
+                                entity.y = sp.y + world_shift.y;
                             }
                         }
                     }
