@@ -33,13 +33,18 @@
 | **Sprite Rendering** | Batched rendering, 10k+ sprites at 60 FPS on integrated GPUs |
 | **Audio** | WAV/OGG playback via kira (play, stop, pause, loop, volume) |
 | **Collision** | AABB/Circle detection with MTV resolution, spatial grid broad-phase |
+| **Physics** | Rapier2D integration (rigid bodies, joints, forces, impulses) |
 | **ECS** | hecs-based entity component system |
+| **Particles** | CPU particle system with 8 presets (fire, smoke, sparks, rain, snow, explosion, dust, confetti) |
+| **Tweening** | 15 easing functions, Curve/Gradient interpolation, RepeatMode (Once/Loop/PingPong) |
+| **Scene Stack** | Push/pop/replace scenes with fade transitions (menu, gameplay, pause overlay) |
 | **Animation** | Aseprite JSON import, frame-based animation with playback modes |
-| **Tilemap** | Tiled JSON import, tile layers, object layers, GID flip handling |
+| **Tilemap** | Tiled JSON import + in-editor tilemap painting (brush, eraser, fill) |
 | **Lua Scripting** | Embedded Lua 5.4 with hot-reload for game logic |
 | **Text Rendering** | TTF rasterization via fontdue, draw_text API |
-| **Visual Editor** | egui-based editor with hierarchy, inspector, save/load |
-| **MCP Server** | 8 tools for AI-driven scene manipulation |
+| **Async Loading** | Background asset loading with progress tracking |
+| **Visual Editor** | egui-based editor with hierarchy, inspector, drag & drop, resize handles, rotation, tilemap painting, save/load |
+| **MCP Server** | 12 tools for AI-driven scene + tilemap manipulation |
 | **CLI** | `toile new`, `toile list-entities`, `toile add-entity` |
 
 ## Quick Start
@@ -83,8 +88,32 @@ Stress test: 10,000 moving sprites across 4 textures and 4 layers.
 cargo run --release --example bench_10k_sprites
 ```
 
+### Particles
+Interactive particle demo with 6 switchable presets + explosion burst.
+```bash
+cargo run --example particles_demo
+```
+
+### Physics
+Rapier2D rigid body simulation — boxes fall, bounce, and stack. Click to spawn.
+```bash
+cargo run --example physics_demo
+```
+
+### Scene Stack
+Menu → Gameplay → Pause overlay with fade transitions.
+```bash
+cargo run --example scene_demo
+```
+
+### Async Loading
+Background asset loading with progress bar.
+```bash
+cargo run --example loading_demo
+```
+
 ### Visual Editor
-Scene editor with hierarchy panel, property inspector, grid viewport, save/load.
+Scene editor with hierarchy, inspector, drag & drop, resize handles, rotation, tilemap painting.
 ```bash
 cargo run --example editor -p toile-editor
 ```
@@ -106,6 +135,10 @@ The built-in MCP server exposes 8 tools for scene manipulation:
 | `create_entity` | Add an entity to a scene |
 | `delete_entity` | Remove an entity by ID |
 | `update_entity` | Modify entity properties |
+| `create_tilemap` | Create a tilemap grid in a scene |
+| `set_tile` | Set a tile at a position |
+| `fill_rect` | Fill a rectangle of tiles |
+| `get_tile` | Read a tile at a position |
 
 Configure in `.mcp.json`:
 ```json
@@ -160,6 +193,7 @@ toile/
     toile-scripting/   Lua VM + hot-reload (mlua)
     toile-scene/       Scene serialization (JSON)
     toile-editor/      Visual editor (egui)
+    toile-physics/     Rapier2D physics (optional)
     toile-mcp/         MCP server for AI control (rmcp)
     toile-cli/         CLI binary
     toile-app/         Application framework, game loop
@@ -176,6 +210,7 @@ toile/
 | ECS | hecs |
 | Math | glam |
 | Scripting | Lua 5.4 (mlua) |
+| Physics | Rapier2D (optional) |
 | Editor UI | egui |
 | MCP | rmcp |
 
