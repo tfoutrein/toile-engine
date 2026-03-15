@@ -1329,12 +1329,6 @@ impl Game for EditorApp {
                 if ui.button(particle_label).clicked() {
                     self.editor_mode = EditorMode::Particle;
                 }
-                ui.separator();
-                // Play button — save & launch the game
-                if ui.button(egui::RichText::new("▶ Play").color(egui::Color32::from_rgb(80, 220, 80)).strong()).clicked() {
-                    play_game = true;
-                }
-                ui.separator();
                 ui.menu_button("View", |ui| {
                     ui.checkbox(&mut self.show_grid, "Show Grid");
                     if ui.button("Scene Settings...").clicked() {
@@ -1345,6 +1339,12 @@ impl Game for EditorApp {
                         self.camera_pos = Vec2::ZERO;
                         self.camera_zoom = 1.0;
                         ui.close_menu();
+                    }
+                });
+                // Play button — pushed to the right
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if ui.button(egui::RichText::new("▶ Play").color(egui::Color32::from_rgb(80, 220, 80)).strong()).clicked() {
+                        play_game = true;
                     }
                 });
             });
