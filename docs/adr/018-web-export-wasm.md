@@ -1,8 +1,9 @@
-# ADR-018 : Export web WASM/WebGL2 (anticipation v0.5)
+# ADR-018 : Export web WASM/WebGL2 (repoussé post-v1.0)
 
-- **Statut :** Proposée
+- **Statut :** Reportée (voir ADR-031)
 - **Date :** 2026-03-14
-- **Concerne :** v0.2 (préparation), v0.5 (livraison)
+- **Concerne :** v0.2 (préparation), ~~v0.5~~ post-v1.0 (livraison)
+- **Note :** Le scope v0.5 a été réaffecté à "Complete Editor MVP" (ADR-031). L'export web reste pertinent mais la priorité est de connecter toutes les briques existantes en un éditeur complet.
 
 ## Contexte
 

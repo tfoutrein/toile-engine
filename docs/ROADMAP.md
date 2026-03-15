@@ -1,6 +1,6 @@
 # Toile Engine — Roadmap Complète
 
-**Document vivant** | Dernière mise à jour : 2026-03-14
+**Document vivant** | Dernière mise à jour : 2026-03-15
 
 ---
 
@@ -12,12 +12,13 @@
 4. [v0.2 — "Game Systems"](#v02--game-systems-8-semaines)
 5. [v0.3 — "Creator Tools"](#v03--creator-tools-8-semaines)
 6. [v0.4 — "Visual Polish"](#v04--visual-polish-8-semaines)
-7. [v0.5 — "Web & Share"](#v05--web--share-6-semaines)
+7. [v0.5 — "Complete Editor"](#v05--complete-editor-10-semaines)
 8. [v1.0 — "Production Ready"](#v10--production-ready-12-semaines)
-9. [v1.5 — "Connected"](#v15--connected-12-semaines)
-10. [v2.0 — "Ecosystem"](#v20--ecosystem-continu)
-11. [Ce qu'on reporte délibérément et pourquoi](#ce-quon-reporte-délibérément-et-pourquoi)
-12. [Jalons communautaires](#jalons-communautaires)
+9. [v1.5 — "Web & Share"](#v15--web--share-8-semaines)
+10. [v2.0 — "Connected"](#v20--connected-12-semaines)
+11. [v3.0 — "Ecosystem"](#v30--ecosystem-continu)
+12. [Ce qu'on reporte délibérément et pourquoi](#ce-quon-reporte-délibérément-et-pourquoi)
+13. [Jalons communautaires](#jalons-communautaires)
 
 ---
 
@@ -59,13 +60,14 @@ Aucun moteur 2D majeur ne fournit nativement le support lecteur d'écran, les mo
  |           | Systems"| 8 sem   |    |            |            |            |
  |           |         |"Creator |==v0.4===|       |            |            |
  |           |         | Tools"  | 8 sem   |       |            |            |
- |           |         |         |"Visual  |=v0.5=|            |            |
- |           |         |         | Polish" |6 sem |            |            |
- |           |         |         |         |"Web" |===v1.0=====|            |
- |           |         |         |         |      | 12 sem     |            |
- |           |         |         |         |      |"Production |====v1.5====|
- |           |         |         |         |      | Ready"     | 12 sem     |
- |           |         |         |         |      |            |"Connected" |=>v2.0=>
+ |           |         |         |"Visual  |==v0.5====|         |            |
+ |           |         |         | Polish" | 10 sem   |         |            |
+ |           |         |         |         |"Complete |===v1.0=====|         |
+ |           |         |         |         | Editor"  | 12 sem     |         |
+ |           |         |         |         |          |"Production |==v1.5===|
+ |           |         |         |         |          | Ready"     | 8 sem   |
+ |           |         |         |         |          |            |"Web &   |=>v2.0=>
+ |           |         |         |         |          |            | Share"  |
 ```
 
 | Version | Codename | Durée | Semaines cumulées |
@@ -74,12 +76,13 @@ Aucun moteur 2D majeur ne fournit nativement le support lecteur d'écran, les mo
 | v0.2 | Game Systems | 8 semaines | 20 |
 | v0.3 | Creator Tools | 8 semaines | 28 |
 | v0.4 | Visual Polish | 8 semaines | 36 |
-| v0.5 | Web & Share | 6 semaines | 42 |
-| v1.0 | Production Ready | 12 semaines | 54 |
-| v1.5 | Connected | 12 semaines | 66 |
-| v2.0 | Ecosystem | Continu | — |
+| v0.5 | **Complete Editor** | 10 semaines | 46 |
+| v1.0 | Production Ready | 12 semaines | 58 |
+| v1.5 | **Web & Share** | 8 semaines | 66 |
+| v2.0 | Connected | 12 semaines | 78 |
+| v3.0 | Ecosystem | Continu | — |
 
-**Total jusqu'à la release stable v1.0 : ~54 semaines (~12.5 mois)**
+**Total jusqu'à la release stable v1.0 : ~58 semaines (~13.5 mois)**
 
 ---
 
@@ -107,234 +110,230 @@ Un platformer avec joueur animé, 3 niveaux Tiled, collision, audio, caméra sui
 
 ## v0.2 — "Game Systems" (8 semaines)
 
-**Philosophie :** Assez d'infrastructure pour construire un vrai jeu indie. Personnages animés, mondes tile-based, effets de particules, et scripting intégré transforment le moteur d'un jouet de rendu en outil de création de jeux.
+**Philosophie :** Assez d'infrastructure pour construire un vrai jeu indie.
 
 ### Nouvelles features
 
 | Catégorie | Features |
 |-----------|----------|
 | **Animation** | Système d'animation complet : séquences de frames, tags Aseprite, state machine pour transitions. Tweening (linear, ease-in/out, bezier). |
-| **Tilemap** | Tiled JSON complet : tile layers (CSV + base64+zlib), object layers, image layers. GID flip-bits. Collision par tile. Rendu efficace par batches pré-construits. |
-| **Particules** | Simulation CPU. Émetteurs : point, cercle, rectangle, ligne. Lifetime, vélocité, gravité, taille/couleur over life (courbe/gradient). 10 presets intégrés (feu, fumée, étincelles, pluie, neige, explosion...). |
-| **Physique simple** | Rigid bodies (dynamic, static, kinematic). Gravité. Intégration de vélocité. Réponse de collision basique (bounce, slide). |
-| **Scènes** | Pile de scènes (push/pop). Transitions (fade, slide, wipe). Chargement async. Arena allocator par scène. |
-| **Assets** | Chargement async en background thread. Handles avec futures. Support écran de chargement. |
-
-### Éditeur
-
-- Peinture de tilemap : palette, brush/fill/eraser, auto-tiling bitmask, multi-layers
-- Preview d'animation dans l'inspecteur, scrub de frames
-- Gestion des layers : nommés, visibilité/lock, réordonnement, opacité
-- Preview de particules en temps réel dans le viewport
-- Hiérarchie d'objets avec recherche/filtre
-
-### IA / MCP
-
-- CRUD entités complet : `create_entity`, `delete_entity`, `get_entity`, `list_entities`, `update_entity`
-- Manipulation de composants : `add_component`, `remove_component`, `set_component_property`
-- Contrôle d'exécution : `play_scene`, `stop_scene`, `pause_scene`, `step_frame`
-- `get_game_state` retourne l'état sérialisé complet. Mode headless complet.
-
-### Nouveaux formats
-
-- **QOI** (format runtime interne pour chargement rapide)
-- **Aseprite JSON** (frame tags, durée par frame) complet
+| **Tilemap** | Tiled JSON complet : tile layers (CSV + base64+zlib), object layers, image layers. GID flip-bits. Collision par tile. |
+| **Particules** | Simulation CPU. Émetteurs : point, cercle, rectangle, ligne. Lifetime, vélocité, gravité, taille/couleur over life (courbe/gradient). 8 presets. |
+| **Physique** | Rapier2D : rigid bodies (dynamic, static, kinematic). Gravité. Réponse de collision. |
+| **Scènes** | Pile de scènes (push/pop). Transitions (fade, slide). Chargement async. |
+| **Assets** | Chargement async en background thread. Handles avec futures. |
 
 ### Critère de sortie
-Un platformer avec personnages animés, niveaux tilés, effets de particules. Tilemap 200×200 à 60 FPS. Hot-reload Lua < 500ms. Un agent IA crée une scène complète via MCP sans intervention humaine. 5 000 particules à 60 FPS.
+Un platformer avec personnages animés, niveaux tilés, effets de particules. 5 000 particules à 60 FPS.
 
 ---
 
 ## v0.3 — "Creator Tools" (8 semaines)
 
-**Philosophie :** Combler le fossé pour les non-programmeurs. Le système d'event sheets (inspiré de Construct) et les behaviors pré-construits permettent à un designer ou artiste de construire un jeu jouable sans écrire une seule ligne de code.
+**Philosophie :** Combler le fossé pour les non-programmeurs. Event sheets + behaviors + prefabs.
 
-### Event Sheets
+### Features
 
 | Feature | Détails |
 |---------|---------|
-| **Modèle** | Paires condition-action dans un UI tableur. Quand les conditions (gauche) sont remplies, les actions (droite) s'exécutent. |
-| **Conditions** | `On created`, `Every tick`, `On key pressed/released/held`, `On mouse click`, `On collision with [tag]`, `If variable [op] value`, `Every N seconds`, `On animation finished`, `Compare distance`... |
-| **Actions** | `Set position`, `Move at angle`, `Move toward`, `Set variable`, `Destroy`, `Spawn object`, `Play sound`, `Play animation`, `Set visibility`, `Apply force`, `Go to scene`, `Wait N seconds`... |
-| **Expressions** | Parser inline : `player.x + 10`, `random(1, 100)`, `distance(self, player)`. Type-checked à l'édition. |
-| **Organisation** | Groupes (sections collapsibles), sous-événements (conditions imbriquées), fonctions (blocs nommés appelables). |
-
-### Behaviors (Comportements pré-construits)
-
-| Behavior | Paramètres |
-|----------|-----------|
-| **Platform** | gravity, jump_force, max_speed, acceleration, deceleration, coyote_time, input_buffering, max_jumps |
-| **TopDown** | max_speed, acceleration, deceleration, diagonal_correction |
-| **Bullet** | speed, acceleration, gravity, bounce_off_solids |
-| **Physics** | body_type, mass, friction, bounciness, linear_damping, angular_damping |
-| **Solid** | (aucun) — marque une entité comme impassable |
-| **Sine** | property (x/y/angle/opacity/size), magnitude, period, wave_type |
-| **Fade** | fade_in_time, fade_out_time, destroy_on_fade_out |
-| **Wrap** | (aucun) — wrap aux bords de l'écran (style Asteroids) |
-
-### Éditeur
-
-- Éditeur d'event sheets : picker condition/action par dropdown cherchable, drag to reorder, blocs color-codés, validation temps réel
-- Inspecteur de behaviors : bouton "Add Behavior", widgets par paramètre, tooltips documentation
-- Système de prefabs : sauvegarder une entité configurée comme template réutilisable, instances héritent les changements
-- Templates de projet : "Vide", "Platformer", "Top-Down", "Shoot-em-up" avec assets de démarrage
-
-### Nouveaux formats
-
-- **LDtk** (.ldtk JSON) — world layout, IntGrid, auto-layers, entités typées
-- **Aseprite direct** (.ase/.aseprite binaire) — parsing sans export CLI
-
-### IA / MCP
-
-- CRUD event sheets : `create_event_sheet`, `add_event`, `remove_event`
-- Gestion behaviors : `add_behavior`, `remove_behavior`, `set_behavior_property`
-- Gestion prefabs : `create_prefab`, `instantiate_prefab`
-- `create_project_from_template` — l'IA scaffolde un projet complet
-- `llms.txt` v2 avec syntaxe event sheets et paramètres behaviors
+| **Event Sheets** | Paires condition-action. 8 conditions, 11 actions. Exécuteur avec état par entité. |
+| **Behaviors** | 7 pre-built : Platform, TopDown, Bullet, Sine, Fade, Wrap, Solid. Tous sérialisables. |
+| **Prefabs** | Template réutilisable avec behaviors + event sheet reference. MCP create/list/instantiate. |
+| **Templates** | 4 templates de projet : empty, platformer, topdown, shmup. `toile new`. |
+| **LDtk** | Import .ldtk JSON : IntGrid, entités, multi-niveaux. |
+| **Aseprite** | Parser binaire .ase/.aseprite direct. |
 
 ### Critère de sortie
-Un non-programmeur construit un platformer jouable (mouvement, ennemis, collectibles, condition win/lose) en event sheets et behaviors en < 30 minutes. Le behavior Platform "feels good" out-of-the-box. L'IA scaffolde un projet complet via MCP.
+Un non-programmeur construit un platformer jouable en event sheets et behaviors en < 30 minutes.
 
 ---
 
-## v0.4 — "Visual Polish" (8 semaines)
+## v0.4 — "Visual Polish" (8 semaines) ✅
 
-**Philosophie :** Élever le plafond de qualité visuelle. Éclairage 2D avec normal maps (la feature qui a rendu l'art de Hollow Knight sublime mais nécessitait des workarounds douloureux), éditeur de shaders visuel, polices SDF, et pipeline de post-processing.
+**Philosophie :** Élever le plafond de qualité visuelle.
 
-### Nouvelles features
+### Features livrées
 
 | Feature | Détails |
 |---------|---------|
-| **Éclairage 2D** | Point lights, directional, spot. Normal maps par sprite (convention `hero.png` + `hero_n.png`, auto-détecté). Shadow casting. Lumière ambiante. Light culling par grille spatiale. Cible : **50+ lumières dynamiques à 60 FPS**. |
-| **Ombres** | Shadow maps 1D projetées depuis les sources de lumière. Soft shadows avec falloff. Pénombre optionnelle. |
-| **Éditeur de shaders visuel** | Graphe de nœuds pour shaders 2D. Nœuds : texture sample, color, manipulation UV, math ops, time, bruit (perlin, simplex, voronoi), formes SDF, screen UV, distortion. Compile en WGSL. Preview live. |
-| **Polices SDF** | MSDF (multi-channel signed distance field). Atlas généré à l'import via `msdf-atlas-gen`. Shader MSDF : texte net à n'importe quel zoom. Effets outline, shadow, glow comme paramètres shader. |
-| **Post-processing** | Rendu offscreen. Chaîne configurable : **CRT** (scanlines, courbure, aberration chromatique), **Bloom** (threshold + gaussian blur + composite), **Color grading** (texture LUT), **Vignette**, **Screen shake** (basé trauma). Toggleable par scène. |
-| **Éditeur de particules** | Panneau dédié. Widget éditeur de courbe (handles bezier, points de contrôle draggables). Widget éditeur de gradient. Gizmo de forme d'émetteur. Sub-émetteurs. |
-
-### IA / MCP
-
-- `create_light`, `set_light_property`, `list_lights`
-- `create_shader_from_description` — l'IA décrit l'effet visuel, le moteur suggère un graphe ou génère du WGSL
-- `set_post_processing_stack` — liste ordonnée d'effets avec paramètres
-- `take_screenshot` supporte `with_lighting=true/false`, `with_post_processing=true/false` pour comparaison A/B
-
-### Nouveaux formats
-
-- **TTF/OTF** avec génération d'atlas SDF
-- Format `.shader` custom (graphe sérialisé en JSON)
-- Textures LUT (PNG, strip standard 256×16)
-
-### Critère de sortie
-50 lumières dynamiques avec ombres à 60 FPS. Sprites avec normal maps réagissent correctement aux lumières. Texte SDF net de 8px à 200px. CRT + Bloom < 0.5ms overhead à 1080p. Un non-programmeur crée un shader custom avec l'éditeur visuel.
+| **Post-Processing** | Pipeline chainable : Bloom, CRT, Vignette, Pixelate, Screen Shake, Color Grading |
+| **Éclairage 2D** | Point lights avec falloff, radius, intensité, couleur configurable |
+| **Ombres 2D** | Shadow maps 1D, PCF soft shadows, ray marching |
+| **SDF Fonts** | Texte net à toute échelle depuis un atlas 32px. Outline, drop shadow, animated glow |
+| **Shader Graph** | Graphe de nœuds → compilateur WGSL. PostEffect::Custom. 4 effets démo |
+| **Particle Editor** | Intégré dans l'éditeur (mode Particles). Curve editor, gradient editor, sub-emitters, JSON save/load |
+| **MCP** | 5 nouveaux outils particles (20 total) |
+| **CLI** | `toile editor` |
 
 ---
 
-## v0.5 — "Web & Share" (6 semaines)
+## v0.5 — "Complete Editor" (10 semaines)
 
-**Philosophie :** Le chemin le plus rapide de "j'ai fait un jeu" à "joue à mon jeu" est une URL. L'export web supprime la barrière du téléchargement et débloque itch.io, Newgrounds, et le partage social. Cible : **< 3 MB** pour un jeu simple.
+> ADR : [031-v05-editor-mvp-complet.md](adr/031-v05-editor-mvp-complet.md)
 
-### Nouvelles features
+**Philosophie :** Connecter toutes les briques. Un utilisateur crée un jeu complet (menus → gameplay → game over) depuis l'éditeur et le lance avec `toile run`. Toutes les features existantes (behaviors, event sheets, particules, transitions) deviennent accessibles depuis l'UI.
 
-| Feature | Détails |
-|---------|---------|
-| **Export WASM/WebGL2** | Compilation via `wasm-pack`/`wasm-bindgen`. wgpu cible WebGPU nativement ; fallback WebGL2 via backend OpenGL de wgpu. |
-| **Bundling d'assets web** | Pack tous les assets dans un `.bin` unique avec manifeste. Fetch via HTTP. Chargement streaming avec barre de progression. |
-| **Audio web** | Backend WebAudio API. Auto-unlock du contexte audio au premier input utilisateur. |
-| **Optimisation taille** | Tree-shaking, LTO, `wasm-opt`, compression zstd, WebP pour textures. Cible : **< 3 MB** (hello world platformer), **< 8 MB** (jeu riche). |
-| **Deploy itch.io** | `toile deploy itch <user/game>` via butler CLI. Upload automatique. |
-| **Preview navigateur** | `toile serve` — serveur HTTP local, ouvre le jeu dans le navigateur avec hot-reload WebSocket. |
-| **Input tactile** | Mapping touch → pointer events. Gamepad virtuel on-screen optionnel pour navigateurs mobiles. |
+### Le problème
 
-### IA / MCP
+Toutes les briques existent mais sont **orphelines** :
 
-- `build_project { platform: "web" }` retourne le chemin et la taille du build
-- `deploy_itch { user: "...", game: "..." }` retourne l'URL
-- `start_web_preview` retourne une URL localhost utilisable par l'IA avec un outil navigateur
+| Système | Sérialisable | Éditeur UI | Runtime | Verdict |
+|---------|---|---|---|---|
+| Behaviors (7 types) | ✅ | ❌ | ❌ | Orphelin |
+| Event Sheets (8 cond, 11 actions) | ✅ | ❌ | ❌ | Orphelin |
+| Prefabs | ✅ | ❌ | ⚠️ MCP only | Orphelin |
+| Particules | ✅ | ✅ panel | ⚠️ Demo | Partiel |
+| Scene transitions | ✅ code | ❌ | ❌ | Orphelin |
+| Éclairage/Ombres | ✅ code | ❌ | ⚠️ Demo | Orphelin |
+| Post-processing | ✅ code | ❌ | ⚠️ Demo | Orphelin |
 
-### Nouvelles plateformes
+### Phase 1 : Format + Runtime (fondations)
 
-| Plateforme | Statut |
-|-----------|--------|
-| **Web (WASM/WebGL2)** | **Nouveau** |
-| **Web (WASM/WebGPU)** | **Expérimental** (Chrome 121+) |
+**Format de scène étendu :**
+
+```rust
+// EntityData v2
+pub behaviors: Vec<BehaviorConfig>,
+pub event_sheet: Option<String>,
+pub particle_emitter: Option<String>,
+pub tags: Vec<String>,
+pub variables: HashMap<String, f64>,
+pub collision_shape: Option<CollisionShape>,
+pub visible: bool,
+
+// SceneData v2
+pub background_color: [f32; 4],
+pub camera_zoom: f32,
+pub camera_position: [f32; 2],
+pub gravity: [f32; 2],
+```
+
+**Game Runner :**
+- BehaviorExecutor — exécute Platform/TopDown/Bullet/Sine/Fade/Wrap/Solid chaque frame
+- EventSheetExecutor — évalue les event sheets, exécute les commandes
+- CollisionSystem — détection AABB/Circle entre entités taggées
+- ParticleManager — charge et update les émetteurs attachés
+- SceneLoader — charge JSON, instancie textures, résout prefabs
+
+**CLI :**
+```bash
+toile run                       # depuis Toile.toml
+toile run --scene level2.json   # scène spécifique
+```
+
+### Phase 2 : Éditeur Inspector enrichi
+
+| Section Inspector | Fonctionnalité |
+|-------------------|----------------|
+| **Behaviors** | +Add Behavior, dropdown, éditeur de paramètres par type |
+| **Tags & Variables** | Chips éditables, variables initiales clé/valeur |
+| **Collision Shape** | AABB/Circle, gizmo dans le viewport |
+| **Particle Emitter** | Sélecteur .particles.json ou preset |
+| **Sprite Selector** | Choisir une texture parmi les assets |
+| **Scene Settings** | Background color, gravity, camera defaults |
+
+### Phase 3 : Play Mode + Event Sheet Editor
+
+- **Play/Stop** dans la toolbar de l'éditeur
+- **Event Sheet Editor** : mode dédié, créer conditions + actions avec pickers visuels
+- **Scene transitions** : GoToScene preview
+
+### Phase 4 : MCP + Polish
+
+| Nouvel outil MCP | Description |
+|------------------|-------------|
+| `add_behavior` | Ajouter un behavior à une entité |
+| `remove_behavior` | Retirer un behavior |
+| `set_entity_tags` | Définir les tags |
+| `set_entity_variables` | Variables initiales |
+| `create_event_sheet` | Créer un event sheet |
+| `get_event_sheet` | Lire un event sheet |
+| `update_event_sheet` | Modifier un event sheet |
 
 ### Critère de sortie
-Platformer (5 niveaux, 20 sprites, 10 sons) exporte en web < 3 MB. Chargement < 2s sur connexion 50 Mbps. 60 FPS sur Chrome/Firefox/Safari. Deploy itch.io en zéro étapes manuelles. Le jeu joue identiquement desktop et web.
+Un jeu de platformer complet (menu → 3 niveaux → game over) créé **entièrement depuis l'éditeur**, sans écrire une ligne de Rust. Lancé via `toile run`. Les behaviors Platform + Solid fonctionnent. Les event sheets gèrent les collectibles et les transitions de scène. Les particules sont attachées aux entités. Le tout sauvegarde/charge en JSON.
 
 ---
 
 ## v1.0 — "Production Ready" (12 semaines)
 
-**Philosophie :** Tout ce dont une équipe a besoin pour livrer un jeu commercial. Pipeline d'assets, accessibilité, localisation, simulation déterministe, profiling, et documentation complète avec jeux exemples.
-
-**Cette version inclut un gel de l'API publique.** Après v1.0, l'API suit le semantic versioning.
+**Philosophie :** Tout ce dont une équipe a besoin pour livrer un jeu commercial.
 
 ### Nouvelles features
 
 | Feature | Détails |
 |---------|---------|
-| **Pipeline d'assets** | Import → Process (premultiply alpha, atlas packing MaxRects, atlas SDF, compression) → Pack (bundle binaire .pak, zstd, avec manifeste). Runtime : asset manager charge depuis .pak ; chemins de fichiers marchent encore en dev. |
-| **Framework d'accessibilité** | Screen reader (MSAA Windows, NSAccessibility macOS, AT-SPI Linux). Modes daltonien (deutéranopie, protanopie, tritanopie — simulation + correction). Remapping d'input global. Scaling de texte. Réduction de mouvement (désactive shake, particules, animations rapides). |
-| **Localisation** | Tables de strings (CSV/JSON). Lookup par clé : `t("ui.play_button")`. Pluralisation par langue. Support RTL (arabe, hébreu). Fallbacks de polices par langue (CJK, arabe, thaï). Pseudolocalisation (mode debug). |
-| **Mode déterministe** | Opt-in. Maths fixed-point pour la physique. RNG seedé. Enregistrement d'inputs frame-locked. Fichier replay : `{ seed, inputs_per_frame[] }`. Playback : feed les inputs enregistrés, vérifie les checksums d'état par frame. |
-| **Profiling** | Breakdown frame time (bar chart subsystèmes). Visualisation de batches (overlay color-codé). Heatmap d'overdraw. Inspecteur mémoire. Inspecteur d'entités live. |
-| **Documentation** | Référence API auto-générée. Guides conceptuels (architecture, getting started, scripting, behaviors, shaders, accessibilité, localisation). Tutoriels vidéo. |
-| **Jeux exemples** | **Platformer** (3 niveaux, controller, ennemis, UI). **Top-down shooter** (arène procédurale, vagues). **Puzzle** (grille, undo/redo, 20 niveaux). **Visual novel** (dialogues, branching, portraits). Chaque jeu est complet, poli, open-source, avec code commenté. |
-
-### IA / MCP
-
-- Replay : `start_recording`, `stop_recording`, `play_replay`, `get_replay_checksum`
-- Profiling : `get_frame_profile` retourne des données structurées
-- Localisation : `set_language`, `get_string`, `list_languages`, `add_translation`
-- Accessibilité : `set_accessible_name`, `enable_colorblind_mode`
-- Test runner headless : `toile test --headless --replay replay.bin --checksum expected.sha256`
-- `llms.txt` v3 (API complète + behaviors + event sheets + shader nodes)
+| **Pipeline d'assets** | Import → Process (atlas packing, compression) → Pack (.pak binaire zstd). |
+| **Framework d'accessibilité** | Screen reader, modes daltonien, remapping input, scaling texte, réduction de mouvement. |
+| **Localisation** | Tables de strings, pluralisation, support RTL, fallbacks polices CJK. |
+| **Mode déterministe** | Maths fixed-point, RNG seedé, enregistrement/playback de replays. |
+| **Profiling** | Breakdown frame time, heatmap overdraw, inspecteur mémoire. |
+| **Documentation** | Référence API, guides, tutoriels, 4 jeux exemples complets. |
+| **Undo/Redo avancé** | Historique complet dans l'éditeur avec groupes d'opérations. |
 
 ### Critère de sortie
-Les 4 jeux exemples compilent et tournent sur Windows/macOS/Linux/Web. Pipeline d'assets réduit un projet 100 MB dev en < 15 MB distribution. Screen reader lit les éléments UI (NVDA/VoiceOver). Un replay joue identiquement cross-plateforme. Documentation couvre 100% de l'API publique. Zéro crash bug connu.
+Les 4 jeux exemples compilent et tournent sur Windows/macOS/Linux. Pipeline d'assets réduit 100 MB → < 15 MB. Screen reader lit les éléments UI. Documentation 100% de l'API publique. Zéro crash bug connu.
 
 ---
 
-## v1.5 — "Connected" (12 semaines)
+## v1.5 — "Web & Share" (8 semaines)
 
-**Philosophie :** Les jeux sont sociaux. Le multiplayer avec rollback netcode adresse la feature la plus demandée et absente de tous les moteurs 2D. Le modding étend la vie des jeux. Les analytics aident les développeurs à comprendre leurs joueurs.
+> Note : anciennement prévu comme v0.5. Reporté pour prioriser l'éditeur complet (ADR-031).
+> Voir aussi : [ADR-018 (web export)](adr/018-web-export-wasm.md)
+
+**Philosophie :** Le chemin le plus rapide de "j'ai fait un jeu" à "joue à mon jeu" est une URL.
 
 ### Nouvelles features
 
 | Feature | Détails |
 |---------|---------|
-| **Rollback netcode** | Style GGPO. Exploite le mode déterministe v1.0. Save/restore de snapshots d'état. Input delay configurable (1-6 frames). Budget rollback : resimulation de 15 frames en < 1.1ms à 60 FPS. Prédiction et correction d'input. Smoothing visuel. |
-| **Système de lobby** | Host/join via code de lobby. Découverte de pairs via relay server. NAT traversal (STUN/TURN). |
-| **Matchmaking** | Matchmaking basé sur le skill. Préférences régionales. Système de file d'attente. Composant serveur léger déployable. |
-| **Mode spectateur** | Stream d'état de jeu en lecture seule. Délayé pour prévenir la triche. |
-| **Framework de modding** | Lua sandboxé (pas d'accès filesystem/réseau/OS). Overrides d'assets par chemin. Manifeste de mod (JSON). Manager de mods (UI enable/disable, load order, détection de conflits). |
-| **Analytics** | Heatmaps (position joueur par frame, agrégée). Enregistrement de sessions (réutilise le système replay). Événements custom. Backend self-hosted (REST API + SQLite). |
-| **Intégration Steam** | Steamworks SDK : achievements, leaderboards, cloud saves, overlay, rich presence. Workshop pour mods. `toile deploy steam`. |
+| **Export WASM/WebGPU** | Compilation via wasm-pack. Fallback WebGL2. |
+| **Bundling web** | Assets en .bin unique, fetch HTTP, chargement streaming. |
+| **Audio web** | Backend WebAudio API. Auto-unlock au premier input. |
+| **Optimisation taille** | Tree-shaking, LTO, wasm-opt. Cible : < 3 MB hello world. |
+| **Deploy itch.io** | `toile deploy itch <user/game>` via butler CLI. |
+| **Preview navigateur** | `toile serve` — serveur HTTP local + hot-reload WebSocket. |
+| **Input tactile** | Touch → pointer events. Gamepad virtuel on-screen optionnel. |
 
 ### Critère de sortie
-Deux joueurs jouent un fighting game avec rollback à 200ms de latence simulée. Resimulation 15 frames < 1.1ms. Un mod remplace tous les sprites joueur et ajoute un ennemi sans toucher au code moteur. Lua sandboxé ne peut pas accéder au filesystem. Heatmap de 1000 sessions se rend correctement. Build Steam s'upload et se lance.
+Platformer 5 niveaux exporte en web < 3 MB. 60 FPS Chrome/Firefox/Safari. Deploy itch.io en zéro étapes manuelles.
 
 ---
 
-## v2.0 — "Ecosystem" (continu)
+## v2.0 — "Connected" (12 semaines)
 
-**Philosophie :** Scaler au-delà d'un développeur sur une plateforme. Mobile, consoles, édition collaborative, marketplace, agents de playtesting IA, et SDK de plugins transforment le moteur d'un outil en plateforme.
+**Philosophie :** Les jeux sont sociaux. Multiplayer rollback netcode + modding + analytics.
 
-### Features planifiées
+### Features
+
+| Feature | Détails |
+|---------|---------|
+| **Rollback netcode** | Style GGPO. Exploite le mode déterministe v1.0. |
+| **Lobby / Matchmaking** | Host/join via code, NAT traversal, matchmaking skill-based. |
+| **Mode spectateur** | Stream d'état en lecture seule. |
+| **Framework de modding** | Lua sandboxé, overrides d'assets, manifeste mod JSON. |
+| **Analytics** | Heatmaps, enregistrement sessions, événements custom, backend self-hosted. |
+| **Intégration Steam** | Achievements, leaderboards, cloud saves, Workshop. |
+
+### Critère de sortie
+Deux joueurs jouent un fighting game avec rollback à 200ms de latence. Un mod remplace tous les sprites sans toucher au code. Build Steam s'upload et se lance.
+
+---
+
+## v3.0 — "Ecosystem" (continu)
 
 | Feature | Effort estimé |
 |---------|--------------|
-| **Export iOS** (Metal, touch, App Store packaging) | 8-10 semaines |
-| **Export Android** (OpenGL ES 3.0/Vulkan, NDK, APK/AAB) | 8-10 semaines |
-| **Export console** (Switch, PlayStation, Xbox — partenariats NDA) | Continu, dépend des partenaires |
-| **Édition collaborative** (CRDT, multi-utilisateurs temps réel) | 12-16 semaines |
-| **Marketplace / asset store** (assets communautaires, partage de revenus) | 12+ semaines |
-| **Agents de playtesting IA** (exploration autonome, rapport de bugs, heatmaps) | 12+ semaines |
-| **SDK de plugins/extensions** (API stable, hooks lifecycle, points de contribution UI) | 8-10 semaines |
-| **Toolkit de génération procédurale** (bruit, WFC, graph-based, donjons) | 6-8 semaines |
-| **Système de dialogue/narration** (branching, conditions, localisation, éditeur visuel) | 6-8 semaines |
-| **Audio avancé** (positionnel 2D, bus DSP, musique adaptative, intégration FMOD/Wwise) | 6-8 semaines |
+| Export iOS (Metal, touch, App Store) | 8-10 semaines |
+| Export Android (OpenGL ES 3.0/Vulkan) | 8-10 semaines |
+| Export console (Switch, PlayStation, Xbox) | Continu |
+| Édition collaborative (CRDT) | 12-16 semaines |
+| Marketplace / asset store | 12+ semaines |
+| Agents de playtesting IA | 12+ semaines |
+| SDK de plugins/extensions | 8-10 semaines |
+| Génération procédurale (WFC, donjons) | 6-8 semaines |
+| Système de dialogue/narration | 6-8 semaines |
+| Audio avancé (positionnel, DSP, FMOD/Wwise) | 6-8 semaines |
 
 ---
 
@@ -342,84 +341,35 @@ Deux joueurs jouent un fighting game avec rollback à 200ms de latence simulée.
 
 | Feature | Reportée à | Raison |
 |---------|-----------|--------|
-| **Physique complète** (joints, contraintes) | v0.2-v0.3 | La physique cassée de Godot est le reproche #1. On livre d'abord une collision simple et correcte. La physique complète vient quand on peut la faire bien (intégration Rapier). |
-| **3D de quelque forme que ce soit** | Jamais | C'est un moteur 2D. Pas 2.5D, pas "2D avec éléments 3D". Les moteurs qui essaient les deux ne font bien ni l'un ni l'autre. |
-| **Scripting visuel node-based** | Post-v1.0 (si demande) | Les event sheets (style Construct) ont une barrière d'entrée plus basse que les graphes de nœuds. Le node-based crée du spaghetti plus vite. |
-| **DSL custom (style GDScript)** | Post-v1.0 (si jamais) | Designer un bon DSL est extrêmement difficile. Lua est prouvé. Un mauvais DSL est pire que pas de DSL. |
-| **Mobile** | v2.0 | Complexité plateforme disproportionnée. Desktop et web doivent être rock-solid d'abord. |
-| **Consoles** | v2.0+ | Nécessite des partenariats NDA, du matériel dédié, et des couches plateforme closed-source. Initiative business, pas juste engineering. |
-| **Multiplayer** | v1.5 | Le rollback netcode nécessite la simulation déterministe. Les contraintes architecturales sont conçues à v1.0 (mode déterministe), mais le networking peut attendre. |
-| **Marketplace** | v2.0 | Un marketplace prématuré sans communauté est une vitrine vide. Construire la communauté d'abord. |
-| **Spine 2D** | Post-v0.3 | Spine est premium ($70-$350). L'animation frame-by-frame et l'import Aseprite couvrent 80%+ des besoins indie. |
-| **SVG runtime** | Probablement jamais | SVG est énormément complexe. Rasteriser à l'import via NanoSVG. Le rendu SVG runtime est un gouffre. |
-| **Édition collaborative** | v2.0 | L'édition CRDT est un investissement infra majeur. Nécessite un éditeur mature et stable comme fondation. |
+| **3D** | Jamais | Moteur 2D-pure. Les moteurs qui essaient les deux ne font bien ni l'un ni l'autre. |
+| **Export web** | v1.5 | L'éditeur complet (v0.5) et la stabilité production (v1.0) passent avant la distribution. |
+| **Scripting visuel node-based** | Post-v1.0 | Event sheets ont une barrière d'entrée plus basse. |
+| **DSL custom** | Post-v1.0 | Lua est prouvé. Un mauvais DSL est pire que pas de DSL. |
+| **Mobile** | v3.0 | Desktop et web d'abord. |
+| **Consoles** | v3.0+ | NDA, matériel dédié, initiative business. |
+| **Multiplayer** | v2.0 | Nécessite mode déterministe (v1.0). |
+| **Marketplace** | v3.0 | Communauté d'abord, marketplace ensuite. |
 
 ---
 
 ## Jalons communautaires
 
-| Jalon | Timing cible | Description |
-|-------|-------------|-------------|
-| **Lancement open-source** | Release v0.1 | Repo public sous licence MIT. Guide de contribution, code de conduite. |
-| **Discord / forum** | Release v0.1 | Hub communautaire central. |
-| **Première game jam** | Release v0.2 | Hoster ou sponsoriser une game jam utilisant le moteur. Dogfood les outils. |
-| **Série de tutoriels (texte)** | v0.2-v0.3 | "Getting Started" jusqu'à "Publishing Your Game". |
-| **Série de tutoriels (vidéo)** | v0.3-v1.0 | YouTube, visant les débutants. |
-| **Premier contributeur externe** | ~v0.2 | Quelqu'un hors de l'équipe core soumet un PR mergé. |
-| **10 jeux communautaires** | v0.3-v0.4 | Jeux faits par des gens hors de l'équipe core. Preuve d'utilisabilité. |
-| **Talk conférence / devlog** | v0.4+ | Blog/vidéo documentant le dev. Soumission conférence (GDC, Nordic Game, Handmade Seattle). |
-| **100 GitHub stars** | v0.2-v0.3 | Signal de traction précoce. |
-| **1 000 GitHub stars** | v0.5-v1.0 | Intérêt communautaire significatif. |
-| **Premier jeu commercial** | v1.0+ | Un jeu vendu sur Steam ou itch.io construit avec le moteur. Validation ultime. |
-| **Écosystème d'asset packs** | v1.0+ | La communauté crée et partage des starter packs, tilesets, sons. |
-| **Écosystème de plugins** | v2.0+ | Extensions tierces : nouveaux behaviors, outils éditeur, importeurs. |
-| **Adoption éducative** | v1.0+ | Une école ou cours en ligne utilise le moteur pour l'enseignement. |
+| Jalon | Timing cible |
+|-------|-------------|
+| Lancement open-source | v0.1 |
+| Discord / forum | v0.1 |
+| Première game jam | v0.2 |
+| Série de tutoriels (texte) | v0.2-v0.3 |
+| Série de tutoriels (vidéo) | v0.3-v1.0 |
+| Premier contributeur externe | ~v0.2 |
+| 10 jeux communautaires | v0.3-v0.4 |
+| Talk conférence / devlog | v0.4+ |
+| 100 GitHub stars | v0.2-v0.3 |
+| 1 000 GitHub stars | v0.5-v1.0 |
+| Premier jeu commercial | v1.0+ |
+| Écosystème de plugins | v2.0+ |
+| Adoption éducative | v1.0+ |
 
 ---
 
-## Annexes
-
-### Stack technique
-
-| Couche | Technologie | Verrouillée à |
-|--------|-----------|--------------|
-| Langage | Rust | v0.1 |
-| Build | Cargo | v0.1 |
-| Windowing/Input | SDL3 (rust bindings) | v0.1 |
-| Rendu | wgpu | v0.1 |
-| Shaders | WGSL | v0.1 |
-| ECS | hecs | v0.1 |
-| Math | glam | v0.1 |
-| Audio | kira | v0.1 |
-| Physique | Custom simple (v0.1-v0.2), Rapier (v0.3+) | v0.2 |
-| Scripting | Lua 5.4 / LuaJIT via mlua | v0.2 |
-| UI éditeur | egui | v0.1 |
-| Format de scène | JSON + JSON Schema | v0.1 |
-| Assets (dev) | Fichiers source (PNG, ASE, JSON, WAV, OGG, TTF) | v0.1 |
-| Assets (dist) | .pak binaire (zstd) | v1.0 |
-| Web | wasm-pack + wasm-bindgen | v0.5 |
-| Networking | UDP custom + rollback style GGPO | v1.5 |
-| IA | Serveur MCP (transport stdio) | v0.1 |
-| Documentation | llms.txt + mdBook + API docs auto-générées | v0.1 |
-
-### Cibles de performance
-
-| Métrique | Cible v0.1 | Cible v1.0 |
-|----------|-----------|-----------|
-| Max sprites à 60 FPS (GPU intégré) | 10 000 | 50 000 |
-| Max sprites à 60 FPS (GPU dédié) | 50 000 | 200 000 |
-| Draw calls (10k sprites) | < 20 | < 5 |
-| Overhead mémoire moteur | < 20 MB | < 15 MB |
-| Mémoire par entité | < 256 bytes | < 192 bytes |
-| Fenêtre visible | < 500 ms | < 200 ms |
-| Premier frame | < 1 s | < 500 ms |
-| Petit jeu chargé | < 3 s | < 1.5 s |
-| Export web (hello world) | N/A | < 3 MB |
-| Budget CPU total (60 FPS) | < 10 ms | < 8 ms |
-| Collision (10k entités) | < 3 ms | < 1.5 ms |
-| Hot-reload Lua | N/A | < 500 ms |
-| Resimulation rollback (15 frames) | N/A | < 1.1 ms |
-
----
-
-*Ce document est vivant. Les cibles et timelines seront révisées selon la vélocité réelle, le feedback communautaire, et l'évolution du paysage concurrentiel. L'ordre des features reflète des priorités basées sur la recherche, pas un séquencement arbitraire — chaque version construit sur la fondation de la précédente, et rien n'est planifié avant que ses dépendances soient stables.*
+*Ce document est vivant. Les cibles et timelines seront révisées selon la vélocité réelle, le feedback communautaire, et l'évolution du paysage concurrentiel.*
