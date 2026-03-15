@@ -9,7 +9,7 @@ pub struct SineConfig {
     pub period: f32,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum SineProperty {
     X,
     Y,

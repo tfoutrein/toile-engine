@@ -13,6 +13,7 @@ path = "src/bin/main.rs"
 toile-app = { workspace = true }
 toile-scene = { workspace = true }
 toile-core = { path = "../toile-core", features = ["serde"] }
+toile-behaviors = { workspace = true }
 toile-graphics = { workspace = true }
 egui = { workspace = true }
 egui-wgpu = { workspace = true }

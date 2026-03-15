@@ -8,10 +8,107 @@ use toile_graphics::sprite_renderer::pack_color;
 use winit::event::WindowEvent;
 use winit::window::Window;
 
+use toile_behaviors::BehaviorConfig;
+
 use crate::overlay::EguiOverlay;
 use crate::particle_editor::ParticleEditorPanel;
 use crate::scene_data::{EntityData, SceneData};
 use crate::tilemap_tool::{self, TilemapEditor, TileTool};
+
+// ── Behavior helpers for the Inspector ──────────────────────────────────
+
+fn behavior_label(beh: &BehaviorConfig) -> &'static str {
+    match beh {
+        BehaviorConfig::Platform(_) => "Platform",
+        BehaviorConfig::TopDown(_)  => "TopDown",
+        BehaviorConfig::Bullet(_)   => "Bullet",
+        BehaviorConfig::Sine(_)     => "Sine",
+        BehaviorConfig::Fade(_)     => "Fade",
+        BehaviorConfig::Wrap(_)     => "Wrap",
+        BehaviorConfig::Solid       => "Solid",
+    }
+}
+
+fn default_behavior_config(name: &str) -> BehaviorConfig {
+    match name {
+        "Platform" => BehaviorConfig::Platform(Default::default()),
+        "TopDown"  => BehaviorConfig::TopDown(Default::default()),
+        "Bullet"   => BehaviorConfig::Bullet(Default::default()),
+        "Sine"     => BehaviorConfig::Sine(Default::default()),
+        "Fade"     => BehaviorConfig::Fade(Default::default()),
+        "Wrap"     => BehaviorConfig::Wrap(Default::default()),
+        "Solid"    => BehaviorConfig::Solid,
+        _          => BehaviorConfig::Solid,
+    }
+}
+
+fn behavior_inspector(ui: &mut egui::Ui, beh: &mut BehaviorConfig, idx: usize) {
+    let grid_id = format!("beh_grid_{idx}");
+    match beh {
+        BehaviorConfig::Platform(c) => {
+            egui::Grid::new(grid_id).num_columns(2).show(ui, |ui| {
+                ui.label("Gravity"); ui.add(egui::DragValue::new(&mut c.gravity).speed(1.0)); ui.end_row();
+                ui.label("Jump Force"); ui.add(egui::DragValue::new(&mut c.jump_force).speed(1.0)); ui.end_row();
+                ui.label("Max Speed"); ui.add(egui::DragValue::new(&mut c.max_speed).speed(1.0)); ui.end_row();
+                ui.label("Accel"); ui.add(egui::DragValue::new(&mut c.acceleration).speed(1.0)); ui.end_row();
+                ui.label("Decel"); ui.add(egui::DragValue::new(&mut c.deceleration).speed(1.0)); ui.end_row();
+                ui.label("Coyote"); ui.add(egui::DragValue::new(&mut c.coyote_time).speed(0.01)); ui.end_row();
+                ui.label("Jump Buf"); ui.add(egui::DragValue::new(&mut c.jump_buffer).speed(0.01)); ui.end_row();
+                ui.label("Max Jumps"); ui.add(egui::DragValue::new(&mut c.max_jumps).range(1..=5)); ui.end_row();
+            });
+        }
+        BehaviorConfig::TopDown(c) => {
+            egui::Grid::new(grid_id).num_columns(2).show(ui, |ui| {
+                ui.label("Max Speed"); ui.add(egui::DragValue::new(&mut c.max_speed).speed(1.0)); ui.end_row();
+                ui.label("Accel"); ui.add(egui::DragValue::new(&mut c.acceleration).speed(1.0)); ui.end_row();
+                ui.label("Decel"); ui.add(egui::DragValue::new(&mut c.deceleration).speed(1.0)); ui.end_row();
+                ui.label("Diag Fix"); ui.checkbox(&mut c.diagonal_correction, ""); ui.end_row();
+            });
+        }
+        BehaviorConfig::Bullet(c) => {
+            egui::Grid::new(grid_id).num_columns(2).show(ui, |ui| {
+                ui.label("Speed"); ui.add(egui::DragValue::new(&mut c.speed).speed(1.0)); ui.end_row();
+                ui.label("Accel"); ui.add(egui::DragValue::new(&mut c.acceleration).speed(0.1)); ui.end_row();
+                ui.label("Gravity"); ui.add(egui::DragValue::new(&mut c.gravity).speed(1.0)); ui.end_row();
+                ui.label("Angle°"); ui.add(egui::DragValue::new(&mut c.angle_degrees).speed(1.0)); ui.end_row();
+            });
+        }
+        BehaviorConfig::Sine(c) => {
+            egui::Grid::new(grid_id).num_columns(2).show(ui, |ui| {
+                ui.label("Property");
+                egui::ComboBox::from_id_salt(format!("sine_prop_{idx}"))
+                    .selected_text(format!("{:?}", c.property))
+                    .show_ui(ui, |ui| {
+                        use toile_behaviors::sine::SineProperty;
+                        ui.selectable_value(&mut c.property, SineProperty::X, "X");
+                        ui.selectable_value(&mut c.property, SineProperty::Y, "Y");
+                        ui.selectable_value(&mut c.property, SineProperty::Angle, "Angle");
+                        ui.selectable_value(&mut c.property, SineProperty::Opacity, "Opacity");
+                        ui.selectable_value(&mut c.property, SineProperty::Size, "Size");
+                    });
+                ui.end_row();
+                ui.label("Magnitude"); ui.add(egui::DragValue::new(&mut c.magnitude).speed(0.5)); ui.end_row();
+                ui.label("Period"); ui.add(egui::DragValue::new(&mut c.period).speed(0.1).range(0.1..=60.0)); ui.end_row();
+            });
+        }
+        BehaviorConfig::Fade(c) => {
+            egui::Grid::new(grid_id).num_columns(2).show(ui, |ui| {
+                ui.label("Fade In"); ui.add(egui::DragValue::new(&mut c.fade_in_time).speed(0.1)); ui.end_row();
+                ui.label("Fade Out"); ui.add(egui::DragValue::new(&mut c.fade_out_time).speed(0.1)); ui.end_row();
+                ui.label("Destroy"); ui.checkbox(&mut c.destroy_on_fade_out, "on fade out"); ui.end_row();
+            });
+        }
+        BehaviorConfig::Wrap(c) => {
+            ui.horizontal(|ui| {
+                ui.label("Margin");
+                ui.add(egui::DragValue::new(&mut c.margin).speed(1.0));
+            });
+        }
+        BehaviorConfig::Solid => {
+            ui.label(egui::RichText::new("Static solid — blocks Platform movement").size(10.0).color(egui::Color32::from_gray(140)));
+        }
+    }
+}
 
 pub struct EditorApp {
     overlay: Option<EguiOverlay>,
@@ -45,6 +142,7 @@ pub struct EditorApp {
     tilemap_editor: TilemapEditor,
     // Particle editor
     particle_editor: ParticleEditorPanel,
+    show_scene_settings: bool,
     editor_mode: EditorMode,
 }
 
@@ -110,6 +208,7 @@ impl EditorApp {
             show_splash: true,
             tilemap_editor: TilemapEditor::new(),
             particle_editor: ParticleEditorPanel::new(),
+            show_scene_settings: false,
             editor_mode: EditorMode::Entity,
         }
     }
@@ -933,6 +1032,10 @@ impl Game for EditorApp {
                 }
                 ui.menu_button("View", |ui| {
                     ui.checkbox(&mut self.show_grid, "Show Grid");
+                    if ui.button("Scene Settings...").clicked() {
+                        self.show_scene_settings = true;
+                        ui.close_menu();
+                    }
                     if ui.button("Reset Camera").clicked() {
                         self.camera_pos = Vec2::ZERO;
                         self.camera_zoom = 1.0;
@@ -1104,7 +1207,8 @@ impl Game for EditorApp {
         }
 
         if self.editor_mode != EditorMode::Particle {
-        egui::SidePanel::right("inspector").default_width(260.0).show(&ctx, |ui| {
+        egui::SidePanel::right("inspector").min_width(280.0).default_width(300.0).show(&ctx, |ui| {
+            egui::ScrollArea::vertical().show(ui, |ui| {
             ui.heading("Inspector");
             ui.separator();
             if let Some(id) = self.selected_id {
@@ -1166,10 +1270,193 @@ impl Game for EditorApp {
 
                             ui.label("Layer");
                             ui.add(egui::DragValue::new(&mut entity.layer));
+                            ui.label("Vis");
+                            ui.checkbox(&mut entity.visible, "");
+                            ui.end_row();
+
+                            ui.label("Sprite");
+                            ui.text_edit_singleline(&mut entity.sprite_path);
                             ui.label("");
                             ui.label("");
                             ui.end_row();
                         });
+
+                    // ── Behaviors ─────────────────────────────────────────
+                    ui.add_space(8.0);
+                    egui::CollapsingHeader::new(egui::RichText::new("Behaviors").strong())
+                        .default_open(true)
+                        .show(ui, |ui| {
+                            let mut remove_idx: Option<usize> = None;
+                            for (i, beh) in entity.behaviors.iter_mut().enumerate() {
+                                ui.horizontal(|ui| {
+                                    ui.label(behavior_label(beh));
+                                    if ui.small_button("x").clicked() {
+                                        remove_idx = Some(i);
+                                    }
+                                });
+                                behavior_inspector(ui, beh, i);
+                                ui.separator();
+                            }
+                            if let Some(idx) = remove_idx {
+                                entity.behaviors.remove(idx);
+                            }
+                            // Add behavior combo
+                            let mut add_choice = String::new();
+                            egui::ComboBox::from_id_salt("add_behavior")
+                                .selected_text("+ Add Behavior")
+                                .show_ui(ui, |ui| {
+                                    for name in &["Platform", "TopDown", "Bullet", "Sine", "Fade", "Wrap", "Solid"] {
+                                        if ui.selectable_label(false, *name).clicked() {
+                                            add_choice = name.to_string();
+                                        }
+                                    }
+                                });
+                            if !add_choice.is_empty() {
+                                entity.behaviors.push(default_behavior_config(&add_choice));
+                            }
+                        });
+
+                    // ── Tags ─────────────────────────────────────────────
+                    ui.add_space(4.0);
+                    egui::CollapsingHeader::new(egui::RichText::new("Tags").strong())
+                        .default_open(true)
+                        .show(ui, |ui| {
+                            let mut remove_tag: Option<usize> = None;
+                            for (i, tag) in entity.tags.iter().enumerate() {
+                                ui.horizontal(|ui| {
+                                    ui.label(egui::RichText::new(tag).monospace()
+                                        .background_color(egui::Color32::from_gray(50)));
+                                    if ui.small_button("x").clicked() {
+                                        remove_tag = Some(i);
+                                    }
+                                });
+                            }
+                            if let Some(idx) = remove_tag {
+                                entity.tags.remove(idx);
+                            }
+                            ui.horizontal(|ui| {
+                                // Inline quick-add for common tags
+                                for tag in &["Player", "Solid", "Coin", "Enemy"] {
+                                    if !entity.tags.iter().any(|t| t == tag) {
+                                        if ui.small_button(format!("+{tag}")).clicked() {
+                                            entity.tags.push(tag.to_string());
+                                        }
+                                    }
+                                }
+                            });
+                        });
+
+                    // ── Variables ─────────────────────────────────────────
+                    egui::CollapsingHeader::new(egui::RichText::new("Variables").strong())
+                        .default_open(false)
+                        .show(ui, |ui| {
+                            let keys: Vec<String> = entity.variables.keys().cloned().collect();
+                            let mut remove_key: Option<String> = None;
+                            for key in &keys {
+                                ui.horizontal(|ui| {
+                                    ui.label(key);
+                                    if let Some(v) = entity.variables.get_mut(key) {
+                                        ui.add(egui::DragValue::new(v).speed(0.1));
+                                    }
+                                    if ui.small_button("x").clicked() {
+                                        remove_key = Some(key.clone());
+                                    }
+                                });
+                            }
+                            if let Some(k) = remove_key {
+                                entity.variables.remove(&k);
+                            }
+                            if ui.button("+ Add Variable").clicked() {
+                                let name = format!("var{}", entity.variables.len());
+                                entity.variables.insert(name, 0.0);
+                            }
+                        });
+
+                    // ── Collision ─────────────────────────────────────────
+                    egui::CollapsingHeader::new(egui::RichText::new("Collision").strong())
+                        .default_open(false)
+                        .show(ui, |ui| {
+                            let has_collider = entity.collider.is_some();
+                            let mut enabled = has_collider;
+                            if ui.checkbox(&mut enabled, "Enable collider").changed() {
+                                if enabled && entity.collider.is_none() {
+                                    entity.collider = Some(toile_scene::ColliderData::Aabb {
+                                        half_w: entity.width * 0.5,
+                                        half_h: entity.height * 0.5,
+                                    });
+                                } else if !enabled {
+                                    entity.collider = None;
+                                }
+                            }
+                            if let Some(ref mut col) = entity.collider {
+                                match col {
+                                    toile_scene::ColliderData::Aabb { half_w, half_h } => {
+                                        ui.label("AABB");
+                                        ui.horizontal(|ui| {
+                                            ui.label("Half W:");
+                                            ui.add(egui::DragValue::new(half_w).speed(0.5).range(0.5..=1000.0));
+                                            ui.label("Half H:");
+                                            ui.add(egui::DragValue::new(half_h).speed(0.5).range(0.5..=1000.0));
+                                        });
+                                        if ui.button("Switch to Circle").clicked() {
+                                            *col = toile_scene::ColliderData::Circle { radius: (*half_w).max(*half_h) };
+                                        }
+                                    }
+                                    toile_scene::ColliderData::Circle { radius } => {
+                                        ui.label("Circle");
+                                        ui.horizontal(|ui| {
+                                            ui.label("Radius:");
+                                            ui.add(egui::DragValue::new(radius).speed(0.5).range(0.5..=1000.0));
+                                        });
+                                        if ui.button("Switch to AABB").clicked() {
+                                            *col = toile_scene::ColliderData::Aabb { half_w: *radius, half_h: *radius };
+                                        }
+                                    }
+                                }
+                            }
+                        });
+
+                    // ── Event Sheet ───────────────────────────────────────
+                    egui::CollapsingHeader::new(egui::RichText::new("Event Sheet").strong())
+                        .default_open(false)
+                        .show(ui, |ui| {
+                            let mut path = entity.event_sheet.clone().unwrap_or_default();
+                            ui.horizontal(|ui| {
+                                ui.label("Path:");
+                                if ui.text_edit_singleline(&mut path).changed() {
+                                    entity.event_sheet = if path.is_empty() { None } else { Some(path.clone()) };
+                                }
+                            });
+                            if entity.event_sheet.is_some() {
+                                if ui.small_button("Clear").clicked() {
+                                    entity.event_sheet = None;
+                                }
+                            }
+                        });
+
+                    // ── Particle Emitter ──────────────────────────────────
+                    egui::CollapsingHeader::new(egui::RichText::new("Particle Emitter").strong())
+                        .default_open(false)
+                        .show(ui, |ui| {
+                            let mut path = entity.particle_emitter.clone().unwrap_or_default();
+                            ui.horizontal(|ui| {
+                                ui.label("Path:");
+                                if ui.text_edit_singleline(&mut path).changed() {
+                                    entity.particle_emitter = if path.is_empty() { None } else { Some(path.clone()) };
+                                }
+                            });
+                            if entity.particle_emitter.is_some() {
+                                if ui.small_button("Clear").clicked() {
+                                    entity.particle_emitter = None;
+                                }
+                            }
+                        });
+
+                    // ── Delete button ─────────────────────────────────────
+                    ui.add_space(12.0);
+                    if ui.button(egui::RichText::new("Delete Entity").color(egui::Color32::from_rgb(255, 80, 80))).clicked() {
+                        delete_selected = true;
+                    }
                 } else {
                     self.selected_id = None;
                     ui.label("No entity selected");
@@ -1177,8 +1464,48 @@ impl Game for EditorApp {
             } else {
                 ui.label("No entity selected");
             }
+            }); // end ScrollArea
         });
         } // end `if self.editor_mode != EditorMode::Particle`
+
+        // Scene Settings window
+        if self.show_scene_settings {
+            let mut open = true;
+            egui::Window::new("Scene Settings")
+                .open(&mut open)
+                .default_width(300.0)
+                .show(&ctx, |ui| {
+                    let s = &mut self.scene.settings;
+                    egui::Grid::new("scene_settings_grid").num_columns(2).show(ui, |ui| {
+                        ui.label("Gravity");
+                        ui.add(egui::DragValue::new(&mut s.gravity).speed(1.0));
+                        ui.end_row();
+
+                        ui.label("Viewport W");
+                        ui.add(egui::DragValue::new(&mut s.viewport_width).range(320..=3840));
+                        ui.end_row();
+
+                        ui.label("Viewport H");
+                        ui.add(egui::DragValue::new(&mut s.viewport_height).range(240..=2160));
+                        ui.end_row();
+
+                        ui.label("Camera Zoom");
+                        ui.add(egui::DragValue::new(&mut s.camera_zoom).speed(0.1).range(0.1..=10.0));
+                        ui.end_row();
+
+                        ui.label("Clear R");
+                        ui.add(egui::Slider::new(&mut s.clear_color[0], 0.0..=1.0));
+                        ui.end_row();
+                        ui.label("Clear G");
+                        ui.add(egui::Slider::new(&mut s.clear_color[1], 0.0..=1.0));
+                        ui.end_row();
+                        ui.label("Clear B");
+                        ui.add(egui::Slider::new(&mut s.clear_color[2], 0.0..=1.0));
+                        ui.end_row();
+                    });
+                });
+            if !open { self.show_scene_settings = false; }
+        }
 
         // Status bar
         // Tilemap tools panel (when in tilemap mode)
