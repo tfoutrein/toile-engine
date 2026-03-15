@@ -61,11 +61,12 @@ pub struct PostProcessor {
     pong_view: wgpu::TextureView,
 
     // Shared texture bind-group layout (group 0).
-    tex_bgl: wgpu::BindGroupLayout,
-    sampler: wgpu::Sampler,
+    // Public so LightingSystem can create compatible bind groups and pipelines.
+    pub tex_bgl: wgpu::BindGroupLayout,
+    pub sampler: wgpu::Sampler,
 
     // Bind groups for reading each offscreen texture.
-    scene_bg: wgpu::BindGroup,
+    pub scene_bg: wgpu::BindGroup,
     ping_bg: wgpu::BindGroup,
     pong_bg: wgpu::BindGroup,
 
@@ -322,8 +323,24 @@ impl PostProcessor {
         queue: &wgpu::Queue,
         encoder: &mut wgpu::CommandEncoder,
     ) {
+        self.apply_from(stack, None, final_view, queue, encoder);
+    }
+
+    /// Like `apply()` but starts from `src_override` for the first pass instead of `scene_bg`.
+    /// Pass `Some(&lighting_system.output_bg)` when lighting is enabled so the PP chain
+    /// reads the lit texture rather than the raw scene.
+    pub fn apply_from(
+        &self,
+        stack: &PostProcessingStack,
+        src_override: Option<&wgpu::BindGroup>,
+        final_view: &wgpu::TextureView,
+        queue: &wgpu::Queue,
+        encoder: &mut wgpu::CommandEncoder,
+    ) {
+        let first_src = src_override.unwrap_or(&self.scene_bg);
+
         if stack.effects.is_empty() {
-            run_pass(encoder, &self.passthrough_pipeline, &self.scene_bg, None, final_view);
+            run_pass(encoder, &self.passthrough_pipeline, first_src, None, final_view);
             return;
         }
 
@@ -333,9 +350,9 @@ impl PostProcessor {
         for (i, effect) in stack.effects.iter().enumerate() {
             let is_last = i == n - 1;
 
-            // Source: pass 0 → scene, odd passes → ping, even (>0) → pong
+            // Source: pass 0 → first_src, odd passes → ping, even (>0) → pong
             let src_bg: &wgpu::BindGroup = match i {
-                0 => &self.scene_bg,
+                0 => first_src,
                 x if x % 2 == 1 => &self.ping_bg,
                 _ => &self.pong_bg,
             };

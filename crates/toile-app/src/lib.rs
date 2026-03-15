@@ -12,6 +12,7 @@ use toile_assets::font::Font;
 use toile_core::color::Color;
 use toile_core::time::GameClock;
 use toile_graphics::camera::Camera2D;
+use toile_graphics::lighting::LightingSystem;
 use toile_graphics::post_processing::PostProcessor;
 use toile_graphics::sprite_renderer::{DrawSprite, RenderStats, SpriteRenderer};
 use toile_graphics::GpuContext;
@@ -32,6 +33,7 @@ pub use toile_scripting as scripting;
 pub use toile_assets::font::FontHandle;
 pub use toile_audio::{MusicId, PlaybackId, SoundId};
 pub use toile_graphics::camera::Camera2D as Camera;
+pub use toile_graphics::lighting::{Light, LightingConfig};
 pub use toile_graphics::post_processing::{PostEffect, PostProcessingStack};
 pub use toile_graphics::sprite_renderer::{DrawSprite as Sprite, COLOR_WHITE};
 pub use toile_graphics::texture::TextureHandle;
@@ -49,6 +51,8 @@ pub struct GameContext<'a> {
     pub first_tick: bool,
     /// Configure post-processing effects applied after sprite rendering.
     pub post_processing: &'a mut PostProcessingStack,
+    /// Configure per-frame point lighting.  Set `lighting.enabled = true` and push lights.
+    pub lighting: &'a mut LightingConfig,
     gpu: &'a GpuContext,
     renderer: &'a mut SpriteRenderer,
     fonts: &'a mut Vec<Font>,
@@ -243,6 +247,8 @@ impl App {
             debug_title_timer: Duration::ZERO,
             post_processor: None,
             post_stack: PostProcessingStack::default(),
+            lighting_system: None,
+            lighting_config: LightingConfig::default(),
         };
 
         event_loop.run_app(&mut handler).expect("Event loop error");
@@ -269,6 +275,8 @@ struct AppHandler {
     debug_title_timer: Duration,
     post_processor: Option<PostProcessor>,
     post_stack: PostProcessingStack,
+    lighting_system: Option<LightingSystem>,
+    lighting_config: LightingConfig,
 }
 
 macro_rules! make_ctx {
@@ -285,6 +293,7 @@ macro_rules! make_ctx {
             fonts: &mut $self.fonts,
             draw_list: &mut $self.draw_list,
             post_processing: &mut $self.post_stack,
+            lighting: &mut $self.lighting_config,
         }
     };
 }
@@ -314,6 +323,10 @@ impl ApplicationHandler for AppHandler {
         let audio = toile_audio::Audio::new().expect("Failed to initialize audio");
         let (pw, ph) = gpu.size();
         let post_processor = PostProcessor::new(gpu.device(), gpu.surface_format(), pw, ph);
+        let lighting_system = LightingSystem::new(
+            gpu.device(), gpu.surface_format(), pw, ph,
+            &post_processor.tex_bgl, &post_processor.sampler,
+        );
 
         log::info!("Window created: {}x{}", self.config.width, self.config.height);
 
@@ -324,6 +337,7 @@ impl ApplicationHandler for AppHandler {
         self.audio = Some(audio);
         self.clock = Some(GameClock::new(self.update_hz));
         self.post_processor = Some(post_processor);
+        self.lighting_system = Some(lighting_system);
     }
 
     fn window_event(
@@ -348,10 +362,16 @@ impl ApplicationHandler for AppHandler {
                         .unwrap_or(1.0);
                     camera.resize(size.width as f32 / scale, size.height as f32 / scale);
                 }
-                // Recreate post-processing textures for the new physical size
+                // Recreate post-processing and lighting textures for the new physical size
                 if let Some(gpu) = &self.gpu {
+                    let (w, h) = (size.width.max(1), size.height.max(1));
                     if let Some(pp) = &mut self.post_processor {
-                        pp.resize(gpu.device(), size.width.max(1), size.height.max(1));
+                        pp.resize(gpu.device(), w, h);
+                    }
+                    if let (Some(pp), Some(ls)) =
+                        (&self.post_processor, &mut self.lighting_system)
+                    {
+                        ls.resize(gpu.device(), w, h, &pp.tex_bgl, &pp.sampler);
                     }
                 }
             }
@@ -403,6 +423,7 @@ impl ApplicationHandler for AppHandler {
                 }
 
                 self.draw_list.clear();
+                self.lighting_config.lights.clear();
                 {
                     let mut ctx = make_ctx!(self, fps);
                     self.game.draw(&mut ctx);
@@ -411,13 +432,17 @@ impl ApplicationHandler for AppHandler {
                 let gpu = self.gpu.as_mut().unwrap();
                 if let Some((frame, view, mut encoder)) = gpu.begin_frame() {
                     let camera = self.camera.as_ref().unwrap();
+                    let use_lighting = self.lighting_config.enabled
+                        && self.lighting_system.is_some()
+                        && self.post_processor.is_some();
                     let use_pp = self.post_stack.enabled
                         && !self.post_stack.effects.is_empty()
                         && self.post_processor.is_some();
+                    let need_offscreen = use_lighting || use_pp;
 
-                    // Render sprites into the appropriate target
+                    // 1. Render sprites — into scene texture if any post/lighting, else direct
                     {
-                        let render_target = if use_pp {
+                        let render_target = if need_offscreen {
                             &self.post_processor.as_ref().unwrap().scene_view
                         } else {
                             &view
@@ -434,10 +459,25 @@ impl ApplicationHandler for AppHandler {
                         );
                     }
 
-                    // Apply post-processing chain to swapchain view
-                    if use_pp {
+                    // 2. Lighting pass: scene_bg → lighting output texture
+                    if use_lighting {
+                        let ls = self.lighting_system.as_ref().unwrap();
                         let pp = self.post_processor.as_ref().unwrap();
-                        pp.apply(&self.post_stack, &view, gpu.queue(), &mut encoder);
+                        ls.apply(
+                            &self.lighting_config, camera,
+                            &pp.scene_bg, gpu.queue(), &mut encoder,
+                        );
+                    }
+
+                    // 3. Post-processing (or passthrough blit if only lighting)
+                    if need_offscreen {
+                        let pp = self.post_processor.as_ref().unwrap();
+                        let src = if use_lighting {
+                            Some(&self.lighting_system.as_ref().unwrap().output_bg)
+                        } else {
+                            None
+                        };
+                        pp.apply_from(&self.post_stack, src, &view, gpu.queue(), &mut encoder);
                     }
 
                     // Overlay rendering (egui for editor, no-op for regular games)
