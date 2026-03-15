@@ -1,22 +1,18 @@
 {
   "name": "Coin Collector",
-  "settings": {
-    "gravity": 800.0,
-    "viewport_width": 800,
-    "viewport_height": 600,
-    "clear_color": [0.08, 0.08, 0.12, 1.0],
-    "camera_zoom": 2.0
-  },
   "entities": [
     {
       "id": 1,
       "name": "Player",
       "x": 0.0,
       "y": 40.0,
+      "rotation": 0.0,
+      "scale_x": 1.0,
+      "scale_y": 1.0,
+      "layer": 1,
+      "sprite_path": "",
       "width": 24.0,
       "height": 24.0,
-      "layer": 1,
-      "tags": ["Player"],
       "behaviors": [
         {
           "type": "Platform",
@@ -30,64 +26,133 @@
           "max_jumps": 2
         }
       ],
-      "event_sheet": "scripts/player.event.json",
+      "tags": [
+        "Player"
+      ],
       "variables": {
         "score": 0.0
-      }
+      },
+      "collider": null,
+      "event_sheet": "scripts/player.event.json",
+      "particle_emitter": null,
+      "visible": true
     },
     {
       "id": 2,
       "name": "Ground",
       "x": 0.0,
       "y": -10.0,
+      "rotation": 0.0,
+      "scale_x": 1.0,
+      "scale_y": 1.0,
+      "layer": 0,
+      "sprite_path": "",
       "width": 400.0,
       "height": 20.0,
-      "layer": 0,
-      "tags": ["Solid"],
-      "behaviors": [{ "type": "Solid" }]
+      "behaviors": [
+        {
+          "type": "Solid"
+        }
+      ],
+      "tags": [
+        "Solid"
+      ],
+      "variables": {},
+      "collider": null,
+      "event_sheet": null,
+      "particle_emitter": null,
+      "visible": true
     },
     {
       "id": 3,
       "name": "PlatformLeft",
       "x": -80.0,
       "y": 60.0,
+      "rotation": 0.0,
+      "scale_x": 1.0,
+      "scale_y": 1.0,
+      "layer": 0,
+      "sprite_path": "",
       "width": 80.0,
       "height": 12.0,
-      "layer": 0,
-      "tags": ["Solid"],
-      "behaviors": [{ "type": "Solid" }]
+      "behaviors": [
+        {
+          "type": "Solid"
+        }
+      ],
+      "tags": [
+        "Solid"
+      ],
+      "variables": {},
+      "collider": null,
+      "event_sheet": null,
+      "particle_emitter": null,
+      "visible": true
     },
     {
       "id": 4,
       "name": "PlatformRight",
       "x": 80.0,
       "y": 100.0,
+      "rotation": 0.0,
+      "scale_x": 1.0,
+      "scale_y": 1.0,
+      "layer": 0,
+      "sprite_path": "",
       "width": 80.0,
       "height": 12.0,
-      "layer": 0,
-      "tags": ["Solid"],
-      "behaviors": [{ "type": "Solid" }]
+      "behaviors": [
+        {
+          "type": "Solid"
+        }
+      ],
+      "tags": [
+        "Solid"
+      ],
+      "variables": {},
+      "collider": null,
+      "event_sheet": null,
+      "particle_emitter": null,
+      "visible": true
     },
     {
       "id": 5,
       "name": "PlatformTop",
       "x": 0.0,
       "y": 150.0,
+      "rotation": 0.0,
+      "scale_x": 1.0,
+      "scale_y": 1.0,
+      "layer": 0,
+      "sprite_path": "",
       "width": 60.0,
       "height": 12.0,
-      "layer": 0,
-      "tags": ["Solid"],
-      "behaviors": [{ "type": "Solid" }]
+      "behaviors": [
+        {
+          "type": "Solid"
+        }
+      ],
+      "tags": [
+        "Solid"
+      ],
+      "variables": {},
+      "collider": null,
+      "event_sheet": null,
+      "particle_emitter": null,
+      "visible": true
     },
     {
       "id": 10,
       "name": "Coin1",
       "x": -80.0,
       "y": 80.0,
+      "rotation": 0.0,
+      "scale_x": 1.0,
+      "scale_y": 1.0,
+      "layer": 1,
+      "sprite_path": "",
       "width": 12.0,
       "height": 12.0,
-      "layer": 1,
-      "tags": ["Coin"],
       "behaviors": [
         {
           "type": "Sine",
@@ -96,17 +161,27 @@
           "period": 1.5
         }
       ],
-      "event_sheet": "scripts/coin.event.json"
+      "tags": [
+        "Coin"
+      ],
+      "variables": {},
+      "collider": null,
+      "event_sheet": "scripts/coin.event.json",
+      "particle_emitter": null,
+      "visible": true
     },
     {
       "id": 11,
       "name": "Coin2",
       "x": 80.0,
       "y": 120.0,
+      "rotation": 0.0,
+      "scale_x": 1.0,
+      "scale_y": 1.0,
+      "layer": 1,
+      "sprite_path": "",
       "width": 12.0,
       "height": 12.0,
-      "layer": 1,
-      "tags": ["Coin"],
       "behaviors": [
         {
           "type": "Sine",
@@ -115,17 +190,27 @@
           "period": 2.0
         }
       ],
-      "event_sheet": "scripts/coin.event.json"
+      "tags": [
+        "Coin"
+      ],
+      "variables": {},
+      "collider": null,
+      "event_sheet": "scripts/coin.event.json",
+      "particle_emitter": null,
+      "visible": true
     },
     {
       "id": 12,
       "name": "Coin3",
       "x": 0.0,
       "y": 170.0,
+      "rotation": 0.0,
+      "scale_x": 1.0,
+      "scale_y": 1.0,
+      "layer": 1,
+      "sprite_path": "",
       "width": 12.0,
       "height": 12.0,
-      "layer": 1,
-      "tags": ["Coin"],
       "behaviors": [
         {
           "type": "Sine",
@@ -134,29 +219,79 @@
           "period": 1.0
         }
       ],
-      "event_sheet": "scripts/coin.event.json"
+      "tags": [
+        "Coin"
+      ],
+      "variables": {},
+      "collider": null,
+      "event_sheet": "scripts/coin.event.json",
+      "particle_emitter": null,
+      "visible": true
     },
     {
       "id": 20,
       "name": "WallLeft",
       "x": -200.0,
       "y": 100.0,
+      "rotation": 0.0,
+      "scale_x": 1.0,
+      "scale_y": 1.0,
+      "layer": -1,
+      "sprite_path": "",
       "width": 10.0,
       "height": 300.0,
-      "layer": -1,
-      "tags": ["Solid"],
-      "behaviors": [{ "type": "Solid" }]
+      "behaviors": [
+        {
+          "type": "Solid"
+        }
+      ],
+      "tags": [
+        "Solid"
+      ],
+      "variables": {},
+      "collider": null,
+      "event_sheet": null,
+      "particle_emitter": null,
+      "visible": true
     },
     {
       "id": 21,
       "name": "WallRight",
       "x": 200.0,
       "y": 100.0,
+      "rotation": 0.0,
+      "scale_x": 1.0,
+      "scale_y": 1.0,
+      "layer": -1,
+      "sprite_path": "",
       "width": 10.0,
       "height": 300.0,
-      "layer": -1,
-      "tags": ["Solid"],
-      "behaviors": [{ "type": "Solid" }]
+      "behaviors": [
+        {
+          "type": "Solid"
+        }
+      ],
+      "tags": [
+        "Solid"
+      ],
+      "variables": {},
+      "collider": null,
+      "event_sheet": null,
+      "particle_emitter": null,
+      "visible": true
     }
-  ]
+  ],
+  "tilemap": null,
+  "settings": {
+    "gravity": 800.0,
+    "viewport_width": 800,
+    "viewport_height": 600,
+    "clear_color": [
+      0.08,
+      0.08,
+      0.12,
+      1.0
+    ],
+    "camera_zoom": 2.0
+  }
 }

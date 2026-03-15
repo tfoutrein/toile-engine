@@ -281,6 +281,7 @@ impl EditorApp {
         if scene_path.exists() {
             match toile_scene::load_scene(&scene_path) {
                 Ok(scene) => {
+                    self.camera_zoom = scene.settings.camera_zoom;
                     self.scene = scene;
                     self.current_file = entry;
                     self.status_msg = format!("Opened project '{name}'");
@@ -297,6 +298,7 @@ impl EditorApp {
             self.status_msg = format!("Opened project '{name}' (new scene)");
         }
         self.selected_id = None;
+        self.camera_pos = Vec2::ZERO;
     }
 
     /// List scene files in the project's scenes/ directory.
@@ -1269,6 +1271,8 @@ impl Game for EditorApp {
                                     let path = pdir.as_ref().map(|d| d.join(s)).unwrap_or_else(|| PathBuf::from(s));
                                     match toile_scene::load_scene(&path) {
                                         Ok(scene) => {
+                                            self.camera_zoom = scene.settings.camera_zoom;
+                                            self.camera_pos = Vec2::ZERO;
                                             self.scene = scene;
                                             self.current_file = s.clone();
                                             self.selected_id = None;

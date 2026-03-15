@@ -1,11 +1,11 @@
 {
-  "name": "first-game",
+  "name": "game2",
   "entities": [
     {
       "id": 1,
-      "name": "Player",
-      "x": -96.58986,
-      "y": -36.058563,
+      "name": "Entity_1",
+      "x": 0.0,
+      "y": 0.0,
       "rotation": 0.0,
       "scale_x": 1.0,
       "scale_y": 1.0,
@@ -13,20 +13,10 @@
       "sprite_path": "",
       "width": 32.0,
       "height": 32.0,
-      "behaviors": [
-        {
-          "type": "Platform",
-          "gravity": 800.0,
-          "jump_force": 400.0,
-          "max_speed": 200.0,
-          "acceleration": 1500.0,
-          "deceleration": 1200.0,
-          "coyote_time": 0.08,
-          "jump_buffer": 0.12,
-          "max_jumps": 1
-        }
+      "behaviors": [],
+      "tags": [
+        "Player"
       ],
-      "tags": [],
       "variables": {},
       "collider": null,
       "event_sheet": null,
