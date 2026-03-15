@@ -137,8 +137,26 @@ pub fn update(
     let shrunk_half = Vec2::new(half.x, half.y - 2.0);
     let check_pos = Vec2::new(entity.position.x, entity.position.y + 1.0);
     if solid_check(check_pos, shrunk_half) {
-        entity.position.x -= entity.velocity.x * dt;
-        entity.velocity.x = 0.0;
+        // Slope climbing: try stepping up incrementally to walk up slopes
+        let max_step = 10.0; // max slope height per frame in pixels
+        let steps = 5;
+        let mut climbed = false;
+        for i in 1..=steps {
+            let step_y = entity.position.y + (i as f32 * max_step / steps as f32);
+            let step_pos = Vec2::new(entity.position.x, step_y + 1.0);
+            if !solid_check(step_pos, shrunk_half) {
+                // Can fit here — accept the climb
+                entity.position.y = step_y;
+                entity.on_ground = true;
+                climbed = true;
+                break;
+            }
+        }
+        if !climbed {
+            // Truly blocked (wall, not slope) — undo X movement
+            entity.position.x -= entity.velocity.x * dt;
+            entity.velocity.x = 0.0;
+        }
     }
 
     // Move Y — use full hitbox
