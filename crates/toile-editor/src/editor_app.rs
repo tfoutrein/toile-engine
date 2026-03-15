@@ -232,6 +232,7 @@ pub struct EditorApp {
     // Track which emitter path each pool was built from
     preview_particle_paths: HashMap<u64, String>,
     show_scene_settings: bool,
+    clipboard_entity: Option<EntityData>,
     show_viewport_guide: bool,
     last_mouse_pos: Vec2,
     panning: bool,
@@ -311,6 +312,7 @@ impl EditorApp {
             preview_particles: HashMap::new(),
             preview_particle_paths: HashMap::new(),
             show_scene_settings: false,
+            clipboard_entity: None,
             show_viewport_guide: true,
             last_mouse_pos: Vec2::ZERO,
             panning: false,
@@ -671,6 +673,83 @@ impl Game for EditorApp {
 
         ctx.camera.position = self.camera_pos;
         ctx.camera.zoom = self.camera_zoom;
+
+        // Keyboard shortcuts (Cmd on Mac = SuperLeft, Ctrl on PC = ControlLeft)
+        let modifier = ctx.input.is_key_down(Key::SuperLeft)
+            || ctx.input.is_key_down(Key::SuperRight)
+            || ctx.input.is_key_down(Key::ControlLeft)
+            || ctx.input.is_key_down(Key::ControlRight);
+
+        if modifier && self.editor_mode == EditorMode::Entity {
+            // Cmd+C / Ctrl+C — Copy selected entity
+            if ctx.input.is_key_just_pressed(Key::KeyC) {
+                if let Some(id) = self.selected_id {
+                    if let Some(entity) = self.scene.entities.iter().find(|e| e.id == id) {
+                        self.clipboard_entity = Some(entity.clone());
+                        self.status_msg = format!("Copied '{}'", entity.name);
+                    }
+                }
+            }
+
+            // Cmd+V / Ctrl+V — Paste entity (offset by 20px)
+            if ctx.input.is_key_just_pressed(Key::KeyV) {
+                if let Some(ref source) = self.clipboard_entity.clone() {
+                    let id = self.scene.next_id;
+                    self.scene.next_id += 1;
+                    let mut new_entity = source.clone();
+                    new_entity.id = id;
+                    new_entity.name = format!("{}_copy", source.name);
+                    new_entity.x += 20.0;
+                    new_entity.y -= 20.0;
+                    self.scene.entities.push(new_entity);
+                    self.selected_id = Some(id);
+                    self.status_msg = format!("Pasted '{}_copy'", source.name);
+                }
+            }
+
+            // Cmd+D / Ctrl+D — Duplicate selected entity in place
+            if ctx.input.is_key_just_pressed(Key::KeyD) {
+                if let Some(sel_id) = self.selected_id {
+                    if let Some(source) = self.scene.entities.iter().find(|e| e.id == sel_id).cloned() {
+                        let id = self.scene.next_id;
+                        self.scene.next_id += 1;
+                        let mut new_entity = source.clone();
+                        new_entity.id = id;
+                        new_entity.name = format!("{}_dup", source.name);
+                        new_entity.x += 20.0;
+                        new_entity.y -= 20.0;
+                        self.scene.entities.push(new_entity);
+                        self.selected_id = Some(id);
+                        self.status_msg = format!("Duplicated '{}'", source.name);
+                    }
+                }
+            }
+
+            // Cmd+S / Ctrl+S — Quick Save
+            if ctx.input.is_key_just_pressed(Key::KeyS) {
+                if !self.current_file.is_empty() {
+                    if let Some(ref dir) = self.project_dir {
+                        let path = dir.join(&self.current_file);
+                        if let Ok(json) = serde_json::to_string_pretty(&self.scene) {
+                            match std::fs::write(&path, &json) {
+                                Ok(()) => self.status_msg = format!("Saved {}", self.current_file),
+                                Err(e) => self.status_msg = format!("Save failed: {e}"),
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Delete key — delete selected entity
+        if (ctx.input.is_key_just_pressed(Key::Delete) || ctx.input.is_key_just_pressed(Key::Backspace))
+            && self.editor_mode == EditorMode::Entity
+        {
+            if let Some(id) = self.selected_id.take() {
+                self.scene.remove_entity(id);
+                self.status_msg = format!("Deleted entity {id}");
+            }
+        }
 
         // Entity selection, drag, and resize in Entity mode
         if self.editor_mode == EditorMode::Entity {
