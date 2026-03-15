@@ -100,3 +100,4 @@ hecs = "0.11"
 rapier2d = "0.32"
 toile-physics = { path = "crates/toile-physics" }
 toile-events = { path = "crates/toile-events" }
+toile-behaviors = { path = "crates/toile-behaviors" }

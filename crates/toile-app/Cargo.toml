@@ -16,6 +16,7 @@ toile-ecs = { workspace = true }
 toile-scripting = { workspace = true }
 toile-physics = { workspace = true }
 toile-events = { workspace = true }
+toile-behaviors = { workspace = true }
 glam = { workspace = true }
 wgpu = { workspace = true }
 winit = { workspace = true }
