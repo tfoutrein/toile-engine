@@ -139,19 +139,20 @@ impl Game for ParticlesDemo {
             let count = self.pool.as_ref().map(|p| p.particle_count()).unwrap_or(0)
                 + self.explosion_pool.as_ref().map(|p| p.particle_count()).unwrap_or(0);
 
+            let tl = ctx.camera.top_left();
             ctx.draw_text(
                 &format!("Preset: {}  |  Particles: {}", self.preset_name, count),
-                Vec2::new(-310.0, 170.0),
+                Vec2::new(tl.x + 10.0, tl.y - 20.0),
                 font,
-                7.0,
+                14.0,
                 COLOR_WHITE,
                 10,
             );
             ctx.draw_text(
                 "1:Fire 2:Smoke 3:Sparks 4:Rain 5:Snow 6:Dust Space:Boom",
-                Vec2::new(-310.0, 155.0),
+                Vec2::new(tl.x + 10.0, tl.y - 40.0),
                 font,
-                5.0,
+                10.0,
                 pack_color(180, 180, 180, 255),
                 10,
             );

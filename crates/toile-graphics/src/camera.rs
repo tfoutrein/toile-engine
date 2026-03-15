@@ -50,6 +50,23 @@ impl Camera2D {
     pub fn viewport_size(&self) -> Vec2 {
         self.viewport_size
     }
+
+    /// Half-size of the visible area in world units.
+    pub fn half_viewport(&self) -> Vec2 {
+        self.viewport_size / (2.0 * self.zoom)
+    }
+
+    /// Top-left corner of the visible area in world coordinates.
+    pub fn top_left(&self) -> Vec2 {
+        let half = self.half_viewport();
+        Vec2::new(self.position.x - half.x, self.position.y + half.y)
+    }
+
+    /// Bottom-right corner of the visible area in world coordinates.
+    pub fn bottom_right(&self) -> Vec2 {
+        let half = self.half_viewport();
+        Vec2::new(self.position.x + half.x, self.position.y - half.y)
+    }
 }
 
 #[repr(C)]

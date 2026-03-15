@@ -49,16 +49,16 @@ impl Scene for MenuScene {
     fn draw(&mut self, ctx: &mut GameContext) {
         let Some(assets) = &self.assets else { return };
 
-        // Title
-        ctx.draw_text("TOILE ENGINE", Vec2::new(-90.0, 40.0), assets.font, 10.0, COLOR_WHITE, 10);
+        // Title (centered)
+        ctx.draw_text("TOILE ENGINE", Vec2::new(-180.0, 60.0), assets.font, 20.0, COLOR_WHITE, 10);
 
         // Blinking "Press Enter"
         if (self.blink_timer * 2.0) as i32 % 2 == 0 {
             ctx.draw_text(
                 "Press Enter to Play",
-                Vec2::new(-90.0, -10.0),
+                Vec2::new(-170.0, -20.0),
                 assets.font,
-                5.0,
+                12.0,
                 pack_color(200, 200, 100, 255),
                 10,
             );
@@ -66,9 +66,9 @@ impl Scene for MenuScene {
 
         ctx.draw_text(
             "Scene Stack Demo",
-            Vec2::new(-65.0, -50.0),
+            Vec2::new(-120.0, -80.0),
             assets.font,
-            4.0,
+            8.0,
             pack_color(120, 120, 150, 255),
             10,
         );
@@ -156,12 +156,13 @@ impl Scene for GameplayScene {
             });
         }
 
-        // HUD
+        // HUD (anchored to top-left of viewport)
+        let tl = ctx.camera.top_left();
         ctx.draw_text(
             &format!("Score: {} | Escape = Pause", self.score / 60),
-            Vec2::new(-300.0, 160.0),
+            Vec2::new(tl.x + 10.0, tl.y - 20.0),
             self.assets.font,
-            5.0,
+            12.0,
             COLOR_WHITE,
             10,
         );
@@ -191,12 +192,12 @@ impl Scene for PauseScene {
             uv_max: Vec2::ONE,
         });
 
-        ctx.draw_text("PAUSED", Vec2::new(-45.0, 20.0), self.font, 10.0, COLOR_WHITE, 60);
+        ctx.draw_text("PAUSED", Vec2::new(-100.0, 30.0), self.font, 20.0, COLOR_WHITE, 60);
         ctx.draw_text(
             "Enter=Resume  Q=Menu",
-            Vec2::new(-80.0, -20.0),
+            Vec2::new(-160.0, -30.0),
             self.font,
-            4.0,
+            10.0,
             pack_color(180, 180, 180, 255),
             60,
         );
