@@ -21,7 +21,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.1.0-dev"
+version = "0.5.0-dev"
 edition = "2024"
 license = "MIT"
 repository = "https://github.com/toile-engine/toile"
