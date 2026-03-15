@@ -99,6 +99,158 @@ fn aabb_vs_circle(aabb_center: Vec2, half: Vec2, circle_center: Vec2, radius: f3
     }
 }
 
+/// Test overlap between two colliders with rotation (radians).
+/// For AABB shapes with rotation, uses SAT (Separating Axis Theorem) for OBB.
+/// Circles ignore rotation. Returns MTV or None.
+pub fn overlap_test_rotated(
+    pos_a: Vec2, col_a: &Collider, rot_a: f32,
+    pos_b: Vec2, col_b: &Collider, rot_b: f32,
+) -> Option<Vec2> {
+    let ca = pos_a + col_a.offset;
+    let cb = pos_b + col_b.offset;
+
+    match (&col_a.shape, &col_b.shape) {
+        (Shape::Aabb { half_extents: ha }, Shape::Aabb { half_extents: hb }) => {
+            if rot_a.abs() < 0.001 && rot_b.abs() < 0.001 {
+                // No rotation — use fast AABB path
+                aabb_vs_aabb(ca, *ha, cb, *hb)
+            } else {
+                // OBB vs OBB via SAT
+                obb_vs_obb(ca, *ha, rot_a, cb, *hb, rot_b)
+            }
+        }
+        // Circles don't care about rotation
+        (Shape::Circle { radius: ra }, Shape::Circle { radius: rb }) => {
+            circle_vs_circle(ca, *ra, cb, *rb)
+        }
+        (Shape::Aabb { half_extents: ha }, Shape::Circle { radius: rb }) => {
+            if rot_a.abs() < 0.001 {
+                aabb_vs_circle(ca, *ha, cb, *rb)
+            } else {
+                obb_vs_circle(ca, *ha, rot_a, cb, *rb)
+            }
+        }
+        (Shape::Circle { radius: ra }, Shape::Aabb { half_extents: hb }) => {
+            if rot_b.abs() < 0.001 {
+                aabb_vs_circle(cb, *hb, ca, *ra).map(|v| -v)
+            } else {
+                obb_vs_circle(cb, *hb, rot_b, ca, *ra).map(|v| -v)
+            }
+        }
+    }
+}
+
+/// OBB vs OBB using Separating Axis Theorem.
+fn obb_vs_obb(ca: Vec2, ha: Vec2, rot_a: f32, cb: Vec2, hb: Vec2, rot_b: f32) -> Option<Vec2> {
+    let (sin_a, cos_a) = rot_a.sin_cos();
+    let (sin_b, cos_b) = rot_b.sin_cos();
+
+    // Local axes for each OBB
+    let axes = [
+        Vec2::new(cos_a, sin_a),   // A x-axis
+        Vec2::new(-sin_a, cos_a),  // A y-axis
+        Vec2::new(cos_b, sin_b),   // B x-axis
+        Vec2::new(-sin_b, cos_b),  // B y-axis
+    ];
+
+    let d = cb - ca;
+    let mut min_overlap = f32::MAX;
+    let mut min_axis = Vec2::ZERO;
+
+    // Corners of A
+    let a_corners = obb_corners(ca, ha, sin_a, cos_a);
+    let b_corners = obb_corners(cb, hb, sin_b, cos_b);
+
+    for axis in &axes {
+        let (a_min, a_max) = project_corners(&a_corners, *axis);
+        let (b_min, b_max) = project_corners(&b_corners, *axis);
+
+        let overlap = (a_max.min(b_max)) - (a_min.max(b_min));
+        if overlap <= 0.0 {
+            return None; // separating axis found
+        }
+        if overlap < min_overlap {
+            min_overlap = overlap;
+            min_axis = *axis;
+        }
+    }
+
+    // Ensure MTV pushes A away from B
+    if d.dot(min_axis) < 0.0 {
+        min_axis = -min_axis;
+    }
+    Some(min_axis * min_overlap)
+}
+
+fn obb_corners(center: Vec2, half: Vec2, sin: f32, cos: f32) -> [Vec2; 4] {
+    let dx = Vec2::new(cos, sin) * half.x;
+    let dy = Vec2::new(-sin, cos) * half.y;
+    [
+        center - dx - dy,
+        center + dx - dy,
+        center + dx + dy,
+        center - dx + dy,
+    ]
+}
+
+fn project_corners(corners: &[Vec2; 4], axis: Vec2) -> (f32, f32) {
+    let mut min = f32::MAX;
+    let mut max = f32::MIN;
+    for c in corners {
+        let p = c.dot(axis);
+        if p < min { min = p; }
+        if p > max { max = p; }
+    }
+    (min, max)
+}
+
+/// OBB vs Circle.
+fn obb_vs_circle(obb_center: Vec2, obb_half: Vec2, obb_rot: f32, circle_center: Vec2, radius: f32) -> Option<Vec2> {
+    // Transform circle center into OBB local space
+    let (sin, cos) = obb_rot.sin_cos();
+    let d = circle_center - obb_center;
+    let local = Vec2::new(d.x * cos + d.y * sin, -d.x * sin + d.y * cos);
+
+    // Closest point on AABB in local space
+    let closest_local = Vec2::new(
+        local.x.clamp(-obb_half.x, obb_half.x),
+        local.y.clamp(-obb_half.y, obb_half.y),
+    );
+
+    let diff = local - closest_local;
+    let dist_sq = diff.length_squared();
+
+    if dist_sq >= radius * radius {
+        return None;
+    }
+
+    // Transform MTV back to world space
+    if dist_sq < 1e-10 {
+        // Circle center inside OBB — push to nearest edge
+        let dx = obb_half.x - local.x.abs();
+        let dy = obb_half.y - local.y.abs();
+        let (local_mtv, pen) = if dx < dy {
+            (Vec2::new(local.x.signum(), 0.0), dx + radius)
+        } else {
+            (Vec2::new(0.0, local.y.signum()), dy + radius)
+        };
+        let world_mtv = Vec2::new(
+            local_mtv.x * cos - local_mtv.y * sin,
+            local_mtv.x * sin + local_mtv.y * cos,
+        );
+        Some(world_mtv * pen)
+    } else {
+        let dist = dist_sq.sqrt();
+        let dir = diff / dist;
+        let pen = radius - dist;
+        let world_dir = Vec2::new(
+            dir.x * cos - dir.y * sin,
+            dir.x * sin + dir.y * cos,
+        );
+        Some(world_dir * pen)
+    }
+}
+
 pub fn point_in_aabb(point: Vec2, center: Vec2, half_extents: Vec2) -> bool {
     let d = (point - center).abs();
     d.x <= half_extents.x && d.y <= half_extents.y

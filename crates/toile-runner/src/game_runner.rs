@@ -14,7 +14,7 @@ use toile_app::{App, Game, GameContext, Key, MouseButton, TextureHandle};
 use toile_app::core::color::Color;
 use toile_app::core::particles::{ParticleEmitter, ParticlePool};
 use toile_behaviors::*;
-use toile_collision::{Collider, Shape, SpatialGrid, overlap_test};
+use toile_collision::{Collider, Shape, SpatialGrid, overlap_test, overlap_test_rotated};
 use toile_events::executor::{EventCommand, EventContext, EventSheetState, evaluate_event_sheet};
 use toile_events::model::EventSheet;
 use toile_graphics::sprite_renderer::DrawSprite;
@@ -274,7 +274,7 @@ impl GameRunner {
             let b = &self.entities[b_idx as usize];
             if !a.alive || !b.alive { continue; }
 
-            if overlap_test(a.es.position, &a.collider, b.es.position, &b.collider).is_some() {
+            if overlap_test_rotated(a.es.position, &a.collider, a.es.rotation, b.es.position, &b.collider, b.es.rotation).is_some() {
                 // A collides with B's tags
                 for tag in &b.data.tags {
                     collision_map.entry(a.data.id).or_default().push(tag.clone());
@@ -424,14 +424,16 @@ impl Game for GameRunner {
         // ── 1. Update behaviors ──────────────────────────────────────────
         // We need &self for is_solid_at, but also &mut self.entities.
         // Pre-collect solid entity positions+colliders for the closure.
-        let solids: Vec<(Collider, Vec2)> = self.entities.iter()
+        let solids: Vec<(Collider, Vec2, f32)> = self.entities.iter()
             .filter(|e| e.alive && has_solid_behavior(e))
-            .map(|e| (e.collider, e.es.position))
+            .map(|e| (e.collider, e.es.position, e.es.rotation))
             .collect();
 
         let solid_check = move |pos: Vec2, half: Vec2| -> bool {
             let test = Collider::aabb(half.x, half.y);
-            solids.iter().any(|(c, p)| overlap_test(pos, &test, *p, c).is_some())
+            solids.iter().any(|(c, p, rot)| {
+                overlap_test_rotated(pos, &test, 0.0, *p, c, *rot).is_some()
+            })
         };
 
         let camera_pos = ctx.camera.position;
