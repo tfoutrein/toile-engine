@@ -2493,7 +2493,18 @@ impl Game for EditorApp {
                         });
                         ui.add_space(4.0);
                         ui.label(egui::RichText::new("Scene Bounds (camera clamp)").size(11.0));
-                        ui.label(egui::RichText::new("Leave all zero for no clamping").size(10.0).color(egui::Color32::from_gray(130)));
+                        ui.horizontal(|ui| {
+                            if ui.small_button("Set to viewport").clicked() {
+                                let vw = s.viewport_width as f32 / s.camera_zoom;
+                                let vh = s.viewport_height as f32 / s.camera_zoom;
+                                let cx = s.camera_position[0];
+                                let cy = s.camera_position[1];
+                                *bounds = [cx - vw * 0.5, cy - vh * 0.5, cx + vw * 0.5, cy + vh * 0.5];
+                            }
+                            if ui.small_button("Clear").clicked() {
+                                *bounds = [0.0; 4];
+                            }
+                        });
                         egui::Grid::new("bounds_grid").num_columns(4).show(ui, |ui| {
                             ui.label("Min X");
                             ui.add(egui::DragValue::new(&mut bounds[0]).speed(1.0));

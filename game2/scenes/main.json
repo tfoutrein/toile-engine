@@ -115,7 +115,18 @@
       0.0,
       0.0
     ],
-    "camera_mode": "FollowPlayer",
+    "camera_mode": {
+      "PlatformerFollow": {
+        "deadzone_x": 0.3,
+        "deadzone_y": 0.4,
+        "bounds": [
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
     "background_image": "/Users/tfoutrein2/Downloads/Winter Game Background by VitaliyVill on @creativemarket.jpeg",
     "lighting": {
       "enabled": false,
