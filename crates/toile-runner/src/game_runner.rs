@@ -311,47 +311,29 @@ impl Game for GameRunner {
             Ok(scene) => {
                 log::info!("Loaded scene '{}' with {} entities", scene.name, scene.entities.len());
                 self.load_scene_data(&scene, ctx);
-                // Apply camera from scene settings
-                let s = &self.scene_settings;
-                ctx.camera.zoom = s.camera_zoom;
-                ctx.camera.position = Vec2::new(s.camera_position[0], s.camera_position[1]);
-                // If camera_position is (0,0) and no explicit override, auto-center on entities
-                if s.camera_position == [0.0, 0.0] && !self.entities.is_empty() {
-                    let (mut min_x, mut min_y, mut max_x, mut max_y) = (f32::MAX, f32::MAX, f32::MIN, f32::MIN);
-                    for ent in &self.entities {
-                        let hw = ent.es.size.x * 0.5;
-                        let hh = ent.es.size.y * 0.5;
-                        min_x = min_x.min(ent.es.position.x - hw);
-                        max_x = max_x.max(ent.es.position.x + hw);
-                        min_y = min_y.min(ent.es.position.y - hh);
-                        max_y = max_y.max(ent.es.position.y + hh);
-                    }
-                    let bb_min = Vec2::new(min_x, min_y);
-                    let bb_max = Vec2::new(max_x, max_y);
-                    self.scene_aabb = Some((bb_min, bb_max));
-                    let center = (bb_min + bb_max) * 0.5;
-                    ctx.camera.position = center;
-                    log::info!("Scene AABB: ({:.0},{:.0})..({:.0},{:.0}), center=({:.0},{:.0})", min_x, min_y, max_x, max_y, center.x, center.y);
-                }
+                // Camera will be set each frame in update() based on scene settings
+                log::info!("Scene camera: pos=({},{}), zoom={}",
+                    self.scene_settings.camera_position[0],
+                    self.scene_settings.camera_position[1],
+                    self.scene_settings.camera_zoom);
             }
             Err(e) => log::error!("Failed to load scene {}: {e}", scene_path.display()),
         }
     }
 
     fn update(&mut self, ctx: &mut GameContext, dt: f64) {
-        // Auto-fit camera to scene AABB (adapts to window resize)
-        if let Some((bb_min, bb_max)) = self.scene_aabb {
-            let center = (bb_min + bb_max) * 0.5;
-            ctx.camera.position = center;
-            let vp = ctx.camera.viewport_size();
-            let content_w = (bb_max.x - bb_min.x) * 1.1;
-            let content_h = (bb_max.y - bb_min.y) * 1.1;
-            if content_w > 0.0 && content_h > 0.0 {
-                let zoom_w = vp.x / content_w;
-                let zoom_h = vp.y / content_h;
-                ctx.camera.zoom = zoom_w.min(zoom_h).max(0.5);
-            }
+        // Apply camera settings from scene — adapt zoom to window size to keep
+        // the designed viewport visible regardless of actual window dimensions.
+        let s = &self.scene_settings;
+        let designed_w = s.viewport_width as f32 / s.camera_zoom;
+        let designed_h = s.viewport_height as f32 / s.camera_zoom;
+        let vp = ctx.camera.viewport_size(); // physical pixels
+        if designed_w > 0.0 && designed_h > 0.0 {
+            let zoom_w = vp.x / designed_w;
+            let zoom_h = vp.y / designed_h;
+            ctx.camera.zoom = zoom_w.min(zoom_h);
         }
+        ctx.camera.position = Vec2::new(s.camera_position[0], s.camera_position[1]);
 
         let dt_f = dt as f32;
         let input = Self::build_behavior_input(ctx);
