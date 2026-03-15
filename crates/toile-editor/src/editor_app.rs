@@ -658,7 +658,9 @@ impl Game for EditorApp {
             }
         }
 
-        // Draw tilemap layers (centered at world origin)
+        // Draw tilemap layers and entities — skipped in Particle mode
+        if self.editor_mode != EditorMode::Particle {
+
         if let Some(tilemap) = &self.scene.tilemap {
             if let Some(tileset_tex) = self.tilemap_editor.tileset_tex {
                 let ts = tilemap.tile_size as f32;
@@ -829,6 +831,7 @@ impl Game for EditorApp {
                 });
             }
         }
+        } // end `if self.editor_mode != EditorMode::Particle`
 
         // Render particles in Particle mode
         if self.editor_mode == EditorMode::Particle {
@@ -1063,7 +1066,8 @@ impl Game for EditorApp {
             }
         }
 
-        // Hierarchy panel
+        // Hierarchy panel — hidden in Particle mode
+        if self.editor_mode != EditorMode::Particle {
         egui::SidePanel::left("hierarchy").default_width(200.0).show(&ctx, |ui| {
             ui.heading("Hierarchy");
             ui.separator();
@@ -1088,6 +1092,7 @@ impl Game for EditorApp {
                 self.selected_id = Some(id);
             }
         });
+        } // end hierarchy panel
 
         // Inspector panel — replaced by particle panel in Particle mode
         if self.editor_mode == EditorMode::Particle {
