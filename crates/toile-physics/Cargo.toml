@@ -1,0 +1,11 @@
+[package]
+name = "toile-physics"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Rapier2D physics integration for Toile Engine (optional)"
+
+[dependencies]
+rapier2d = { workspace = true }
+glam = { workspace = true }
+log = { workspace = true }

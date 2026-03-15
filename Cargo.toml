@@ -14,6 +14,7 @@ members = [
     "crates/toile-editor",
     "crates/toile-mcp",
     "crates/toile-cli",
+    "crates/toile-physics",
 ]
 
 [workspace.package]
@@ -92,3 +93,7 @@ toile-scripting = { path = "crates/toile-scripting" }
 
 # ECS
 hecs = "0.11"
+
+# Physics (optional)
+rapier2d = "0.32"
+toile-physics = { path = "crates/toile-physics" }
