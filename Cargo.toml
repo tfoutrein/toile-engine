@@ -46,6 +46,9 @@ pollster = "0.4"
 # Image loading
 image = { version = "0.25", default-features = false, features = ["png"] }
 
+# Compression (Aseprite binary cel data)
+flate2 = "1"
+
 # Data casting (vertex buffers, uniforms)
 bytemuck = { version = "1", features = ["derive"] }
 

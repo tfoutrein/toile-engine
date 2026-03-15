@@ -14,3 +14,4 @@ serde_json = { workspace = true }
 toile-graphics = { workspace = true }
 toile-scene = { workspace = true }
 image = { workspace = true }
+flate2 = { workspace = true }
