@@ -1691,15 +1691,56 @@ impl Game for EditorApp {
                                     })
                                     .body(|ui| {
                                         if is_current {
-                                            // Show entities of the current scene
+                                            // Show entities of the current scene with sub-components
                                             let mut click_id = None;
                                             for entity in &self.scene.entities {
                                                 let selected = self.selected_id == Some(entity.id);
                                                 let icon = entity_icon(entity);
-                                                let label = egui::RichText::new(format!("  {icon} {}", entity.name))
-                                                    .color(if selected { egui::Color32::YELLOW } else { egui::Color32::WHITE });
-                                                if ui.selectable_label(selected, label).clicked() {
-                                                    click_id = Some(entity.id);
+                                                let has_children = !entity.behaviors.is_empty()
+                                                    || entity.light.is_some()
+                                                    || entity.particle_emitter.is_some()
+                                                    || entity.event_sheet.is_some()
+                                                    || entity.collider.is_some();
+
+                                                if has_children {
+                                                    let ent_node_id = ui.make_persistent_id(format!("ent_{}", entity.id));
+                                                    egui::collapsing_header::CollapsingState::load_with_default_open(ui.ctx(), ent_node_id, false)
+                                                        .show_header(ui, |ui| {
+                                                            let color = if selected { egui::Color32::YELLOW } else { egui::Color32::WHITE };
+                                                            if ui.selectable_label(selected, egui::RichText::new(format!("{icon} {}", entity.name)).color(color)).clicked() {
+                                                                click_id = Some(entity.id);
+                                                            }
+                                                        })
+                                                        .body(|ui| {
+                                                            let dim = egui::Color32::from_gray(140);
+                                                            for beh in &entity.behaviors {
+                                                                ui.label(egui::RichText::new(format!("    🎭 {}", behavior_label(beh))).size(11.0).color(dim));
+                                                            }
+                                                            if let Some(ref light) = entity.light {
+                                                                ui.label(egui::RichText::new(format!("    💡 Light (r={:.0})", light.radius)).size(11.0).color(dim));
+                                                            }
+                                                            if let Some(ref pe) = entity.particle_emitter {
+                                                                let short = pe.rsplit('/').next().unwrap_or(pe);
+                                                                ui.label(egui::RichText::new(format!("    ✨ {short}")).size(11.0).color(dim));
+                                                            }
+                                                            if let Some(ref es) = entity.event_sheet {
+                                                                let short = es.rsplit('/').next().unwrap_or(es);
+                                                                ui.label(egui::RichText::new(format!("    📜 {short}")).size(11.0).color(dim));
+                                                            }
+                                                            if let Some(ref col) = entity.collider {
+                                                                let shape = match col {
+                                                                    toile_scene::ColliderData::Aabb { .. } => "AABB",
+                                                                    toile_scene::ColliderData::Circle { .. } => "Circle",
+                                                                };
+                                                                ui.label(egui::RichText::new(format!("    🔲 {shape}")).size(11.0).color(dim));
+                                                            }
+                                                        });
+                                                } else {
+                                                    // Simple leaf — no children
+                                                    let color = if selected { egui::Color32::YELLOW } else { egui::Color32::WHITE };
+                                                    if ui.selectable_label(selected, egui::RichText::new(format!("  {icon} {}", entity.name)).color(color)).clicked() {
+                                                        click_id = Some(entity.id);
+                                                    }
                                                 }
                                             }
                                             if let Some(id) = click_id {
