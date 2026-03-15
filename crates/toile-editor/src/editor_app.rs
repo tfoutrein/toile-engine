@@ -385,11 +385,14 @@ impl Game for EditorApp {
             }
         }
 
-        // Draw tilemap layers
+        // Draw tilemap layers (centered at world origin)
         if let Some(tilemap) = &self.scene.tilemap {
             if let Some(tileset_tex) = self.tilemap_editor.tileset_tex {
                 let ts = tilemap.tile_size as f32;
+                let map_w = tilemap.width as f32 * ts;
                 let map_h = tilemap.height as f32 * ts;
+                let offset_x = -map_w * 0.5;
+                let offset_y = map_h * 0.5;
 
                 for layer in &tilemap.layers {
                     if !layer.visible {
@@ -402,8 +405,8 @@ impl Game for EditorApp {
                                 continue;
                             }
                             let (uv_min, uv_max) = self.tilemap_editor.tile_uv(gid);
-                            let x = col as f32 * ts + ts * 0.5;
-                            let y = map_h - (row as f32 * ts + ts * 0.5);
+                            let x = offset_x + col as f32 * ts + ts * 0.5;
+                            let y = offset_y - (row as f32 * ts + ts * 0.5);
                             ctx.draw_sprite(Sprite {
                                 texture: tileset_tex,
                                 position: Vec2::new(x, y),

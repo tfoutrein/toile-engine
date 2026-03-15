@@ -37,12 +37,18 @@ impl TilemapEditor {
     }
 
     /// Convert a world position to tile grid coordinates.
+    /// The tilemap is centered at the world origin.
     pub fn world_to_tile(&self, world_pos: Vec2, map_width: u32, map_height: u32) -> Option<(u32, u32)> {
         let ts = self.tile_size as f32;
+        let map_w = map_width as f32 * ts;
         let map_h = map_height as f32 * ts;
 
-        let col = (world_pos.x / ts).floor() as i32;
-        let row = ((map_h - world_pos.y) / ts).floor() as i32;
+        // Offset so tilemap is centered at origin
+        let local_x = world_pos.x + map_w * 0.5;
+        let local_y = map_h * 0.5 - world_pos.y;
+
+        let col = (local_x / ts).floor() as i32;
+        let row = (local_y / ts).floor() as i32;
 
         if col >= 0 && col < map_width as i32 && row >= 0 && row < map_height as i32 {
             Some((col as u32, row as u32))
