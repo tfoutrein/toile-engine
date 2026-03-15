@@ -1,0 +1,17 @@
+{
+  "name": "first-game",
+  "entities": [],
+  "tilemap": null,
+  "settings": {
+    "gravity": 800.0,
+    "viewport_width": 1280,
+    "viewport_height": 720,
+    "clear_color": [
+      0.1,
+      0.1,
+      0.15,
+      1.0
+    ],
+    "camera_zoom": 1.0
+  }
+}

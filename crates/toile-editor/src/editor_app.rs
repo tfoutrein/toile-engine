@@ -1254,6 +1254,7 @@ impl Game for EditorApp {
         let mut load_scene = false;
         let mut add_entity = false;
         let mut delete_selected = false;
+        let mut play_game = false;
 
         egui::TopBottomPanel::top("menu").show(&ctx, |ui| {
             egui::menu::bar(ui, |ui| {
@@ -1328,6 +1329,12 @@ impl Game for EditorApp {
                 if ui.button(particle_label).clicked() {
                     self.editor_mode = EditorMode::Particle;
                 }
+                ui.separator();
+                // Play button — save & launch the game
+                if ui.button(egui::RichText::new("▶ Play").color(egui::Color32::from_rgb(80, 220, 80)).strong()).clicked() {
+                    play_game = true;
+                }
+                ui.separator();
                 ui.menu_button("View", |ui| {
                     ui.checkbox(&mut self.show_grid, "Show Grid");
                     if ui.button("Scene Settings...").clicked() {
@@ -1479,6 +1486,35 @@ impl Game for EditorApp {
             if let Some(id) = self.selected_id.take() {
                 self.scene.remove_entity(id);
                 self.status_msg = format!("Deleted entity {id}");
+            }
+        }
+        if play_game {
+            if let Some(ref dir) = pdir {
+                // Auto-save before playing
+                if !self.current_file.is_empty() {
+                    let save_path = dir.join(&self.current_file);
+                    if let Ok(json) = serde_json::to_string_pretty(&self.scene) {
+                        let _ = std::fs::write(&save_path, &json);
+                    }
+                }
+                // Spawn toile run as a child process
+                let toile_bin = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("toile"));
+                match std::process::Command::new(&toile_bin)
+                    .arg("run")
+                    .arg(dir)
+                    .spawn()
+                {
+                    Ok(_) => self.status_msg = "Game launched!".to_string(),
+                    Err(e) => {
+                        // Fallback: try "toile" from PATH
+                        match std::process::Command::new("toile").arg("run").arg(dir).spawn() {
+                            Ok(_) => self.status_msg = "Game launched!".to_string(),
+                            Err(e2) => self.status_msg = format!("Failed to launch game: {e2}"),
+                        }
+                    }
+                }
+            } else {
+                self.status_msg = "No project open".to_string();
             }
         }
 
