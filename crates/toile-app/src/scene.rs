@@ -57,6 +57,7 @@ pub struct SceneStack {
     stack: Vec<Box<dyn Scene>>,
     commands: Vec<SceneCommand>,
     transition: Option<TransitionState>,
+    needs_init: bool,
 }
 
 impl SceneStack {
@@ -65,6 +66,7 @@ impl SceneStack {
             stack: vec![Box::new(initial)],
             commands: Vec::new(),
             transition: None,
+            needs_init: true,
         }
     }
 
@@ -87,6 +89,14 @@ impl SceneStack {
 
     /// Update the active scene and process transitions.
     pub fn update(&mut self, ctx: &mut GameContext, dt: f64) {
+        // Initialize the first scene
+        if self.needs_init {
+            self.needs_init = false;
+            if let Some(scene) = self.stack.last_mut() {
+                scene.on_enter(ctx);
+            }
+        }
+
         // Advance transition
         if let Some(ref mut ts) = self.transition {
             match ts {
