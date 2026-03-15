@@ -33,8 +33,10 @@ pub use toile_scripting as scripting;
 pub use toile_assets::font::FontHandle;
 pub use toile_audio::{MusicId, PlaybackId, SoundId};
 pub use toile_graphics::camera::Camera2D as Camera;
+pub use toile_graphics::custom_shader::CustomShaderPipeline;
 pub use toile_graphics::lighting::{Light, LightingConfig, ShadowConfig};
 pub use toile_graphics::post_processing::{PostEffect, PostProcessingStack};
+pub use toile_graphics::shader_graph::{NodeKind, ShaderEdge, ShaderGraph, ShaderNode};
 pub use toile_graphics::sprite_renderer::{DrawSprite as Sprite, COLOR_WHITE};
 pub use toile_graphics::texture::TextureHandle;
 pub use toile_platform::input::{Key, MouseButton};
@@ -57,11 +59,44 @@ pub struct GameContext<'a> {
     renderer: &'a mut SpriteRenderer,
     fonts: &'a mut Vec<Font>,
     draw_list: &'a mut Vec<DrawSprite>,
+    post_processor: &'a Option<toile_graphics::post_processing::PostProcessor>,
 }
 
 impl<'a> GameContext<'a> {
     pub fn surface_format(&self) -> wgpu::TextureFormat {
         self.gpu.surface_format()
+    }
+
+    /// Compile a `ShaderGraph` into a `CustomShaderPipeline` ready for use as
+    /// `PostEffect::Custom(pipeline)`.  Returns `None` and logs an error on failure.
+    pub fn compile_shader_graph(
+        &self,
+        graph: &ShaderGraph,
+    ) -> Option<std::sync::Arc<CustomShaderPipeline>> {
+        let wgsl = match graph.compile() {
+            Ok(w) => w,
+            Err(e) => { log::error!("Shader graph compile error: {e}"); return None; }
+        };
+        self.compile_shader_wgsl(&graph.name, &wgsl)
+    }
+
+    /// Compile raw WGSL (must conform to the custom-shader layout) into a pipeline.
+    pub fn compile_shader_wgsl(
+        &self,
+        name: &str,
+        wgsl: &str,
+    ) -> Option<std::sync::Arc<CustomShaderPipeline>> {
+        let pp = self.post_processor.as_ref()?;
+        match CustomShaderPipeline::new(
+            name,
+            self.gpu.device(),
+            self.gpu.surface_format(),
+            &pp.tex_bgl,
+            wgsl,
+        ) {
+            Ok(p)  => Some(p),
+            Err(e) => { log::error!("Custom shader WGSL error: {e}"); None }
+        }
     }
 
     pub fn load_texture(&mut self, path: &std::path::Path) -> TextureHandle {
@@ -249,6 +284,7 @@ impl App {
             post_stack: PostProcessingStack::default(),
             lighting_system: None,
             lighting_config: LightingConfig::default(),
+            elapsed_secs: 0.0,
         };
 
         event_loop.run_app(&mut handler).expect("Event loop error");
@@ -277,6 +313,7 @@ struct AppHandler {
     post_stack: PostProcessingStack,
     lighting_system: Option<LightingSystem>,
     lighting_config: LightingConfig,
+    elapsed_secs: f32,
 }
 
 macro_rules! make_ctx {
@@ -294,6 +331,7 @@ macro_rules! make_ctx {
             draw_list: &mut $self.draw_list,
             post_processing: &mut $self.post_stack,
             lighting: &mut $self.lighting_config,
+            post_processor: &$self.post_processor,
         }
     };
 }
@@ -415,6 +453,7 @@ impl ApplicationHandler for AppHandler {
                 let (ticks, _alpha) = clock.advance();
                 let dt = clock.fixed_dt_secs();
                 let fps = clock.fps();
+                self.elapsed_secs += (ticks as f64 * dt) as f32;
 
                 for tick_idx in 0..ticks {
                     let mut ctx = make_ctx!(self, fps);
@@ -477,7 +516,7 @@ impl ApplicationHandler for AppHandler {
                         } else {
                             None
                         };
-                        pp.apply_from(&self.post_stack, src, &view, gpu.queue(), &mut encoder);
+                        pp.apply_from(&self.post_stack, src, &view, self.elapsed_secs, gpu.queue(), &mut encoder);
                     }
 
                     // Overlay rendering (egui for editor, no-op for regular games)

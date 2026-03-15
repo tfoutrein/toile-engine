@@ -1,6 +1,8 @@
 pub mod camera;
+pub mod custom_shader;
 pub mod lighting;
 pub mod post_processing;
+pub mod shader_graph;
 pub mod sprite_renderer;
 pub mod texture;
 

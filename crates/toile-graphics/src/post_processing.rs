@@ -1,7 +1,11 @@
 // Toile Engine — Post-processing pipeline
 // Offscreen render + configurable full-screen effect chain (ping-pong).
 
+use std::sync::Arc;
+
 use bytemuck::{Pod, Zeroable};
+
+use crate::custom_shader::CustomShaderPipeline;
 
 // ── Public API types ─────────────────────────────────────────────────────────
 
@@ -19,6 +23,9 @@ pub enum PostEffect {
     ScreenShake { offset_x: f32, offset_y: f32 },
     /// Brightness, contrast, saturation adjustment.
     ColorGrading { saturation: f32, brightness: f32, contrast: f32 },
+    /// A shader compiled at runtime from a `ShaderGraph` or raw WGSL.
+    /// The shader receives `p.time`, `p.screen_w`, `p.screen_h` as uniforms.
+    Custom(Arc<CustomShaderPipeline>),
 }
 
 #[derive(Clone, Debug, Default)]
@@ -320,10 +327,11 @@ impl PostProcessor {
         &self,
         stack: &PostProcessingStack,
         final_view: &wgpu::TextureView,
+        time: f32,
         queue: &wgpu::Queue,
         encoder: &mut wgpu::CommandEncoder,
     ) {
-        self.apply_from(stack, None, final_view, queue, encoder);
+        self.apply_from(stack, None, final_view, time, queue, encoder);
     }
 
     /// Like `apply()` but starts from `src_override` for the first pass instead of `scene_bg`.
@@ -334,6 +342,7 @@ impl PostProcessor {
         stack: &PostProcessingStack,
         src_override: Option<&wgpu::BindGroup>,
         final_view: &wgpu::TextureView,
+        time: f32,
         queue: &wgpu::Queue,
         encoder: &mut wgpu::CommandEncoder,
     ) {
@@ -407,6 +416,11 @@ impl PostProcessor {
                         &GradingU { saturation: *saturation, brightness: *brightness, contrast: *contrast, _p: 0.0 }
                     ));
                     run_pass(encoder, &self.grading_pipeline, src_bg, Some(&self.grading_bg), dst_view);
+                }
+                PostEffect::Custom(pipeline) => {
+                    let (w, h) = self.size;
+                    pipeline.update_params(queue, time, w as f32, h as f32);
+                    run_pass(encoder, &pipeline.pipeline, src_bg, Some(&pipeline.params_bg), dst_view);
                 }
             }
         }
