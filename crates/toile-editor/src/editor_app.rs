@@ -331,17 +331,27 @@ impl Game for EditorApp {
                     if let Some(entity) = self.scene.entities.iter().find(|e| e.id == sel_id) {
                         let hw = entity.width * entity.scale_x * 0.5;
                         let hh = entity.height * entity.scale_y * 0.5;
+                        let rot = entity.rotation;
+                        let center = Vec2::new(entity.x, entity.y);
+
+                        // Rotate local offset around entity center
+                        let rotated = |local: Vec2| -> Vec2 {
+                            let (sin, cos) = rot.sin_cos();
+                            center + Vec2::new(
+                                local.x * cos - local.y * sin,
+                                local.x * sin + local.y * cos,
+                            )
+                        };
+
                         let handles = [
-                            // Corners
-                            (Vec2::new(entity.x + hw, entity.y + hh), ResizeHandle::TopRight),
-                            (Vec2::new(entity.x + hw, entity.y - hh), ResizeHandle::BottomRight),
-                            (Vec2::new(entity.x - hw, entity.y - hh), ResizeHandle::BottomLeft),
-                            (Vec2::new(entity.x - hw, entity.y + hh), ResizeHandle::TopLeft),
-                            // Edge midpoints
-                            (Vec2::new(entity.x, entity.y + hh), ResizeHandle::Top),
-                            (Vec2::new(entity.x, entity.y - hh), ResizeHandle::Bottom),
-                            (Vec2::new(entity.x - hw, entity.y), ResizeHandle::Left),
-                            (Vec2::new(entity.x + hw, entity.y), ResizeHandle::Right),
+                            (rotated(Vec2::new(hw, hh)), ResizeHandle::TopRight),
+                            (rotated(Vec2::new(hw, -hh)), ResizeHandle::BottomRight),
+                            (rotated(Vec2::new(-hw, -hh)), ResizeHandle::BottomLeft),
+                            (rotated(Vec2::new(-hw, hh)), ResizeHandle::TopLeft),
+                            (rotated(Vec2::new(0.0, hh)), ResizeHandle::Top),
+                            (rotated(Vec2::new(0.0, -hh)), ResizeHandle::Bottom),
+                            (rotated(Vec2::new(-hw, 0.0)), ResizeHandle::Left),
+                            (rotated(Vec2::new(hw, 0.0)), ResizeHandle::Right),
                         ];
                         for (pos, handle) in &handles {
                             if (world_pos - *pos).length() < handle_size * 1.5 {
@@ -352,13 +362,20 @@ impl Game for EditorApp {
                     }
                 }
 
-                // Check rotation handle (circle above top edge)
+                // Check rotation handle (diamond above top edge, rotated)
                 let mut hit_rotate = false;
                 if hit_handle.is_none() {
                     if let Some(sel_id) = self.selected_id {
                         if let Some(entity) = self.scene.entities.iter().find(|e| e.id == sel_id) {
                             let hh = entity.height * entity.scale_y * 0.5;
-                            let rotate_handle_pos = Vec2::new(entity.x, entity.y + hh + handle_size * 4.0);
+                            let rot = entity.rotation;
+                            let center = Vec2::new(entity.x, entity.y);
+                            let local = Vec2::new(0.0, hh + handle_size * 4.0);
+                            let (sin, cos) = rot.sin_cos();
+                            let rotate_handle_pos = center + Vec2::new(
+                                local.x * cos - local.y * sin,
+                                local.x * sin + local.y * cos,
+                            );
                             if (world_pos - rotate_handle_pos).length() < handle_size * 2.0 {
                                 hit_rotate = true;
                             }
@@ -387,16 +404,16 @@ impl Game for EditorApp {
                         }
                     }
                 } else {
-                    // Try to pick an entity for drag
+                    // Try to pick an entity for drag (rotation-aware hit test)
                     let mut clicked_id = None;
                     for entity in self.scene.entities.iter().rev() {
                         let hw = entity.width * entity.scale_x * 0.5;
                         let hh = entity.height * entity.scale_y * 0.5;
-                        if world_pos.x >= entity.x - hw
-                            && world_pos.x <= entity.x + hw
-                            && world_pos.y >= entity.y - hh
-                            && world_pos.y <= entity.y + hh
-                        {
+                        // Transform mouse into entity's local space (undo rotation)
+                        let d = world_pos - Vec2::new(entity.x, entity.y);
+                        let (sin, cos) = (-entity.rotation).sin_cos();
+                        let local = Vec2::new(d.x * cos - d.y * sin, d.x * sin + d.y * cos);
+                        if local.x >= -hw && local.x <= hw && local.y >= -hh && local.y <= hh {
                             clicked_id = Some(entity.id);
                             break;
                         }
@@ -725,43 +742,61 @@ impl Game for EditorApp {
                 uv_max: Vec2::ONE,
             });
 
-            // Selection outline + resize handles
+            // Selection outline + resize handles (rotated with entity)
             if selected {
                 let hw = entity.width * entity.scale_x * 0.5;
                 let hh = entity.height * entity.scale_y * 0.5;
-                let ow = hw + 2.0; // outline half-width
+                let ow = hw + 2.0;
                 let oh = hh + 2.0;
                 let thickness = 2.0 / self.camera_zoom;
                 let handle_size = 8.0 / self.camera_zoom;
                 let outline_color = pack_color(255, 255, 100, 200);
                 let handle_color = pack_color(255, 255, 255, 255);
+                let rot = entity.rotation;
+                let center = Vec2::new(entity.x, entity.y);
 
-                // Outline edges
-                for sprite in [
-                    Sprite::new(tex, Vec2::new(entity.x, entity.y + oh), Vec2::new(ow * 2.0, thickness)),
-                    Sprite::new(tex, Vec2::new(entity.x, entity.y - oh), Vec2::new(ow * 2.0, thickness)),
-                    Sprite::new(tex, Vec2::new(entity.x - ow, entity.y), Vec2::new(thickness, oh * 2.0)),
-                    Sprite::new(tex, Vec2::new(entity.x + ow, entity.y), Vec2::new(thickness, oh * 2.0)),
-                ] {
-                    let mut s = sprite;
-                    s.color = outline_color;
-                    s.layer = 90;
-                    ctx.draw_sprite(s);
-                }
+                // Helper: rotate a local offset around entity center
+                let rotated = |local: Vec2| -> Vec2 {
+                    let (sin, cos) = rot.sin_cos();
+                    center + Vec2::new(
+                        local.x * cos - local.y * sin,
+                        local.x * sin + local.y * cos,
+                    )
+                };
 
-                // Resize handles: 4 corners (square) + 4 edge midpoints (rectangle)
-                let corner_handles = [
-                    Vec2::new(entity.x + hw, entity.y + hh),
-                    Vec2::new(entity.x + hw, entity.y - hh),
-                    Vec2::new(entity.x - hw, entity.y - hh),
-                    Vec2::new(entity.x - hw, entity.y + hh),
+                // Outline edges (4 lines, each rotated)
+                let edges = [
+                    (Vec2::new(0.0, oh), Vec2::new(ow * 2.0, thickness)),   // top
+                    (Vec2::new(0.0, -oh), Vec2::new(ow * 2.0, thickness)),  // bottom
+                    (Vec2::new(-ow, 0.0), Vec2::new(thickness, oh * 2.0)),  // left
+                    (Vec2::new(ow, 0.0), Vec2::new(thickness, oh * 2.0)),   // right
                 ];
-                for pos in corner_handles {
+                for (local_pos, size) in edges {
                     ctx.draw_sprite(DrawSprite {
                         texture: tex,
-                        position: pos,
+                        position: rotated(local_pos),
+                        size,
+                        rotation: rot,
+                        color: outline_color,
+                        layer: 90,
+                        uv_min: Vec2::ZERO,
+                        uv_max: Vec2::ONE,
+                    });
+                }
+
+                // Corner handles (4 squares)
+                let corners_local = [
+                    Vec2::new(hw, hh),
+                    Vec2::new(hw, -hh),
+                    Vec2::new(-hw, -hh),
+                    Vec2::new(-hw, hh),
+                ];
+                for local in corners_local {
+                    ctx.draw_sprite(DrawSprite {
+                        texture: tex,
+                        position: rotated(local),
                         size: Vec2::splat(handle_size),
-                        rotation: 0.0,
+                        rotation: rot,
                         color: handle_color,
                         layer: 91,
                         uv_min: Vec2::ZERO,
@@ -769,28 +804,20 @@ impl Game for EditorApp {
                     });
                 }
 
-                // Edge midpoint handles (wider/taller to indicate axis)
+                // Edge midpoint handles
                 let edge_color = pack_color(200, 220, 255, 255);
-                // Top & Bottom (horizontal bars)
-                for y in [entity.y + hh, entity.y - hh] {
+                let edge_handles = [
+                    (Vec2::new(0.0, hh), Vec2::new(handle_size * 2.0, handle_size * 0.6)),   // top
+                    (Vec2::new(0.0, -hh), Vec2::new(handle_size * 2.0, handle_size * 0.6)),  // bottom
+                    (Vec2::new(-hw, 0.0), Vec2::new(handle_size * 0.6, handle_size * 2.0)),  // left
+                    (Vec2::new(hw, 0.0), Vec2::new(handle_size * 0.6, handle_size * 2.0)),   // right
+                ];
+                for (local, size) in edge_handles {
                     ctx.draw_sprite(DrawSprite {
                         texture: tex,
-                        position: Vec2::new(entity.x, y),
-                        size: Vec2::new(handle_size * 2.0, handle_size * 0.6),
-                        rotation: 0.0,
-                        color: edge_color,
-                        layer: 91,
-                        uv_min: Vec2::ZERO,
-                        uv_max: Vec2::ONE,
-                    });
-                }
-                // Left & Right (vertical bars)
-                for x in [entity.x - hw, entity.x + hw] {
-                    ctx.draw_sprite(DrawSprite {
-                        texture: tex,
-                        position: Vec2::new(x, entity.y),
-                        size: Vec2::new(handle_size * 0.6, handle_size * 2.0),
-                        rotation: 0.0,
+                        position: rotated(local),
+                        size,
+                        rotation: rot,
                         color: edge_color,
                         layer: 91,
                         uv_min: Vec2::ZERO,
@@ -798,28 +825,26 @@ impl Game for EditorApp {
                     });
                 }
 
-                // Rotation handle: line + circle above top edge
-                let rot_y = entity.y + hh + handle_size * 4.0;
+                // Rotation handle: line + diamond above top edge
+                let rot_arm = hh + handle_size * 4.0;
                 let rot_color = pack_color(120, 220, 255, 255);
 
-                // Connection line
                 ctx.draw_sprite(DrawSprite {
                     texture: tex,
-                    position: Vec2::new(entity.x, entity.y + hh + handle_size * 2.0),
+                    position: rotated(Vec2::new(0.0, hh + handle_size * 2.0)),
                     size: Vec2::new(thickness, handle_size * 4.0),
-                    rotation: 0.0,
+                    rotation: rot,
                     color: rot_color,
                     layer: 91,
                     uv_min: Vec2::ZERO,
                     uv_max: Vec2::ONE,
                 });
 
-                // Rotation circle (rendered as a small square — we don't have circles)
                 ctx.draw_sprite(DrawSprite {
                     texture: tex,
-                    position: Vec2::new(entity.x, rot_y),
+                    position: rotated(Vec2::new(0.0, rot_arm)),
                     size: Vec2::splat(handle_size * 1.5),
-                    rotation: std::f32::consts::FRAC_PI_4, // 45° diamond shape
+                    rotation: rot + std::f32::consts::FRAC_PI_4,
                     color: rot_color,
                     layer: 92,
                     uv_min: Vec2::ZERO,
