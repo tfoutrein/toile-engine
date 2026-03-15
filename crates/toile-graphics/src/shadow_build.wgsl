@@ -19,7 +19,7 @@ struct ShadowBuildParams {
     camera_pos:    vec2<f32>,   // camera world centre      offset 16
     viewport_half: vec2<f32>,   // world-unit half-extents  offset 24
     steps:         u32,         // ray march steps          offset 32
-    _pad0:         u32,         //                          offset 36
+    start_frac:    f32,         // skip [0, start_frac) near the light  offset 36
     _pad1:         u32,         //                          offset 40
     _pad2:         u32,         //                          offset 44
 };
@@ -45,8 +45,11 @@ fn world_to_uv(world: vec2<f32>) -> vec2<f32> {
     let dir   = vec2(cos(angle), sin(angle));
 
     var closest = 1.0;  // default: no occluder within radius
+    // Distribute steps evenly over [start_frac, 1.0] to skip the area
+    // immediately around the light source (avoids self-occlusion by glow sprites).
+    let range = 1.0 - p.start_frac;
     for (var s: u32 = 1u; s <= p.steps; s++) {
-        let t       = f32(s) / f32(p.steps);
+        let t       = p.start_frac + (f32(s) / f32(p.steps)) * range;
         let world   = p.light_pos + dir * (t * p.light_radius);
         let uv      = world_to_uv(world);
 

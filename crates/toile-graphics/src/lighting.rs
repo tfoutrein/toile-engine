@@ -122,7 +122,7 @@ struct ShadowBuildParamsGpu {
     camera_pos:    [f32; 2],   // offset 16
     viewport_half: [f32; 2],   // offset 24
     steps:         u32,        // offset 32
-    _pad0:         u32,        // offset 36
+    start_frac:    f32,        // offset 36 — skip near-light zone (avoids glow sprite self-occlusion)
     _pad1:         u32,        // offset 40
     _pad2:         u32,        // offset 44
 }                              // total 48 bytes
@@ -458,6 +458,10 @@ impl LightingSystem {
             let row = shadow_assignments[i];
             if row < 0 { continue; }
 
+            // Skip the first ~8% of the radius to avoid self-occlusion by the
+            // glow sprite drawn at the light position. 8% of radius=140 → 11 wu,
+            // well beyond any glow dot (max radius ≈ 6 wu for size=12 sprite).
+            let start_frac = (12.0_f32 / light.radius).min(0.15);
             let params = ShadowBuildParamsGpu {
                 light_pos:     [light.position.x, light.position.y],
                 light_radius:  light.radius,
@@ -465,7 +469,8 @@ impl LightingSystem {
                 camera_pos:    cam_pos,
                 viewport_half,
                 steps:         SHADOW_STEPS,
-                _pad0: 0, _pad1: 0, _pad2: 0,
+                start_frac,
+                _pad1: 0, _pad2: 0,
             };
             queue.write_buffer(&self.shadow_build_bufs[row as usize], 0, bytemuck::bytes_of(&params));
 
