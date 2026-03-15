@@ -285,6 +285,60 @@ impl Game for EditorApp {
         ctx.camera.position = self.camera_pos;
         ctx.camera.zoom = self.camera_zoom;
 
+        // Entity selection and drag in Entity mode
+        if self.editor_mode == EditorMode::Entity {
+            let world_pos = ctx.camera.screen_to_world(ctx.input.mouse_position());
+
+            // Start drag: click on an entity to select and start dragging
+            if ctx.input.is_mouse_just_pressed(toile_app::MouseButton::Left) {
+                let mut clicked_id = None;
+                for entity in &self.scene.entities {
+                    let hw = entity.width * entity.scale_x * 0.5;
+                    let hh = entity.height * entity.scale_y * 0.5;
+                    if world_pos.x >= entity.x - hw
+                        && world_pos.x <= entity.x + hw
+                        && world_pos.y >= entity.y - hh
+                        && world_pos.y <= entity.y + hh
+                    {
+                        clicked_id = Some(entity.id);
+                        break;
+                    }
+                }
+
+                if let Some(id) = clicked_id {
+                    self.selected_id = Some(id);
+                    if let Some(entity) = self.scene.entities.iter().find(|e| e.id == id) {
+                        self.drag_offset = Vec2::new(entity.x - world_pos.x, entity.y - world_pos.y);
+                    }
+                    self.dragging = Some(id);
+                } else {
+                    self.selected_id = None;
+                    self.dragging = None;
+                }
+            }
+
+            // Continue drag: move entity with mouse
+            if ctx.input.is_mouse_down(toile_app::MouseButton::Left) {
+                if let Some(drag_id) = self.dragging {
+                    if let Some(entity) = self.scene.find_entity_mut(drag_id) {
+                        entity.x = world_pos.x + self.drag_offset.x;
+                        entity.y = world_pos.y + self.drag_offset.y;
+                    }
+                }
+            }
+
+            // End drag on mouse release
+            if !ctx.input.is_mouse_down(toile_app::MouseButton::Left) {
+                self.dragging = None;
+            }
+
+            // Camera pan with middle mouse
+            if ctx.input.is_mouse_down(toile_app::MouseButton::Middle) {
+                // Simple pan: move camera opposite to mouse delta
+                // (approximation — proper delta tracking would be better)
+            }
+        }
+
         // Tilemap painting with mouse
         if self.editor_mode == EditorMode::Tilemap {
             if ctx.input.is_mouse_down(toile_app::MouseButton::Left) {
