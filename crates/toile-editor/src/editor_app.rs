@@ -9,6 +9,7 @@ use winit::event::WindowEvent;
 use winit::window::Window;
 
 use crate::overlay::EguiOverlay;
+use crate::particle_editor::ParticleEditorPanel;
 use crate::scene_data::{EntityData, SceneData};
 use crate::tilemap_tool::{self, TilemapEditor, TileTool};
 
@@ -42,6 +43,8 @@ pub struct EditorApp {
     show_splash: bool,
     // Tilemap editor
     tilemap_editor: TilemapEditor,
+    // Particle editor
+    particle_editor: ParticleEditorPanel,
     editor_mode: EditorMode,
 }
 
@@ -49,6 +52,7 @@ pub struct EditorApp {
 pub enum EditorMode {
     Entity,
     Tilemap,
+    Particle,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -105,6 +109,7 @@ impl EditorApp {
             splash_timer: 2.5,
             show_splash: true,
             tilemap_editor: TilemapEditor::new(),
+            particle_editor: ParticleEditorPanel::new(),
             editor_mode: EditorMode::Entity,
         }
     }
@@ -578,6 +583,11 @@ impl Game for EditorApp {
                 }
             }
         }
+
+        // Particle simulation tick
+        if self.editor_mode == EditorMode::Particle {
+            self.particle_editor.update(_dt as f32);
+        }
     }
 
     fn draw(&mut self, ctx: &mut GameContext) {
@@ -819,6 +829,22 @@ impl Game for EditorApp {
                 });
             }
         }
+
+        // Render particles in Particle mode
+        if self.editor_mode == EditorMode::Particle {
+            for (pos, size, rot, color) in self.particle_editor.render_data() {
+                ctx.draw_sprite(DrawSprite {
+                    texture: tex,
+                    position: pos,
+                    size: Vec2::splat(size),
+                    rotation: rot,
+                    color,
+                    layer: 0,
+                    uv_min: Vec2::ZERO,
+                    uv_max: Vec2::ONE,
+                });
+            }
+        }
     }
 
     fn render_overlay(
@@ -883,8 +909,9 @@ impl Game for EditorApp {
                 });
                 ui.separator();
                 // Mode toggle
-                let entity_label = if self.editor_mode == EditorMode::Entity { "[ Entity ]" } else { "Entity" };
-                let tilemap_label = if self.editor_mode == EditorMode::Tilemap { "[ Tilemap ]" } else { "Tilemap" };
+                let entity_label  = if self.editor_mode == EditorMode::Entity   { "[ Entity ]"   } else { "Entity" };
+                let tilemap_label = if self.editor_mode == EditorMode::Tilemap  { "[ Tilemap ]"  } else { "Tilemap" };
+                let particle_label = if self.editor_mode == EditorMode::Particle { "[ Particles ]" } else { "Particles" };
                 if ui.button(entity_label).clicked() {
                     self.editor_mode = EditorMode::Entity;
                 }
@@ -897,6 +924,9 @@ impl Game for EditorApp {
                         ));
                         self.status_msg = "Created 40x23 tilemap (1280x736px)".to_string();
                     }
+                }
+                if ui.button(particle_label).clicked() {
+                    self.editor_mode = EditorMode::Particle;
                 }
                 ui.menu_button("View", |ui| {
                     ui.checkbox(&mut self.show_grid, "Show Grid");
@@ -1059,7 +1089,16 @@ impl Game for EditorApp {
             }
         });
 
-        // Inspector panel
+        // Inspector panel — replaced by particle panel in Particle mode
+        if self.editor_mode == EditorMode::Particle {
+            egui::SidePanel::right("inspector").min_width(320.0).max_width(320.0).show(&ctx, |ui| {
+                egui::ScrollArea::vertical().show(ui, |ui| {
+                    self.particle_editor.show(ui);
+                });
+            });
+        }
+
+        if self.editor_mode != EditorMode::Particle {
         egui::SidePanel::right("inspector").default_width(260.0).show(&ctx, |ui| {
             ui.heading("Inspector");
             ui.separator();
@@ -1134,6 +1173,7 @@ impl Game for EditorApp {
                 ui.label("No entity selected");
             }
         });
+        } // end `if self.editor_mode != EditorMode::Particle`
 
         // Status bar
         // Tilemap tools panel (when in tilemap mode)
