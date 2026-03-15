@@ -189,7 +189,38 @@ impl Game for BehaviorsDemo {
             jump_down: ctx.input.is_key_down(Key::Space),
         };
 
-        // Platform behavior on player — need to capture ground/platforms for solid check
+        // 1. Move platforms FIRST (so collision uses their current positions)
+        let old_plat_positions: Vec<Vec2> = self.platforms.iter()
+            .map(|p| p.state.position)
+            .collect();
+
+        for plat in &mut self.platforms {
+            sine::update(&plat.sine_config, &mut plat.sine_state, &mut plat.state, dt);
+        }
+
+        // 2. If player is riding a platform, move with it BEFORE collision
+        if self.player.state.on_ground {
+            let player_bottom = self.player.state.position.y - self.player.state.size.y * 0.5;
+            let player_half_w = self.player.state.size.x * 0.5;
+
+            for (i, plat) in self.platforms.iter().enumerate() {
+                let plat_top = plat.state.position.y + plat.state.size.y * 0.5;
+                let plat_left = plat.state.position.x - plat.state.size.x * 0.5;
+                let plat_right = plat.state.position.x + plat.state.size.x * 0.5;
+
+                let on_top = (player_bottom - plat_top).abs() < 8.0
+                    && self.player.state.position.x + player_half_w > plat_left
+                    && self.player.state.position.x - player_half_w < plat_right;
+
+                if on_top {
+                    let delta = plat.state.position - old_plat_positions[i];
+                    self.player.state.position += delta;
+                    break;
+                }
+            }
+        }
+
+        // 3. Platform behavior on player — uses CURRENT platform positions for collision
         let ground = self.ground.clone();
         let plat_positions: Vec<(Vec2, Vec2)> = self.platforms.iter()
             .map(|p| (p.state.position, p.state.size * 0.5))
@@ -220,11 +251,6 @@ impl Game for BehaviorsDemo {
             &solid_check,
             dt,
         );
-
-        // Sine behavior on floating platforms
-        for plat in &mut self.platforms {
-            sine::update(&plat.sine_config, &mut plat.sine_state, &mut plat.state, dt);
-        }
 
         // Shoot projectile on click
         if ctx.input.is_mouse_just_pressed(MB::Left) {
