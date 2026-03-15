@@ -33,7 +33,7 @@ pub use toile_scripting as scripting;
 pub use toile_assets::font::FontHandle;
 pub use toile_audio::{MusicId, PlaybackId, SoundId};
 pub use toile_graphics::camera::Camera2D as Camera;
-pub use toile_graphics::lighting::{Light, LightingConfig};
+pub use toile_graphics::lighting::{Light, LightingConfig, ShadowConfig};
 pub use toile_graphics::post_processing::{PostEffect, PostProcessingStack};
 pub use toile_graphics::sprite_renderer::{DrawSprite as Sprite, COLOR_WHITE};
 pub use toile_graphics::texture::TextureHandle;
