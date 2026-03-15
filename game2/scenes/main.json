@@ -4,8 +4,8 @@
     {
       "id": 1,
       "name": "Entity_1",
-      "x": -613.3655,
-      "y": -236.75592,
+      "x": -612.22833,
+      "y": -247.6437,
       "rotation": 0.0,
       "scale_x": 1.0,
       "scale_y": 1.0,
@@ -13,14 +13,67 @@
       "sprite_path": "",
       "width": 28.839859,
       "height": 66.87552,
-      "behaviors": [],
+      "behaviors": [
+        {
+          "type": "Platform",
+          "gravity": 800.0,
+          "jump_force": 400.0,
+          "max_speed": 200.0,
+          "acceleration": 1500.0,
+          "deceleration": 1200.0,
+          "coyote_time": 0.08,
+          "jump_buffer": 0.12,
+          "max_jumps": 1
+        }
+      ],
       "tags": [
         "Player"
       ],
       "variables": {},
-      "collider": null,
+      "collider": {
+        "shape": "Aabb",
+        "half_w": 14.4199295,
+        "half_h": 33.43776
+      },
       "event_sheet": "scripts/entity_1.event.json",
       "particle_emitter": "particles/fire.particles.json",
+      "light": null,
+      "visible": true
+    },
+    {
+      "id": 2,
+      "name": "sol",
+      "x": 9.354401,
+      "y": -302.87714,
+      "rotation": 0.0,
+      "scale_x": 1.0,
+      "scale_y": 1.0,
+      "layer": 0,
+      "sprite_path": "",
+      "width": 1298.581,
+      "height": 22.264374,
+      "behaviors": [
+        {
+          "type": "Platform",
+          "gravity": 800.0,
+          "jump_force": 400.0,
+          "max_speed": 200.0,
+          "acceleration": 1500.0,
+          "deceleration": 1200.0,
+          "coyote_time": 0.08,
+          "jump_buffer": 0.12,
+          "max_jumps": 1
+        }
+      ],
+      "tags": [],
+      "variables": {},
+      "collider": {
+        "shape": "Aabb",
+        "half_w": 649.2905,
+        "half_h": 11.132187
+      },
+      "event_sheet": null,
+      "particle_emitter": null,
       "light": null,
       "visible": true
     }

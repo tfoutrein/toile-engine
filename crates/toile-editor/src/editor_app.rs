@@ -1142,14 +1142,20 @@ impl Game for EditorApp {
             let selected = self.selected_id == Some(entity.id);
             let is_player_ent = entity.tags.iter().any(|t| t.eq_ignore_ascii_case("player"));
             let is_solid = entity.behaviors.iter().any(|b| matches!(b, BehaviorConfig::Solid));
+            let is_coin = entity.tags.iter().any(|t| t.eq_ignore_ascii_case("coin"));
+            let is_enemy = entity.tags.iter().any(|t| t.eq_ignore_ascii_case("enemy"));
             let color = if selected {
-                pack_color(255, 220, 80, 255)
+                pack_color(255, 220, 80, 255)   // yellow — selected
             } else if is_player_ent {
-                pack_color(80, 220, 120, 255)  // green for player
+                pack_color(80, 220, 120, 255)   // green — player
             } else if is_solid {
-                pack_color(160, 160, 180, 255)  // grey for solids
+                pack_color(160, 160, 180, 255)  // grey — solid/ground
+            } else if is_coin {
+                pack_color(255, 220, 50, 200)   // gold — collectible
+            } else if is_enemy {
+                pack_color(220, 80, 80, 255)    // red — enemy
             } else {
-                pack_color(100, 150, 220, 255)  // blue for regular entities
+                pack_color(100, 150, 220, 255)  // blue — default
             };
 
             ctx.draw_sprite(Sprite {
@@ -1938,75 +1944,120 @@ impl Game for EditorApp {
                             ui.end_row();
                         });
 
-                    // ── Role / Player Controller ─────────────────────────
+                    // ── Role ─────────────────────────────────────────────
                     ui.add_space(4.0);
                     let is_player = entity.tags.iter().any(|t| t.eq_ignore_ascii_case("player"));
-                    let current_controller = if !is_player {
-                        "None"
-                    } else if entity.behaviors.iter().any(|b| matches!(b, BehaviorConfig::Platform(_))) {
-                        "Platformer"
-                    } else if entity.behaviors.iter().any(|b| matches!(b, BehaviorConfig::TopDown(_))) {
-                        "Top-Down"
-                    } else {
-                        "Custom"
+                    let is_solid = entity.behaviors.iter().any(|b| matches!(b, BehaviorConfig::Solid));
+                    let is_coin = entity.tags.iter().any(|t| t.eq_ignore_ascii_case("coin"));
+                    let is_enemy = entity.tags.iter().any(|t| t.eq_ignore_ascii_case("enemy"));
+
+                    let current_role = if is_player {
+                        if entity.behaviors.iter().any(|b| matches!(b, BehaviorConfig::Platform(_))) {
+                            "player_platformer"
+                        } else if entity.behaviors.iter().any(|b| matches!(b, BehaviorConfig::TopDown(_))) {
+                            "player_topdown"
+                        } else { "player_custom" }
+                    } else if is_solid { "solid"
+                    } else if is_coin { "collectible"
+                    } else if is_enemy { "enemy"
+                    } else { "object" };
+
+                    let role_display = match current_role {
+                        "player_platformer" => "🧑 Player (Platformer)",
+                        "player_topdown"    => "🧑 Player (Top-Down)",
+                        "player_custom"     => "🧑 Player (Custom)",
+                        "solid"             => "🧱 Ground / Wall",
+                        "collectible"       => "⭐ Collectible",
+                        "enemy"             => "👾 Enemy",
+                        _                   => "📦 Object",
                     };
 
                     ui.horizontal(|ui| {
                         ui.label("Role:");
-                        let mut new_controller = String::new();
+                        let mut new_role = String::new();
                         egui::ComboBox::from_id_salt("role_picker")
-                            .width(160.0)
-                            .selected_text(if is_player {
-                                format!("🧑 Player ({})", current_controller)
-                            } else {
-                                "📦 Object".to_string()
-                            })
+                            .width(180.0)
+                            .selected_text(role_display)
                             .show_ui(ui, |ui| {
-                                if ui.selectable_label(!is_player, "📦 Object (no controls)").clicked() {
-                                    new_controller = "object".to_string();
+                                if ui.selectable_label(current_role == "object", "📦 Object — no special role").clicked() {
+                                    new_role = "object".to_string();
                                 }
                                 ui.separator();
-                                ui.label(egui::RichText::new("Player controllers:").size(11.0).color(egui::Color32::from_gray(150)));
-                                if ui.selectable_label(current_controller == "Platformer", "🧑 Platformer — arrows/WASD + jump").clicked() {
-                                    new_controller = "platformer".to_string();
+                                ui.label(egui::RichText::new("Player").size(11.0).color(egui::Color32::from_gray(150)));
+                                if ui.selectable_label(current_role == "player_platformer", "🧑 Platformer — move + jump").clicked() {
+                                    new_role = "player_platformer".to_string();
                                 }
-                                if ui.selectable_label(current_controller == "Top-Down", "🧑 Top-Down — 4/8 directions").clicked() {
-                                    new_controller = "topdown".to_string();
+                                if ui.selectable_label(current_role == "player_topdown", "🧑 Top-Down — 4/8 directions").clicked() {
+                                    new_role = "player_topdown".to_string();
+                                }
+                                ui.separator();
+                                ui.label(egui::RichText::new("Environment").size(11.0).color(egui::Color32::from_gray(150)));
+                                if ui.selectable_label(current_role == "solid", "🧱 Ground / Wall — blocks player").clicked() {
+                                    new_role = "solid".to_string();
+                                }
+                                ui.separator();
+                                ui.label(egui::RichText::new("Game objects").size(11.0).color(egui::Color32::from_gray(150)));
+                                if ui.selectable_label(current_role == "collectible", "⭐ Collectible — coin, gem, power-up").clicked() {
+                                    new_role = "collectible".to_string();
+                                }
+                                if ui.selectable_label(current_role == "enemy", "👾 Enemy").clicked() {
+                                    new_role = "enemy".to_string();
                                 }
                             });
 
-                        if !new_controller.is_empty() {
-                            match new_controller.as_str() {
-                                "object" => {
-                                    entity.tags.retain(|t| !t.eq_ignore_ascii_case("player"));
-                                    entity.behaviors.retain(|b| !matches!(b, BehaviorConfig::Platform(_) | BehaviorConfig::TopDown(_)));
-                                }
-                                "platformer" => {
-                                    if !entity.tags.iter().any(|t| t.eq_ignore_ascii_case("player")) {
-                                        entity.tags.push("Player".to_string());
-                                    }
-                                    // Remove any existing movement behavior
-                                    entity.behaviors.retain(|b| !matches!(b, BehaviorConfig::Platform(_) | BehaviorConfig::TopDown(_)));
+                        if !new_role.is_empty() {
+                            // Clear previous role-related tags and behaviors
+                            entity.tags.retain(|t| {
+                                let low = t.to_lowercase();
+                                low != "player" && low != "solid" && low != "coin" && low != "enemy"
+                            });
+                            entity.behaviors.retain(|b| !matches!(b,
+                                BehaviorConfig::Platform(_) | BehaviorConfig::TopDown(_) | BehaviorConfig::Solid
+                            ));
+
+                            match new_role.as_str() {
+                                "player_platformer" => {
+                                    entity.tags.push("Player".to_string());
                                     entity.behaviors.insert(0, BehaviorConfig::Platform(Default::default()));
                                 }
-                                "topdown" => {
-                                    if !entity.tags.iter().any(|t| t.eq_ignore_ascii_case("player")) {
-                                        entity.tags.push("Player".to_string());
-                                    }
-                                    entity.behaviors.retain(|b| !matches!(b, BehaviorConfig::Platform(_) | BehaviorConfig::TopDown(_)));
+                                "player_topdown" => {
+                                    entity.tags.push("Player".to_string());
                                     entity.behaviors.insert(0, BehaviorConfig::TopDown(Default::default()));
                                 }
-                                _ => {}
+                                "solid" => {
+                                    entity.tags.push("Solid".to_string());
+                                    entity.behaviors.insert(0, BehaviorConfig::Solid);
+                                }
+                                "collectible" => {
+                                    entity.tags.push("Coin".to_string());
+                                    // Add a gentle bob animation by default
+                                    if !entity.behaviors.iter().any(|b| matches!(b, BehaviorConfig::Sine(_))) {
+                                        entity.behaviors.push(BehaviorConfig::Sine(toile_behaviors::sine::SineConfig {
+                                            property: toile_behaviors::sine::SineProperty::Y,
+                                            magnitude: 5.0,
+                                            period: 1.5,
+                                        }));
+                                    }
+                                }
+                                "enemy" => {
+                                    entity.tags.push("Enemy".to_string());
+                                }
+                                _ => {} // "object" — already cleared
                             }
                         }
                     });
 
-                    if is_player {
-                        ui.label(egui::RichText::new(match current_controller {
-                            "Platformer" => "← → move, Space jump, double-jump enabled",
-                            "Top-Down" => "← → ↑ ↓ or WASD, 8 directions",
-                            _ => "Player tag set, add a movement behavior below",
-                        }).size(10.0).color(egui::Color32::from_gray(140)));
+                    // Role description
+                    let role_hint = match current_role {
+                        "player_platformer" => "← → move, Space jump (double-jump). Blocked by Ground/Wall entities.",
+                        "player_topdown" => "← → ↑ ↓ or WASD, 8 directions with diagonal correction.",
+                        "solid" => "Blocks Player movement. Use as floors, walls, platforms.",
+                        "collectible" => "Tag: Coin. Use event sheets to handle collection (OnCollisionWith Player → Destroy).",
+                        "enemy" => "Tag: Enemy. Add behaviors (Bullet, Sine…) and event sheets for interactions.",
+                        _ => "",
+                    };
+                    if !role_hint.is_empty() {
+                        ui.label(egui::RichText::new(role_hint).size(10.0).color(egui::Color32::from_gray(140)));
                     }
 
                     ui.add_space(8.0);
