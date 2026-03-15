@@ -286,7 +286,9 @@ pub struct EditorApp {
     preview_particle_paths: HashMap<u64, String>,
     show_scene_settings: bool,
     show_frame_picker: bool,
-    frame_picker_anim: String, // which animation is being edited
+    frame_picker_anim: String,
+    frame_picker_egui_tex: Option<egui::TextureHandle>,
+    frame_picker_loaded_path: String,
     clipboard_entity: Option<EntityData>,
     show_viewport_guide: bool,
     last_mouse_pos: Vec2,
@@ -370,6 +372,8 @@ impl EditorApp {
             show_scene_settings: false,
             show_frame_picker: false,
             frame_picker_anim: String::new(),
+            frame_picker_egui_tex: None,
+            frame_picker_loaded_path: String::new(),
             clipboard_entity: None,
             show_viewport_guide: true,
             last_mouse_pos: Vec2::ZERO,
@@ -2862,9 +2866,22 @@ impl Game for EditorApp {
                 let entity = self.scene.entities.iter().find(|e| e.id == id);
                 let sheet_info = entity.and_then(|e| e.sprite_sheet.as_ref().map(|s| (s.columns, s.rows, s.frame_width, s.frame_height)));
                 let sprite_path = entity.map(|e| e.sprite_path.clone()).unwrap_or_default();
-                let sprite_tex = if !sprite_path.is_empty() { self.sprite_cache.get(&sprite_path).copied() } else { None };
 
-                if let (Some((cols, rows, fw, fh)), Some(stex)) = (sheet_info, sprite_tex) {
+                // Load image as egui texture if needed
+                if !sprite_path.is_empty() && self.frame_picker_loaded_path != sprite_path {
+                    let full = pdir.as_ref().map(|d| d.join(&sprite_path)).unwrap_or_else(|| PathBuf::from(&sprite_path));
+                    if let Ok(img) = image::open(&full) {
+                        let rgba = img.to_rgba8();
+                        let (w, h) = rgba.dimensions();
+                        let color_image = egui::ColorImage::from_rgba_unmultiplied([w as usize, h as usize], &rgba);
+                        self.frame_picker_egui_tex = Some(ctx.load_texture("frame_picker_sheet", color_image, egui::TextureOptions::NEAREST));
+                        self.frame_picker_loaded_path = sprite_path.clone();
+                    }
+                }
+
+                let has_egui_tex = self.frame_picker_egui_tex.is_some();
+                if let (Some((cols, rows, fw, fh)), true) = (sheet_info, has_egui_tex) {
+                    let egui_tex = self.frame_picker_egui_tex.as_ref().unwrap();
                     let mut open = true;
                     let anim_name = self.frame_picker_anim.clone();
                     egui::Window::new(format!("Frame Picker — {anim_name}"))
@@ -2915,7 +2932,7 @@ impl Game for EditorApp {
                                             ui.painter().rect_filled(rect, 2.0, bg);
 
                                             // Sprite frame
-                                            let tex_id = egui::TextureId::User(stex.index() as u64);
+                                            let tex_id = egui_tex.id();
                                             ui.painter().image(tex_id, rect.shrink(2.0), egui::Rect::from_min_max(uv0, uv1), egui::Color32::WHITE);
 
                                             // Frame number
