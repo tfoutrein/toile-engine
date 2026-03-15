@@ -404,6 +404,20 @@ impl Game for GameRunner {
         }
         ctx.camera.position = self.camera_pos;
 
+        // R key — reload current scene
+        if ctx.input.is_key_just_pressed(Key::KeyR) {
+            let scene_path = self.resolve(&self.manifest.entry_scene);
+            if let Ok(scene) = toile_scene::load_scene(&scene_path) {
+                self.load_scene_data(&scene, ctx);
+                self.camera_pos = Vec2::new(
+                    self.scene_settings.camera_position[0],
+                    self.scene_settings.camera_position[1],
+                );
+                log::info!("Scene reset (R)");
+                return;
+            }
+        }
+
         let dt_f = dt as f32;
         let input = Self::build_behavior_input(ctx);
 
