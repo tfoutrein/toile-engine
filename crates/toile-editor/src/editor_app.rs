@@ -2430,6 +2430,121 @@ impl Game for EditorApp {
                         });
 
                     // ── Event Sheet ───────────────────────────────────────
+                    // ── Sprite Sheet + Animations ─────────────────────────
+                    egui::CollapsingHeader::new(egui::RichText::new("Sprite Sheet").strong())
+                        .default_open(false)
+                        .show(ui, |ui| {
+                            let has_sheet = entity.sprite_sheet.is_some();
+                            let mut enabled = has_sheet;
+                            if ui.checkbox(&mut enabled, "Enable sprite sheet").changed() {
+                                if enabled && entity.sprite_sheet.is_none() {
+                                    entity.sprite_sheet = Some(toile_scene::SpriteSheetData {
+                                        frame_width: 32,
+                                        frame_height: 32,
+                                        columns: 4,
+                                        rows: 4,
+                                    });
+                                } else if !enabled {
+                                    entity.sprite_sheet = None;
+                                }
+                            }
+                            if let Some(ref mut sheet) = entity.sprite_sheet {
+                                egui::Grid::new("sheet_grid").num_columns(2).show(ui, |ui| {
+                                    ui.label("Frame W");
+                                    ui.add(egui::DragValue::new(&mut sheet.frame_width).range(1..=1024));
+                                    ui.end_row();
+                                    ui.label("Frame H");
+                                    ui.add(egui::DragValue::new(&mut sheet.frame_height).range(1..=1024));
+                                    ui.end_row();
+                                    ui.label("Columns");
+                                    ui.add(egui::DragValue::new(&mut sheet.columns).range(1..=64));
+                                    ui.end_row();
+                                    ui.label("Rows");
+                                    ui.add(egui::DragValue::new(&mut sheet.rows).range(1..=64));
+                                    ui.end_row();
+                                });
+                                let total_frames = sheet.columns * sheet.rows;
+                                ui.label(egui::RichText::new(format!("{total_frames} frames total")).size(10.0).color(egui::Color32::from_gray(140)));
+                            }
+                        });
+
+                    if entity.sprite_sheet.is_some() {
+                    egui::CollapsingHeader::new(egui::RichText::new("Animations").strong())
+                        .default_open(false)
+                        .show(ui, |ui| {
+                            let total_frames = entity.sprite_sheet.as_ref()
+                                .map(|s| s.columns * s.rows).unwrap_or(1);
+
+                            let mut remove_anim: Option<usize> = None;
+                            for (i, anim) in entity.animations.iter_mut().enumerate() {
+                                ui.horizontal(|ui| {
+                                    ui.label(egui::RichText::new(&anim.name).strong().size(12.0));
+                                    if ui.small_button("x").clicked() {
+                                        remove_anim = Some(i);
+                                    }
+                                });
+                                egui::Grid::new(format!("anim_grid_{i}")).num_columns(2).show(ui, |ui| {
+                                    ui.label("FPS");
+                                    ui.add(egui::DragValue::new(&mut anim.fps).range(1.0..=60.0).speed(0.5));
+                                    ui.end_row();
+                                    ui.label("Loop");
+                                    ui.checkbox(&mut anim.looping, "");
+                                    ui.end_row();
+                                });
+                                // Frame indices as text (editable)
+                                let mut frames_str = anim.frames.iter()
+                                    .map(|f| f.to_string()).collect::<Vec<_>>().join(", ");
+                                ui.horizontal(|ui| {
+                                    ui.label("Frames:");
+                                    if ui.text_edit_singleline(&mut frames_str).changed() {
+                                        anim.frames = frames_str.split(',')
+                                            .filter_map(|s| s.trim().parse::<u32>().ok())
+                                            .filter(|f| *f < total_frames)
+                                            .collect();
+                                    }
+                                });
+                                ui.label(egui::RichText::new(format!("(0-{}, comma separated)", total_frames - 1))
+                                    .size(9.0).color(egui::Color32::from_gray(120)));
+                                ui.separator();
+                            }
+                            if let Some(idx) = remove_anim {
+                                entity.animations.remove(idx);
+                            }
+
+                            // Quick-add common animations
+                            ui.horizontal(|ui| {
+                                for name in &["idle", "walk", "jump", "fall", "attack"] {
+                                    if !entity.animations.iter().any(|a| a.name == *name) {
+                                        if ui.small_button(format!("+{name}")).clicked() {
+                                            entity.animations.push(toile_scene::AnimationData {
+                                                name: name.to_string(),
+                                                frames: vec![0],
+                                                fps: 8.0,
+                                                looping: *name != "attack",
+                                            });
+                                        }
+                                    }
+                                }
+                            });
+
+                            // Default animation
+                            ui.add_space(4.0);
+                            let anim_names: Vec<String> = entity.animations.iter().map(|a| a.name.clone()).collect();
+                            if !anim_names.is_empty() {
+                                let current_default = entity.default_animation.clone().unwrap_or_default();
+                                egui::ComboBox::from_id_salt("default_anim")
+                                    .selected_text(if current_default.is_empty() { "Default animation..." } else { &current_default })
+                                    .show_ui(ui, |ui| {
+                                        for name in &anim_names {
+                                            if ui.selectable_label(*name == current_default, name).clicked() {
+                                                entity.default_animation = Some(name.clone());
+                                            }
+                                        }
+                                    });
+                            }
+                        });
+                    }
+
                     egui::CollapsingHeader::new(egui::RichText::new("Event Sheet").strong())
                         .default_open(false)
                         .show(ui, |ui| {

@@ -108,6 +108,34 @@ pub enum CameraMode {
 fn default_deadzone_x() -> f32 { 0.3 }
 fn default_deadzone_y() -> f32 { 0.4 }
 
+/// Sprite sheet configuration for frame-based animation.
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct SpriteSheetData {
+    /// Width of a single frame in pixels.
+    pub frame_width: u32,
+    /// Height of a single frame in pixels.
+    pub frame_height: u32,
+    /// Number of columns in the sheet.
+    pub columns: u32,
+    /// Number of rows in the sheet.
+    pub rows: u32,
+}
+
+/// A named animation: sequence of frame indices + playback speed.
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct AnimationData {
+    pub name: String,
+    /// Frame indices in the sprite sheet (0-based, left-to-right top-to-bottom).
+    pub frames: Vec<u32>,
+    /// Playback speed in frames per second.
+    pub fps: f32,
+    /// Whether the animation loops.
+    #[serde(default = "default_true_val")]
+    pub looping: bool,
+}
+
+fn default_true_val() -> bool { true }
+
 /// Collision shape data for scene serialization.
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(tag = "shape")]
@@ -226,6 +254,12 @@ pub struct EntityData {
     #[serde(default)]
     pub particle_emitter: Option<String>,
     #[serde(default)]
+    pub sprite_sheet: Option<SpriteSheetData>,
+    #[serde(default)]
+    pub animations: Vec<AnimationData>,
+    #[serde(default)]
+    pub default_animation: Option<String>,
+    #[serde(default)]
     pub light: Option<LightData>,
     #[serde(default = "default_visible")]
     pub visible: bool,
@@ -252,6 +286,9 @@ impl Default for EntityData {
             collider: None,
             event_sheet: None,
             particle_emitter: None,
+            sprite_sheet: None,
+            animations: Vec::new(),
+            default_animation: None,
             light: None,
             visible: true,
         }

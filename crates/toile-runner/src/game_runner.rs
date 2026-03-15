@@ -59,6 +59,10 @@ struct RuntimeEntity {
     texture: Option<TextureHandle>,
     particle_pool: Option<ParticlePool>,
     alive: bool,
+    // Animation state
+    current_anim: Option<String>,
+    anim_frame: f32, // fractional frame index (advances by fps*dt)
+    facing_left: bool,
 }
 
 fn collider_from_data(data: &EntityData) -> Collider {
@@ -211,6 +215,9 @@ impl GameRunner {
         RuntimeEntity {
             es: entity_state_from_data(data),
             collider: collider_from_data(data),
+            current_anim: data.default_animation.clone(),
+            anim_frame: 0.0,
+            facing_left: false,
             data: data.clone(),
             behaviors,
             event_sheet,
@@ -615,7 +622,50 @@ impl Game for GameRunner {
             }
         }
 
-        // ── 6. Remove dead entities ──────────────────────────────────────
+        // ── 6. Update animations ─────────────────────────────────────────
+        for ent in &mut self.entities {
+            if !ent.alive || ent.data.animations.is_empty() { continue; }
+
+            // Auto-select animation for player entities based on state
+            if is_player(&ent.data) {
+                let vx = ent.es.velocity.x;
+                let on_ground = ent.es.on_ground;
+                let new_anim = if !on_ground {
+                    "jump"
+                } else if vx.abs() > 5.0 {
+                    "walk"
+                } else {
+                    "idle"
+                };
+                // Track facing direction
+                if vx > 5.0 { ent.facing_left = false; }
+                else if vx < -5.0 { ent.facing_left = true; }
+
+                // Switch animation if different
+                if ent.current_anim.as_deref() != Some(new_anim) {
+                    if ent.data.animations.iter().any(|a| a.name == new_anim) {
+                        ent.current_anim = Some(new_anim.to_string());
+                        ent.anim_frame = 0.0;
+                    }
+                }
+            }
+
+            // Advance animation frame
+            if let Some(ref anim_name) = ent.current_anim {
+                if let Some(anim) = ent.data.animations.iter().find(|a| a.name == *anim_name) {
+                    if !anim.frames.is_empty() {
+                        ent.anim_frame += anim.fps * dt_f;
+                        if anim.looping {
+                            ent.anim_frame %= anim.frames.len() as f32;
+                        } else {
+                            ent.anim_frame = ent.anim_frame.min(anim.frames.len() as f32 - 0.01);
+                        }
+                    }
+                }
+            }
+        }
+
+        // ── 7. Remove dead entities ──────────────────────────────────────
         self.entities.retain(|e| e.alive);
 
         // ── 7. Scene transition ──────────────────────────────────────────
@@ -715,7 +765,6 @@ impl Game for GameRunner {
             let color = if ent.texture.is_some() {
                 u32::from_be_bytes([255, 255, 255, alpha])
             } else {
-                // Distinct colors per layer for visibility
                 let hue = ((ent.data.layer.abs() as f32 * 0.3) % 1.0 * 6.0) as u8;
                 let (r, g, b) = match hue % 6 {
                     0 => (100u8, 150, 220),
@@ -728,6 +777,30 @@ impl Game for GameRunner {
                 u32::from_be_bytes([r, g, b, alpha])
             };
 
+            // Compute UV from sprite sheet + animation
+            let (mut uv_min, mut uv_max) = (Vec2::ZERO, Vec2::ONE);
+            if let Some(ref sheet) = ent.data.sprite_sheet {
+                let frame_idx = if let Some(ref anim_name) = ent.current_anim {
+                    ent.data.animations.iter()
+                        .find(|a| a.name == *anim_name)
+                        .and_then(|a| a.frames.get(ent.anim_frame as usize).copied())
+                        .unwrap_or(0)
+                } else {
+                    0
+                };
+                let col = frame_idx % sheet.columns;
+                let row = frame_idx / sheet.columns;
+                let u_step = 1.0 / sheet.columns as f32;
+                let v_step = 1.0 / sheet.rows as f32;
+                uv_min = Vec2::new(col as f32 * u_step, row as f32 * v_step);
+                uv_max = Vec2::new((col + 1) as f32 * u_step, (row + 1) as f32 * v_step);
+            }
+
+            // Flip UV horizontally when facing left
+            if ent.facing_left {
+                std::mem::swap(&mut uv_min.x, &mut uv_max.x);
+            }
+
             ctx.draw_sprite(DrawSprite {
                 texture: tex,
                 position: ent.es.position,
@@ -735,8 +808,8 @@ impl Game for GameRunner {
                 rotation: ent.es.rotation,
                 color,
                 layer: ent.data.layer,
-                uv_min: Vec2::ZERO,
-                uv_max: Vec2::ONE,
+                uv_min,
+                uv_max,
             });
 
             // Draw particles
