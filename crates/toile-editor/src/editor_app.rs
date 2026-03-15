@@ -1110,88 +1110,118 @@ impl Game for EditorApp {
             let mut action_open: Option<PathBuf> = None;
 
             egui::CentralPanel::default().show(&ctx, |ui| {
+                let panel_width = 420.0_f32;
+                let avail = ui.available_width();
+                let margin = ((avail - panel_width) * 0.5).max(0.0);
+
                 ui.vertical_centered(|ui| {
-                    ui.add_space(80.0);
-                    ui.heading("Toile Editor");
-                    ui.add_space(20.0);
-                    ui.label("Open or create a project to begin.");
-                    ui.add_space(20.0);
+                    ui.add_space(60.0);
+                    ui.label(egui::RichText::new("Toile Editor").size(28.0).strong());
+                    ui.add_space(6.0);
+                    ui.label(egui::RichText::new("Open or create a project to begin.").size(13.0).color(egui::Color32::from_gray(160)));
+                    ui.add_space(24.0);
+                });
 
-                    // ── New Project ──
-                    ui.group(|ui| {
-                        ui.label(egui::RichText::new("New Project").strong());
-                        ui.horizontal(|ui| {
-                            ui.label("Name:");
-                            ui.text_edit_singleline(&mut self.new_project_name);
+                // Centered fixed-width container
+                ui.horizontal(|ui| {
+                    ui.add_space(margin);
+                    ui.vertical(|ui| {
+                        ui.set_max_width(panel_width);
+
+                        // ── New Project ──
+                        ui.group(|ui| {
+                            ui.set_min_width(panel_width - 20.0);
+                            ui.vertical_centered(|ui| {
+                                ui.label(egui::RichText::new("New Project").strong().size(15.0));
+                            });
+                            ui.add_space(6.0);
+                            egui::Grid::new("new_proj_grid").num_columns(2).spacing([8.0, 6.0]).show(ui, |ui| {
+                                ui.label("Name:");
+                                ui.add_sized([280.0, 20.0], egui::TextEdit::singleline(&mut self.new_project_name));
+                                ui.end_row();
+                                ui.label("Template:");
+                                egui::ComboBox::from_id_salt("template_combo")
+                                    .width(280.0)
+                                    .selected_text(&self.new_project_template)
+                                    .show_ui(ui, |ui| {
+                                        for t in &["empty", "platformer", "topdown", "shmup"] {
+                                            ui.selectable_value(&mut self.new_project_template, t.to_string(), *t);
+                                        }
+                                    });
+                                ui.end_row();
+                            });
+                            ui.add_space(6.0);
+                            ui.vertical_centered(|ui| {
+                                if ui.button("  Create Project  ").clicked() {
+                                    action_create = Some(PathBuf::from(&self.new_project_name));
+                                }
+                            });
                         });
-                        ui.horizontal(|ui| {
-                            ui.label("Template:");
-                            egui::ComboBox::from_id_salt("template_combo")
-                                .selected_text(&self.new_project_template)
-                                .show_ui(ui, |ui| {
-                                    for t in &["empty", "platformer", "topdown", "shmup"] {
-                                        ui.selectable_value(&mut self.new_project_template, t.to_string(), *t);
+
+                        ui.add_space(12.0);
+
+                        // ── Open Project ──
+                        ui.group(|ui| {
+                            ui.set_min_width(panel_width - 20.0);
+                            ui.vertical_centered(|ui| {
+                                ui.label(egui::RichText::new("Open Project").strong().size(15.0));
+                            });
+                            ui.add_space(6.0);
+                            ui.horizontal(|ui| {
+                                ui.label("Path:");
+                                ui.add_sized([260.0, 20.0], egui::TextEdit::singleline(&mut self.project_path_input));
+                                if ui.button("Browse...").clicked() {
+                                    if let Some(dir) = rfd::FileDialog::new()
+                                        .set_title("Open Toile Project")
+                                        .pick_folder()
+                                    {
+                                        self.project_path_input = dir.to_string_lossy().to_string();
                                     }
-                                });
+                                }
+                            });
+
+                            // Scan for directories with Toile.toml nearby
+                            let mut found_projects: Vec<String> = Vec::new();
+                            if let Ok(entries) = std::fs::read_dir(".") {
+                                for entry in entries.flatten() {
+                                    let p = entry.path();
+                                    if p.is_dir() && p.join("Toile.toml").exists() {
+                                        if let Some(name) = p.file_name() {
+                                            found_projects.push(name.to_string_lossy().to_string());
+                                        }
+                                    }
+                                }
+                            }
+                            if Path::new("examples/run-demo/Toile.toml").exists() {
+                                found_projects.push("examples/run-demo".to_string());
+                            }
+
+                            if !found_projects.is_empty() {
+                                ui.add_space(8.0);
+                                ui.label(egui::RichText::new("Recent projects:").size(11.0).color(egui::Color32::from_gray(140)));
+                                for proj in &found_projects {
+                                    if ui.selectable_label(self.project_path_input == *proj, proj).clicked() {
+                                        self.project_path_input = proj.clone();
+                                    }
+                                }
+                            }
+
+                            ui.add_space(6.0);
+                            ui.vertical_centered(|ui| {
+                                if ui.button("  Open  ").clicked() && !self.project_path_input.is_empty() {
+                                    action_open = Some(PathBuf::from(&self.project_path_input));
+                                }
+                            });
                         });
-                        if ui.button("Create Project").clicked() {
-                            action_create = Some(PathBuf::from(&self.new_project_name));
+
+                        // Status
+                        if !self.status_msg.is_empty() {
+                            ui.add_space(16.0);
+                            ui.vertical_centered(|ui| {
+                                ui.label(egui::RichText::new(&self.status_msg).color(egui::Color32::YELLOW).size(12.0));
+                            });
                         }
                     });
-
-                    ui.add_space(16.0);
-
-                    // ── Open Project ──
-                    ui.group(|ui| {
-                        ui.label(egui::RichText::new("Open Project").strong());
-                        ui.horizontal(|ui| {
-                            ui.label("Path:");
-                            ui.text_edit_singleline(&mut self.project_path_input);
-                            if ui.button("Browse...").clicked() {
-                                if let Some(dir) = rfd::FileDialog::new()
-                                    .set_title("Open Toile Project")
-                                    .pick_folder()
-                                {
-                                    self.project_path_input = dir.to_string_lossy().to_string();
-                                }
-                            }
-                        });
-
-                        // Scan for directories with Toile.toml nearby
-                        let mut found_projects: Vec<String> = Vec::new();
-                        if let Ok(entries) = std::fs::read_dir(".") {
-                            for entry in entries.flatten() {
-                                let p = entry.path();
-                                if p.is_dir() && p.join("Toile.toml").exists() {
-                                    if let Some(name) = p.file_name() {
-                                        found_projects.push(name.to_string_lossy().to_string());
-                                    }
-                                }
-                            }
-                        }
-                        if Path::new("examples/run-demo/Toile.toml").exists() {
-                            found_projects.push("examples/run-demo".to_string());
-                        }
-
-                        if !found_projects.is_empty() {
-                            ui.add_space(4.0);
-                            ui.label(egui::RichText::new("Found projects:").size(11.0));
-                            for proj in &found_projects {
-                                if ui.selectable_label(self.project_path_input == *proj, proj).clicked() {
-                                    self.project_path_input = proj.clone();
-                                }
-                            }
-                        }
-
-                        if ui.button("Open").clicked() && !self.project_path_input.is_empty() {
-                            action_open = Some(PathBuf::from(&self.project_path_input));
-                        }
-                    });
-
-                    ui.add_space(20.0);
-                    if !self.status_msg.is_empty() {
-                        ui.label(egui::RichText::new(&self.status_msg).color(egui::Color32::YELLOW));
-                    }
                 });
             });
 
