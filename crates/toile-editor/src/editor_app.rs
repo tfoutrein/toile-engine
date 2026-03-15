@@ -2547,8 +2547,10 @@ impl Game for EditorApp {
                             let mut enabled = has_sheet;
                             if ui.checkbox(&mut enabled, "Enable sprite sheet").changed() {
                                 if enabled && entity.sprite_sheet.is_none() {
-                                    // Try auto-detect from sprite image
                                     let sheet = auto_detect_sprite_sheet(&entity.sprite_path, &pdir);
+                                    // Auto-size entity to match frame size
+                                    entity.width = sheet.frame_width as f32;
+                                    entity.height = sheet.frame_height as f32;
                                     entity.sprite_sheet = Some(sheet);
                                 } else if !enabled {
                                     entity.sprite_sheet = None;
@@ -2574,18 +2576,22 @@ impl Game for EditorApp {
                                                 sheet.columns = *c;
                                                 sheet.rows = *r;
                                             } else {
-                                                // Auto-calc columns/rows from image
                                                 if let Some(dims) = get_image_dimensions(&entity.sprite_path, &pdir) {
                                                     sheet.columns = (dims.0 / *fw).max(1);
                                                     sheet.rows = (dims.1 / *fh).max(1);
                                                 }
                                             }
+                                            // Auto-size entity to match frame
+                                            entity.width = *fw as f32;
+                                            entity.height = *fh as f32;
                                         }
                                     }
                                 });
                                 // Auto-detect button
                                 if ui.small_button("Auto-detect from image").clicked() {
                                     *sheet = auto_detect_sprite_sheet(&entity.sprite_path, &pdir);
+                                    entity.width = sheet.frame_width as f32;
+                                    entity.height = sheet.frame_height as f32;
                                 }
 
                                 ui.add_space(4.0);
