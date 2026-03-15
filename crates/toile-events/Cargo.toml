@@ -1,0 +1,12 @@
+[package]
+name = "toile-events"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Event sheet system for Toile Engine (visual scripting)"
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+log = { workspace = true }
