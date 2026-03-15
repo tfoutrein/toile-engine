@@ -1,3 +1,5 @@
+mod templates;
+
 use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
@@ -16,7 +18,12 @@ enum Commands {
     New {
         /// Project name
         name: String,
+        /// Template to use: empty, platformer, topdown, shmup
+        #[arg(short, long, default_value = "empty")]
+        template: String,
     },
+    /// List available project templates
+    Templates,
     /// List entities in a scene file
     ListEntities {
         /// Path to scene JSON file
@@ -39,42 +46,50 @@ fn main() {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::New { name } => {
+        Commands::New { name, template } => {
+            if !templates::TEMPLATES.contains(&template.as_str()) {
+                eprintln!(
+                    "Error: unknown template '{}'. Available: {}",
+                    template,
+                    templates::TEMPLATES.join(", ")
+                );
+                std::process::exit(1);
+            }
+
             let dir = PathBuf::from(&name);
             if dir.exists() {
                 eprintln!("Error: directory '{}' already exists", name);
                 std::process::exit(1);
             }
 
-            std::fs::create_dir_all(dir.join("assets")).unwrap();
-            std::fs::create_dir_all(dir.join("scripts")).unwrap();
-            std::fs::create_dir_all(dir.join("scenes")).unwrap();
+            match templates::generate(&name, &template, &dir) {
+                Ok(files) => {
+                    println!("Created Toile project: {name}/ (template: {template})");
+                    println!();
+                    for f in &files {
+                        println!("  {f}");
+                    }
+                    println!();
+                    println!("  assets/");
+                    println!();
+                    println!("{} files generated.", files.len());
+                }
+                Err(e) => {
+                    eprintln!("Error creating project: {e}");
+                    std::process::exit(1);
+                }
+            }
+        }
 
-            // Create default scene
-            let scene = SceneData::new("main");
-            save_scene(&dir.join("scenes/main.json"), &scene).unwrap();
-
-            // Create project manifest
-            let toml = format!(
-                "[project]\nname = \"{name}\"\nversion = \"0.1.0\"\nengine = \"toile\"\n"
-            );
-            std::fs::write(dir.join("Toile.toml"), toml).unwrap();
-
-            // Create llms.txt stub
-            let llms = format!(
-                "# {name}\n\n> A 2D game built with Toile Engine.\n\n\
-                ## Scenes\n- scenes/main.json\n\n\
-                ## Assets\nPlace sprites in assets/\n\n\
-                ## Scripts\nPlace Lua scripts in scripts/\n"
-            );
-            std::fs::write(dir.join("llms.txt"), llms).unwrap();
-
-            println!("Created Toile project: {name}/");
-            println!("  Toile.toml");
-            println!("  scenes/main.json");
-            println!("  assets/");
-            println!("  scripts/");
-            println!("  llms.txt");
+        Commands::Templates => {
+            println!("Available project templates:");
+            println!();
+            println!("  empty       — Blank scene with camera. The minimum starting point.");
+            println!("  platformer  — Side-scrolling platformer with player, enemies, coins, platforms.");
+            println!("  topdown     — Top-down game with player, walls, enemies, collectibles.");
+            println!("  shmup       — Vertical shoot-em-up with player ship, enemy waves, projectiles.");
+            println!();
+            println!("Usage: toile new my-game --template platformer");
         }
 
         Commands::ListEntities { scene } => {
