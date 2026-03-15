@@ -455,21 +455,22 @@ impl Game for GameRunner {
                 }
             }
 
-            // Clamp entity position to scene bounds (if set via PlatformerFollow)
-            if let toile_scene::CameraMode::PlatformerFollow { bounds, .. } = &self.scene_settings.camera_mode {
-                if *bounds != [0.0, 0.0, 0.0, 0.0] {
-                    let hw = ent.es.size.x * 0.5;
-                    let hh = ent.es.size.y * 0.5;
-                    let min_x = bounds[0] + hw;
-                    let max_x = bounds[2] - hw;
-                    let min_y = bounds[1] + hh;
-                    let max_y = bounds[3] - hh;
-                    // Only clamp if bounds are valid (bigger than entity)
-                    if min_x < max_x {
-                        ent.es.position.x = ent.es.position.x.clamp(min_x, max_x);
-                    }
-                    if min_y < max_y {
-                        ent.es.position.y = ent.es.position.y.clamp(min_y, max_y);
+            // Clamp PLAYER entity to scene bounds (not solids/platforms!)
+            if is_player(&ent.data) {
+                if let toile_scene::CameraMode::PlatformerFollow { bounds, .. } = &self.scene_settings.camera_mode {
+                    if *bounds != [0.0, 0.0, 0.0, 0.0] {
+                        let hw = ent.es.size.x * 0.5;
+                        let hh = ent.es.size.y * 0.5;
+                        let min_x = bounds[0] + hw;
+                        let max_x = bounds[2] - hw;
+                        let min_y = bounds[1] + hh;
+                        let max_y = bounds[3] - hh;
+                        if min_x < max_x {
+                            ent.es.position.x = ent.es.position.x.clamp(min_x, max_x);
+                        }
+                        if min_y < max_y {
+                            ent.es.position.y = ent.es.position.y.clamp(min_y, max_y);
+                        }
                     }
                 }
             }

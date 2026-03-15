@@ -1130,9 +1130,26 @@ impl Game for EditorApp {
                     }
                 }
 
+                // Right-click on a tile to remove it (keep at least one)
+                let world_mouse = ctx.camera.screen_to_world(ctx.input.mouse_position());
+                let mut remove_tile: Option<usize> = None;
+                if ctx.input.is_mouse_just_pressed(toile_app::MouseButton::Right) && tiles.len() > 1 {
+                    for (i, pos) in tiles.iter().enumerate() {
+                        let dx = (world_mouse.x - pos[0]).abs();
+                        let dy = (world_mouse.y - pos[1]).abs();
+                        if dx < tile_w * 0.5 && dy < tile_h * 0.5 {
+                            remove_tile = Some(i);
+                            break;
+                        }
+                    }
+                }
+
+                if let Some(idx) = remove_tile {
+                    self.scene.settings.background_tiles.remove(idx);
+                    self.auto_update_bounds_from_tiles();
+                }
                 if let Some(pos) = new_tile {
                     self.scene.settings.background_tiles.push(pos);
-                    // Auto-update PlatformerFollow bounds to cover all tiles
                     self.auto_update_bounds_from_tiles();
                 }
             }
