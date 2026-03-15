@@ -17,6 +17,7 @@ members = [
     "crates/toile-physics",
     "crates/toile-events",
     "crates/toile-behaviors",
+    "crates/toile-runner",
 ]
 
 [workspace.package]
@@ -104,3 +105,7 @@ rapier2d = "0.32"
 toile-physics = { path = "crates/toile-physics" }
 toile-events = { path = "crates/toile-events" }
 toile-behaviors = { path = "crates/toile-behaviors" }
+toile-runner = { path = "crates/toile-runner" }
+
+# TOML parsing
+toml_dep = { package = "toml", version = "0.8" }

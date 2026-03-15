@@ -1,0 +1,9 @@
+[project]
+name = "Coin Collector"
+version = "0.1.0"
+
+[game]
+entry_scene = "scenes/main.json"
+window_width = 800
+window_height = 600
+window_title = "Coin Collector — toile run demo"

@@ -1,0 +1,21 @@
+[package]
+name = "toile-runner"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Data-driven game runner for Toile Engine — runs scenes with behaviors, event sheets, and collisions"
+
+[dependencies]
+toile-app = { workspace = true }
+toile-scene = { workspace = true }
+toile-behaviors = { workspace = true }
+toile-events = { workspace = true }
+toile-collision = { workspace = true }
+toile-core = { path = "../toile-core", features = ["serde"] }
+toile-graphics = { workspace = true }
+glam = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+toml_dep = { workspace = true }
+log = { workspace = true }
+env_logger = { workspace = true }

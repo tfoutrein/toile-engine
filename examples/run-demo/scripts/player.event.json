@@ -1,0 +1,16 @@
+{
+  "name": "player_events",
+  "events": [
+    {
+      "conditions": [
+        { "kind": { "type": "OnCollisionWith", "tag": "Coin" }, "negated": false }
+      ],
+      "actions": [
+        { "kind": { "type": "AddToVariable", "name": "score", "amount": 1.0 } },
+        { "kind": { "type": "Log", "message": "Coin collected!" } }
+      ],
+      "sub_events": [],
+      "enabled": true
+    }
+  ]
+}

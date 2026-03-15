@@ -329,13 +329,9 @@ pub fn load_ldtk(
                             name: ent.identifier.clone(),
                             x,
                             y,
-                            rotation: 0.0,
-                            scale_x: 1.0,
-                            scale_y: 1.0,
-                            layer: 0,
-                            sprite_path: String::new(),
                             width: ent.width,
                             height: ent.height,
+                            ..Default::default()
                         });
                     }
                 }
@@ -574,13 +570,9 @@ pub fn load_ldtk_scenes(ldtk_path: &Path) -> Result<Vec<LdtkLevelResult>, String
                             name: ent.identifier.clone(),
                             x,
                             y,
-                            rotation: 0.0,
-                            scale_x: 1.0,
-                            scale_y: 1.0,
-                            layer: 0,
-                            sprite_path: String::new(),
                             width: ent.width,
                             height: ent.height,
+                            ..Default::default()
                         });
                     }
                 }

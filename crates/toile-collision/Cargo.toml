@@ -7,3 +7,7 @@ description = "2D collision detection for Toile Engine"
 
 [dependencies]
 glam = { workspace = true }
+serde = { version = "1", features = ["derive"], optional = true }
+
+[features]
+serde = ["dep:serde"]

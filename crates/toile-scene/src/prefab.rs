@@ -6,12 +6,17 @@ use serde::{Deserialize, Serialize};
 use crate::EntityData;
 
 /// A reusable entity template.
+///
+/// Since v0.5, behaviors and event_sheet live directly on `EntityData`.
+/// The top-level fields are kept for backward compat but deprecated.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Prefab {
     pub name: String,
     pub entity: EntityData,
+    /// Deprecated — use `entity.behaviors` instead. Kept for backward compat.
     #[serde(default)]
     pub behaviors: Vec<serde_json::Value>,
+    /// Deprecated — use `entity.event_sheet` instead.
     #[serde(default)]
     pub event_sheet: Option<String>,
 }
@@ -134,6 +139,7 @@ mod tests {
             sprite_path: "enemy.png".into(),
             width: 32.0,
             height: 32.0,
+            ..Default::default()
         };
 
         let prefab = Prefab::from_entity("Enemy", &entity);
@@ -159,6 +165,7 @@ mod tests {
             scale_x: 1.0, scale_y: 1.0, layer: 0,
             sprite_path: "coin.png".into(),
             width: 16.0, height: 16.0,
+            ..Default::default()
         };
         let prefab = Prefab::from_entity("Coin", &entity);
 

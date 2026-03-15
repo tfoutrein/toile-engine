@@ -69,10 +69,9 @@ fn save_prefab_file(dir: &Path, prefab: &Prefab, files: &mut Vec<String>) -> Res
 fn make_entity(id: u64, name: &str, x: f32, y: f32, w: f32, h: f32, layer: i32) -> EntityData {
     EntityData {
         id, name: name.to_string(),
-        x, y, rotation: 0.0,
-        scale_x: 1.0, scale_y: 1.0,
-        layer, sprite_path: String::new(),
+        x, y, layer,
         width: w, height: h,
+        ..Default::default()
     }
 }
 

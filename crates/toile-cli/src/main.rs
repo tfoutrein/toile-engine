@@ -25,6 +25,12 @@ enum Commands {
     },
     /// Launch the visual editor
     Editor,
+    /// Run a Toile project as a playable game
+    Run {
+        /// Path to project directory (defaults to current dir)
+        #[arg(default_value = ".")]
+        path: PathBuf,
+    },
     /// List available project templates
     Templates,
     /// List entities in a scene file
@@ -50,6 +56,13 @@ fn main() {
 
     match cli.command {
         Commands::Editor => run_editor(),
+
+        Commands::Run { path } => {
+            if let Err(e) = toile_runner::game_runner::run_project(&path) {
+                eprintln!("Error: {e}");
+                std::process::exit(1);
+            }
+        }
 
         Commands::New { name, template } => {
             if !templates::TEMPLATES.contains(&template.as_str()) {

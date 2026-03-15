@@ -1,12 +1,14 @@
 use glam::Vec2;
 
 #[derive(Debug, Clone, Copy)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Shape {
     Aabb { half_extents: Vec2 },
     Circle { radius: f32 },
 }
 
 #[derive(Debug, Clone, Copy)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Collider {
     pub shape: Shape,
     pub offset: Vec2,
