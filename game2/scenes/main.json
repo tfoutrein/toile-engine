@@ -21,6 +21,7 @@
       "collider": null,
       "event_sheet": null,
       "particle_emitter": null,
+      "light": null,
       "visible": true
     }
   ],
@@ -35,6 +36,21 @@
       0.15,
       1.0
     ],
-    "camera_zoom": 1.0
+    "camera_zoom": 1.0,
+    "camera_position": [
+      0.0,
+      0.0
+    ],
+    "lighting": {
+      "enabled": false,
+      "ambient": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "shadows_enabled": false
+    },
+    "post_effects": []
   }
 }

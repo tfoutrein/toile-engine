@@ -17,6 +17,16 @@ use crate::tilemap_tool::{self, TilemapEditor, TileTool};
 
 // ── Behavior helpers for the Inspector ──────────────────────────────────
 
+/// Pick an icon based on entity properties.
+fn entity_icon(entity: &EntityData) -> &'static str {
+    if entity.light.is_some() { return "💡"; }
+    if entity.particle_emitter.is_some() { return "✨"; }
+    if entity.tags.iter().any(|t| t.eq_ignore_ascii_case("player")) { return "🧑"; }
+    if entity.behaviors.iter().any(|b| matches!(b, BehaviorConfig::Solid)) { return "🧱"; }
+    if entity.behaviors.iter().any(|b| matches!(b, BehaviorConfig::Platform(_) | BehaviorConfig::TopDown(_))) { return "🏃"; }
+    "📦"
+}
+
 fn behavior_label(beh: &BehaviorConfig) -> &'static str {
     match beh {
         BehaviorConfig::Platform(_) => "Platform",
@@ -1639,31 +1649,111 @@ impl Game for EditorApp {
             }
         }
 
-        // Hierarchy panel — hidden in Particle mode
+        // Hierarchy panel — tree view: Game > Scenes > Entities
         if self.editor_mode != EditorMode::Particle {
         egui::SidePanel::left("hierarchy").default_width(200.0).show(&ctx, |ui| {
-            ui.heading("Hierarchy");
-            ui.separator();
-            let mut click_id = None;
-            for entity in &self.scene.entities {
-                let selected = self.selected_id == Some(entity.id);
-                let label = egui::RichText::new(&entity.name)
-                    .color(if selected { egui::Color32::YELLOW } else { egui::Color32::WHITE });
-                if ui.selectable_label(selected, label).clicked() {
-                    click_id = Some(entity.id);
-                }
-            }
-            if let Some(id) = click_id {
-                self.selected_id = Some(id);
-            }
-            ui.separator();
-            if ui.button("+ Add Entity").clicked() {
-                let id = self.scene.add_entity(
-                    &format!("Entity_{}", self.scene.next_id),
-                    self.camera_pos.x, self.camera_pos.y,
-                );
-                self.selected_id = Some(id);
-            }
+            egui::ScrollArea::vertical().show(ui, |ui| {
+            // Project root
+            let project_name = pdir.as_ref()
+                .and_then(|d| d.file_name())
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_else(|| "Game".to_string());
+
+            let root_id = ui.make_persistent_id("hierarchy_root");
+            egui::collapsing_header::CollapsingState::load_with_default_open(ui.ctx(), root_id, true)
+                .show_header(ui, |ui| {
+                    ui.label(egui::RichText::new(format!("🎮 {project_name}")).strong());
+                })
+                .body(|ui| {
+                    // ── Scenes ──
+                    let scenes_id = ui.make_persistent_id("hierarchy_scenes");
+                    egui::collapsing_header::CollapsingState::load_with_default_open(ui.ctx(), scenes_id, true)
+                        .show_header(ui, |ui| {
+                            ui.label(egui::RichText::new("📁 Scenes").color(egui::Color32::from_rgb(180, 200, 255)));
+                        })
+                        .body(|ui| {
+                            let mut switch_scene: Option<String> = None;
+                            for scene_file in &project_scenes {
+                                let is_current = self.current_file == *scene_file;
+                                let scene_name = scene_file.strip_prefix("scenes/").unwrap_or(scene_file);
+                                let scene_name = scene_name.strip_suffix(".json").unwrap_or(scene_name);
+
+                                let scene_node_id = ui.make_persistent_id(scene_file);
+                                egui::collapsing_header::CollapsingState::load_with_default_open(ui.ctx(), scene_node_id, is_current)
+                                    .show_header(ui, |ui| {
+                                        let icon = if is_current { "📄" } else { "📄" };
+                                        let color = if is_current { egui::Color32::YELLOW } else { egui::Color32::from_gray(200) };
+                                        if ui.selectable_label(is_current, egui::RichText::new(format!("{icon} {scene_name}")).color(color)).clicked() {
+                                            if !is_current {
+                                                switch_scene = Some(scene_file.clone());
+                                            }
+                                        }
+                                    })
+                                    .body(|ui| {
+                                        if is_current {
+                                            // Show entities of the current scene
+                                            let mut click_id = None;
+                                            for entity in &self.scene.entities {
+                                                let selected = self.selected_id == Some(entity.id);
+                                                let icon = entity_icon(entity);
+                                                let label = egui::RichText::new(format!("  {icon} {}", entity.name))
+                                                    .color(if selected { egui::Color32::YELLOW } else { egui::Color32::WHITE });
+                                                if ui.selectable_label(selected, label).clicked() {
+                                                    click_id = Some(entity.id);
+                                                }
+                                            }
+                                            if let Some(id) = click_id {
+                                                self.selected_id = Some(id);
+                                            }
+                                        } else {
+                                            ui.label(egui::RichText::new("(click to open)").size(10.0).color(egui::Color32::from_gray(120)));
+                                        }
+                                    });
+                            }
+                            // Switch scene if clicked
+                            if let Some(scene_file) = switch_scene {
+                                let path = pdir.as_ref().map(|d| d.join(&scene_file)).unwrap_or_else(|| PathBuf::from(&scene_file));
+                                match toile_scene::load_scene(&path) {
+                                    Ok(scene) => {
+                                        self.camera_zoom = scene.settings.camera_zoom;
+                                        self.camera_pos = Vec2::ZERO;
+                                        self.scene = scene;
+                                        self.current_file = scene_file;
+                                        self.selected_id = None;
+                                        self.status_msg = "Scene loaded".to_string();
+                                    }
+                                    Err(e) => self.status_msg = format!("Error: {e}"),
+                                }
+                            }
+
+                            // New scene button
+                            if ui.small_button("+ New Scene").clicked() {
+                                let name = format!("scene_{}", project_scenes.len() + 1);
+                                let path_str = format!("scenes/{name}.json");
+                                let new_scene = SceneData::new(&name);
+                                let full_path = pdir.as_ref().map(|d| d.join(&path_str)).unwrap_or_else(|| PathBuf::from(&path_str));
+                                if let Ok(json) = serde_json::to_string_pretty(&new_scene) {
+                                    let _ = std::fs::write(&full_path, &json);
+                                }
+                                self.scene = new_scene;
+                                self.current_file = path_str;
+                                self.selected_id = None;
+                                self.status_msg = format!("Created scene '{name}'");
+                            }
+                        });
+
+                    // ── Current scene entities (flat for quick access) ──
+                    ui.separator();
+                    ui.label(egui::RichText::new("Entities").size(11.0).color(egui::Color32::from_gray(150)));
+                    if ui.button("+ Add Entity").clicked() {
+                        let id = self.scene.add_entity(
+                            &format!("Entity_{}", self.scene.next_id),
+                            self.camera_pos.x, self.camera_pos.y,
+                        );
+                        self.selected_id = Some(id);
+                    }
+                });
+            }); // end ScrollArea
         });
         } // end hierarchy panel
 
