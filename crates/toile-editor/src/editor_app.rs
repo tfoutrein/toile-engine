@@ -151,6 +151,7 @@ pub struct EditorApp {
     // Particle editor
     particle_editor: ParticleEditorPanel,
     show_scene_settings: bool,
+    show_viewport_guide: bool,
     last_mouse_pos: Vec2,
     panning: bool,
     editor_mode: EditorMode,
@@ -225,6 +226,7 @@ impl EditorApp {
             tilemap_editor: TilemapEditor::new(),
             particle_editor: ParticleEditorPanel::new(),
             show_scene_settings: false,
+            show_viewport_guide: true,
             last_mouse_pos: Vec2::ZERO,
             panning: false,
             editor_mode: EditorMode::Entity,
@@ -897,6 +899,44 @@ impl Game for EditorApp {
             }
         }
 
+        // ── Player viewport guide ─────────────────────────────────────────
+        if self.show_viewport_guide {
+            let s = &self.scene.settings;
+            // World-space size of the player's viewport
+            let vp_w = s.viewport_width as f32 / s.camera_zoom;
+            let vp_h = s.viewport_height as f32 / s.camera_zoom;
+            let vp_cx = s.camera_position[0];
+            let vp_cy = s.camera_position[1];
+            let thickness = 1.5 / self.camera_zoom;
+            let guide_color = pack_color(255, 200, 50, 180);
+
+            // Draw 4 edges of the viewport rectangle
+            // Top
+            ctx.draw_sprite(Sprite {
+                texture: tex, position: Vec2::new(vp_cx, vp_cy + vp_h * 0.5),
+                size: Vec2::new(vp_w, thickness), rotation: 0.0,
+                color: guide_color, layer: 99, uv_min: Vec2::ZERO, uv_max: Vec2::ONE,
+            });
+            // Bottom
+            ctx.draw_sprite(Sprite {
+                texture: tex, position: Vec2::new(vp_cx, vp_cy - vp_h * 0.5),
+                size: Vec2::new(vp_w, thickness), rotation: 0.0,
+                color: guide_color, layer: 99, uv_min: Vec2::ZERO, uv_max: Vec2::ONE,
+            });
+            // Left
+            ctx.draw_sprite(Sprite {
+                texture: tex, position: Vec2::new(vp_cx - vp_w * 0.5, vp_cy),
+                size: Vec2::new(thickness, vp_h), rotation: 0.0,
+                color: guide_color, layer: 99, uv_min: Vec2::ZERO, uv_max: Vec2::ONE,
+            });
+            // Right
+            ctx.draw_sprite(Sprite {
+                texture: tex, position: Vec2::new(vp_cx + vp_w * 0.5, vp_cy),
+                size: Vec2::new(thickness, vp_h), rotation: 0.0,
+                color: guide_color, layer: 99, uv_min: Vec2::ZERO, uv_max: Vec2::ONE,
+            });
+        }
+
         // Draw tilemap layers and entities — skipped in Particle mode
         if self.editor_mode != EditorMode::Particle {
 
@@ -1356,6 +1396,7 @@ impl Game for EditorApp {
                 }
                 ui.menu_button("View", |ui| {
                     ui.checkbox(&mut self.show_grid, "Show Grid");
+                    ui.checkbox(&mut self.show_viewport_guide, "Show Player Viewport");
                     if ui.button("Scene Settings...").clicked() {
                         self.show_scene_settings = true;
                         ui.close_menu();
