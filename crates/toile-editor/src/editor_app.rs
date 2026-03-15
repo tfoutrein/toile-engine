@@ -428,6 +428,31 @@ impl EditorApp {
         files
     }
 
+    /// Recalculate PlatformerFollow bounds to cover all background tiles.
+    fn auto_update_bounds_from_tiles(&mut self) {
+        let s = &self.scene.settings;
+        if s.background_tiles.is_empty() { return; }
+        let tile_w = s.viewport_width as f32 / s.camera_zoom;
+        let tile_h = s.viewport_height as f32 / s.camera_zoom;
+        let half_w = tile_w * 0.5;
+        let half_h = tile_h * 0.5;
+
+        let mut min_x = f32::MAX;
+        let mut min_y = f32::MAX;
+        let mut max_x = f32::MIN;
+        let mut max_y = f32::MIN;
+        for pos in &s.background_tiles {
+            min_x = min_x.min(pos[0] - half_w);
+            max_x = max_x.max(pos[0] + half_w);
+            min_y = min_y.min(pos[1] - half_h);
+            max_y = max_y.max(pos[1] + half_h);
+        }
+
+        if let toile_scene::CameraMode::PlatformerFollow { bounds, .. } = &mut self.scene.settings.camera_mode {
+            *bounds = [min_x, min_y, max_x, max_y];
+        }
+    }
+
     fn ui_menu_bar(&mut self, ui: &mut egui::Ui) {
         egui::menu::bar(ui, |ui| {
             ui.menu_button("File", |ui| {
@@ -1107,6 +1132,8 @@ impl Game for EditorApp {
 
                 if let Some(pos) = new_tile {
                     self.scene.settings.background_tiles.push(pos);
+                    // Auto-update PlatformerFollow bounds to cover all tiles
+                    self.auto_update_bounds_from_tiles();
                 }
             }
         } else {
@@ -2557,6 +2584,22 @@ impl Game for EditorApp {
                                 let cx = s.camera_position[0];
                                 let cy = s.camera_position[1];
                                 *bounds = [cx - vw * 0.5, cy - vh * 0.5, cx + vw * 0.5, cy + vh * 0.5];
+                            }
+                            if !s.background_tiles.is_empty() {
+                                if ui.small_button("Set to background").clicked() {
+                                    let tw = s.viewport_width as f32 / s.camera_zoom;
+                                    let th = s.viewport_height as f32 / s.camera_zoom;
+                                    let hw = tw * 0.5;
+                                    let hh = th * 0.5;
+                                    let (mut mn_x, mut mn_y, mut mx_x, mut mx_y) = (f32::MAX, f32::MAX, f32::MIN, f32::MIN);
+                                    for p in &s.background_tiles {
+                                        mn_x = mn_x.min(p[0] - hw);
+                                        mx_x = mx_x.max(p[0] + hw);
+                                        mn_y = mn_y.min(p[1] - hh);
+                                        mx_y = mx_y.max(p[1] + hh);
+                                    }
+                                    *bounds = [mn_x, mn_y, mx_x, mx_y];
+                                }
                             }
                             if ui.small_button("Clear").clicked() {
                                 *bounds = [0.0; 4];
