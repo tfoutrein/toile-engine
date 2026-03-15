@@ -9,11 +9,13 @@ use winit::event_loop::{ActiveEventLoop, EventLoop};
 use winit::window::{Window, WindowAttributes, WindowId};
 
 use toile_assets::font::Font;
+use toile_assets::sdf_font::SdfFont;
 use toile_core::color::Color;
 use toile_core::time::GameClock;
 use toile_graphics::camera::Camera2D;
 use toile_graphics::lighting::LightingSystem;
 use toile_graphics::post_processing::PostProcessor;
+use toile_graphics::sdf_text::{DrawSdfGlyph, SdfTextRenderer};
 use toile_graphics::sprite_renderer::{DrawSprite, RenderStats, SpriteRenderer};
 use toile_graphics::GpuContext;
 use toile_platform::input::Input;
@@ -31,6 +33,7 @@ pub use toile_assets as assets;
 pub use toile_scripting as scripting;
 
 pub use toile_assets::font::FontHandle;
+pub use toile_assets::sdf_font::MsdfFontHandle;
 pub use toile_audio::{MusicId, PlaybackId, SoundId};
 pub use toile_graphics::camera::Camera2D as Camera;
 pub use toile_graphics::custom_shader::CustomShaderPipeline;
@@ -40,6 +43,36 @@ pub use toile_graphics::shader_graph::{NodeKind, ShaderEdge, ShaderGraph, Shader
 pub use toile_graphics::sprite_renderer::{DrawSprite as Sprite, COLOR_WHITE};
 pub use toile_graphics::texture::TextureHandle;
 pub use toile_platform::input::{Key, MouseButton};
+
+/// Style parameters for `draw_text_msdf`.
+#[derive(Clone)]
+pub struct TextStyle {
+    /// Display size in world units.
+    pub size:          f32,
+    /// Fill colour — packed RGBA (use `Color::pack()` or `0xRRGGBBAA`).
+    pub color:         u32,
+    /// Outline thickness in SDF fraction space (0.0 = none, 0.15 = thick).
+    pub outline_width: f32,
+    /// Outline colour.
+    pub outline_color: u32,
+    /// Shadow offset in world units.  Zero = no shadow.
+    pub shadow_offset: Vec2,
+    /// Shadow fill colour (alpha controls opacity).
+    pub shadow_color:  u32,
+}
+
+impl Default for TextStyle {
+    fn default() -> Self {
+        Self {
+            size:          16.0,
+            color:         0xFFFF_FFFF,   // white, fully opaque
+            outline_width: 0.0,
+            outline_color: 0xFF00_0000,   // black, a=255  (packed: r=0,g=0,b=0,a=0xFF in high byte)
+            shadow_offset: Vec2::ZERO,
+            shadow_color:  0x80_000000,   // 50% transparent black
+        }
+    }
+}
 
 /// Context passed to all `Game` trait methods.
 pub struct GameContext<'a> {
@@ -60,6 +93,9 @@ pub struct GameContext<'a> {
     fonts: &'a mut Vec<Font>,
     draw_list: &'a mut Vec<DrawSprite>,
     post_processor: &'a Option<toile_graphics::post_processing::PostProcessor>,
+    sdf_renderer: &'a mut SdfTextRenderer,
+    sdf_fonts: &'a mut Vec<SdfFont>,
+    sdf_draw_list: &'a mut Vec<DrawSdfGlyph>,
 }
 
 impl<'a> GameContext<'a> {
@@ -133,6 +169,106 @@ impl<'a> GameContext<'a> {
         self.fonts.push(font);
         log::info!("Loaded TTF: {} at {}px -> {:?}", path.display(), px_size, handle);
         handle
+    }
+
+    /// Load a TTF as an SDF atlas (rasterizes ASCII at `px_size` into a distance-field texture).
+    /// The returned `MsdfFontHandle` is used with `draw_text_msdf`.
+    pub fn load_msdf_font(&mut self, path: &std::path::Path, px_size: f32) -> MsdfFontHandle {
+        let ttf_bytes = std::fs::read(path)
+            .unwrap_or_else(|e| panic!("Failed to read TTF {}: {e}", path.display()));
+        let result = toile_assets::sdf_font::rasterize_sdf(&ttf_bytes, px_size);
+        let texture_idx = self.sdf_renderer.create_sdf_texture(
+            self.gpu.device(),
+            self.gpu.queue(),
+            &result.atlas_r8,
+            result.atlas_width,
+            result.atlas_height,
+        );
+        let font = SdfFont {
+            texture_idx,
+            line_height: result.line_height,
+            glyphs:      result.glyphs,
+            spread_px:   result.spread_px,
+            ref_px:      result.ref_px,
+        };
+        let handle = MsdfFontHandle(self.sdf_fonts.len() as u32);
+        self.sdf_fonts.push(font);
+        log::info!("Loaded MSDF font: {} at {}px -> {:?}", path.display(), px_size, handle);
+        handle
+    }
+
+    /// Draw text using the SDF font renderer.  Supports crisp scaling, outline, and drop shadow.
+    pub fn draw_text_msdf(
+        &mut self,
+        text:   &str,
+        position: Vec2,
+        font:   MsdfFontHandle,
+        style:  &TextStyle,
+        layer:  i32,
+    ) {
+        let sdf_font = &self.sdf_fonts[font.0 as usize];
+        let scale        = style.size / sdf_font.ref_px;
+        let texture_idx  = sdf_font.texture_idx;
+
+        let mut pen_x = position.x;
+        let     pen_y = position.y;
+
+        // Collect glyph data first to avoid borrowing sdf_fonts while pushing
+        let mut quads: Vec<(Vec2, Vec2, Vec2, Vec2, f32)> = Vec::new(); // (pos, size, uv_min, uv_max, advance_x)
+        for ch in text.chars() {
+            let Some(glyph) = sdf_font.glyphs.get(&(ch as u32)) else { continue };
+            if glyph.size.x > 0.0 && glyph.size.y > 0.0 {
+                let gw = glyph.size.x * scale;
+                let gh = glyph.size.y * scale;
+                let cx = pen_x + glyph.offset.x * scale + gw / 2.0;
+                let cy = pen_y + glyph.offset.y * scale + gh / 2.0;
+                quads.push((
+                    Vec2::new(cx, cy),
+                    Vec2::new(gw, gh),
+                    glyph.uv_min,
+                    glyph.uv_max,
+                    glyph.advance * scale,
+                ));
+            } else {
+                // Non-drawing glyph (e.g. space): just advance
+                quads.push((Vec2::ZERO, Vec2::ZERO, Vec2::ZERO, Vec2::ZERO, glyph.advance * scale));
+            }
+            pen_x += glyph.advance * scale;
+        }
+
+        let shadow_a = ((style.shadow_color >> 24) & 0xFF) as u8;
+        let has_shadow = shadow_a > 0
+            && (style.shadow_offset.x != 0.0 || style.shadow_offset.y != 0.0);
+
+        for (pos, sz, uv_min, uv_max, _) in &quads {
+            if sz.x <= 0.0 { continue; }
+            // Shadow quad (drawn first → renders behind fill)
+            if has_shadow {
+                self.sdf_draw_list.push(DrawSdfGlyph {
+                    texture_idx,
+                    position:      *pos + style.shadow_offset,
+                    size:          *sz,
+                    layer,
+                    uv_min:        *uv_min,
+                    uv_max:        *uv_max,
+                    fill_color:    style.shadow_color,
+                    outline_color: 0,
+                    outline_width: 0.0,
+                });
+            }
+            // Main fill + outline
+            self.sdf_draw_list.push(DrawSdfGlyph {
+                texture_idx,
+                position:      *pos,
+                size:          *sz,
+                layer,
+                uv_min:        *uv_min,
+                uv_max:        *uv_max,
+                fill_color:    style.color,
+                outline_color: style.outline_color,
+                outline_width: style.outline_width,
+            });
+        }
     }
 
     pub fn draw_sprite(&mut self, sprite: DrawSprite) {
@@ -285,6 +421,9 @@ impl App {
             lighting_system: None,
             lighting_config: LightingConfig::default(),
             elapsed_secs: 0.0,
+            sdf_renderer: None,
+            sdf_fonts: Vec::new(),
+            sdf_draw_list: Vec::new(),
         };
 
         event_loop.run_app(&mut handler).expect("Event loop error");
@@ -314,6 +453,9 @@ struct AppHandler {
     lighting_system: Option<LightingSystem>,
     lighting_config: LightingConfig,
     elapsed_secs: f32,
+    sdf_renderer: Option<SdfTextRenderer>,
+    sdf_fonts: Vec<SdfFont>,
+    sdf_draw_list: Vec<DrawSdfGlyph>,
 }
 
 macro_rules! make_ctx {
@@ -332,6 +474,9 @@ macro_rules! make_ctx {
             post_processing: &mut $self.post_stack,
             lighting: &mut $self.lighting_config,
             post_processor: &$self.post_processor,
+            sdf_renderer: $self.sdf_renderer.as_mut().unwrap(),
+            sdf_fonts: &mut $self.sdf_fonts,
+            sdf_draw_list: &mut $self.sdf_draw_list,
         }
     };
 }
@@ -355,6 +500,7 @@ impl ApplicationHandler for AppHandler {
 
         let gpu = GpuContext::new(window.clone());
         let renderer = SpriteRenderer::new(gpu.device(), gpu.surface_format());
+        let sdf_renderer = SdfTextRenderer::new(gpu.device(), gpu.surface_format());
         // Use logical size (not physical) for camera so content scales correctly on HiDPI
         let camera = Camera2D::new(self.config.width as f32, self.config.height as f32);
         self.input.set_scale_factor(window.scale_factor());
@@ -371,6 +517,7 @@ impl ApplicationHandler for AppHandler {
         self.window = Some(window);
         self.gpu = Some(gpu);
         self.renderer = Some(renderer);
+        self.sdf_renderer = Some(sdf_renderer);
         self.camera = Some(camera);
         self.audio = Some(audio);
         self.clock = Some(GameClock::new(self.update_hz));
@@ -462,6 +609,7 @@ impl ApplicationHandler for AppHandler {
                 }
 
                 self.draw_list.clear();
+                self.sdf_draw_list.clear();
                 self.lighting_config.lights.clear();
                 {
                     let mut ctx = make_ctx!(self, fps);
@@ -479,7 +627,7 @@ impl ApplicationHandler for AppHandler {
                         && self.post_processor.is_some();
                     let need_offscreen = use_lighting || use_pp;
 
-                    // 1. Render sprites — into scene texture if any post/lighting, else direct
+                    // 1a. Render sprites — into scene texture if any post/lighting, else direct
                     {
                         let render_target = if need_offscreen {
                             &self.post_processor.as_ref().unwrap().scene_view
@@ -495,6 +643,24 @@ impl ApplicationHandler for AppHandler {
                             camera,
                             &self.draw_list,
                             &self.clear_color,
+                        );
+                    }
+
+                    // 1b. SDF text on top of sprites (LoadOp::Load — no clear)
+                    if !self.sdf_draw_list.is_empty() {
+                        let render_target = if need_offscreen {
+                            &self.post_processor.as_ref().unwrap().scene_view
+                        } else {
+                            &view
+                        };
+                        let sdf = self.sdf_renderer.as_mut().unwrap();
+                        sdf.draw(
+                            gpu.device(),
+                            gpu.queue(),
+                            &mut encoder,
+                            render_target,
+                            camera,
+                            &self.sdf_draw_list,
                         );
                     }
 
