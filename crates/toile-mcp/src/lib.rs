@@ -204,6 +204,125 @@ impl ToileMcpServer {
                 }
             }
 
+            "create_tilemap" => {
+                let sp = Self::get_str(args, "scene_path").unwrap_or("scene.json");
+                let w = Self::get_u64(args, "width").unwrap_or(40) as u32;
+                let h = Self::get_u64(args, "height").unwrap_or(23) as u32;
+                let ts = Self::get_u64(args, "tile_size").unwrap_or(32) as u32;
+                let tileset = Self::get_str(args, "tileset_path").unwrap_or("assets/platformer/tileset.png");
+                let cols = Self::get_u64(args, "columns").unwrap_or(4) as u32;
+                match self.load(sp) {
+                    Ok((path, mut scene)) => {
+                        let total = (w * h) as usize;
+                        scene.tilemap = Some(toile_scene::TilemapData {
+                            tileset_path: tileset.to_string(),
+                            tile_size: ts,
+                            columns: cols,
+                            width: w,
+                            height: h,
+                            layers: vec![toile_scene::TilemapLayerData {
+                                name: "Ground".to_string(),
+                                tiles: vec![0; total],
+                                visible: true,
+                            }],
+                        });
+                        self.save(&path, &scene).map_err(|e| McpError::internal_error(e, None))?;
+                        Ok(success_text(serde_json::json!({"created_tilemap": {"width": w, "height": h, "tile_size": ts}})))
+                    }
+                    Err(e) => Ok(error_text("LOAD_FAILED", &e, None)),
+                }
+            }
+
+            "set_tile" => {
+                let sp = Self::get_str(args, "scene_path").unwrap_or("scene.json");
+                let layer = Self::get_u64(args, "layer").unwrap_or(0) as usize;
+                let col = Self::get_u64(args, "col").unwrap_or(0) as u32;
+                let row = Self::get_u64(args, "row").unwrap_or(0) as u32;
+                let gid = Self::get_u64(args, "gid").unwrap_or(0) as u32;
+                match self.load(sp) {
+                    Ok((path, mut scene)) => {
+                        if let Some(tilemap) = &mut scene.tilemap {
+                            if let Some(layer_data) = tilemap.layers.get_mut(layer) {
+                                let idx = (row * tilemap.width + col) as usize;
+                                if idx < layer_data.tiles.len() {
+                                    layer_data.tiles[idx] = gid;
+                                    self.save(&path, &scene).map_err(|e| McpError::internal_error(e, None))?;
+                                    Ok(success_text(serde_json::json!({"set": {"col": col, "row": row, "gid": gid}})))
+                                } else {
+                                    Ok(error_text("OUT_OF_BOUNDS", &format!("({col},{row}) out of {}x{}", tilemap.width, tilemap.height), None))
+                                }
+                            } else {
+                                Ok(error_text("LAYER_NOT_FOUND", &format!("Layer {layer} not found"), None))
+                            }
+                        } else {
+                            Ok(error_text("NO_TILEMAP", "No tilemap in scene", Some("Use create_tilemap first")))
+                        }
+                    }
+                    Err(e) => Ok(error_text("LOAD_FAILED", &e, None)),
+                }
+            }
+
+            "fill_rect" => {
+                let sp = Self::get_str(args, "scene_path").unwrap_or("scene.json");
+                let layer = Self::get_u64(args, "layer").unwrap_or(0) as usize;
+                let col = Self::get_u64(args, "col").unwrap_or(0) as u32;
+                let row = Self::get_u64(args, "row").unwrap_or(0) as u32;
+                let w = Self::get_u64(args, "width").unwrap_or(1) as u32;
+                let h = Self::get_u64(args, "height").unwrap_or(1) as u32;
+                let gid = Self::get_u64(args, "gid").unwrap_or(1) as u32;
+                match self.load(sp) {
+                    Ok((path, mut scene)) => {
+                        if let Some(tilemap) = &mut scene.tilemap {
+                            if let Some(layer_data) = tilemap.layers.get_mut(layer) {
+                                let mut count = 0u32;
+                                for r in row..(row + h).min(tilemap.height) {
+                                    for c in col..(col + w).min(tilemap.width) {
+                                        let idx = (r * tilemap.width + c) as usize;
+                                        if idx < layer_data.tiles.len() {
+                                            layer_data.tiles[idx] = gid;
+                                            count += 1;
+                                        }
+                                    }
+                                }
+                                self.save(&path, &scene).map_err(|e| McpError::internal_error(e, None))?;
+                                Ok(success_text(serde_json::json!({"filled": count, "gid": gid})))
+                            } else {
+                                Ok(error_text("LAYER_NOT_FOUND", &format!("Layer {layer} not found"), None))
+                            }
+                        } else {
+                            Ok(error_text("NO_TILEMAP", "No tilemap in scene", Some("Use create_tilemap first")))
+                        }
+                    }
+                    Err(e) => Ok(error_text("LOAD_FAILED", &e, None)),
+                }
+            }
+
+            "get_tile" => {
+                let sp = Self::get_str(args, "scene_path").unwrap_or("scene.json");
+                let layer = Self::get_u64(args, "layer").unwrap_or(0) as usize;
+                let col = Self::get_u64(args, "col").unwrap_or(0) as u32;
+                let row = Self::get_u64(args, "row").unwrap_or(0) as u32;
+                match self.load(sp) {
+                    Ok((_, scene)) => {
+                        if let Some(tilemap) = &scene.tilemap {
+                            if let Some(layer_data) = tilemap.layers.get(layer) {
+                                let idx = (row * tilemap.width + col) as usize;
+                                if idx < layer_data.tiles.len() {
+                                    Ok(success_text(serde_json::json!({"col": col, "row": row, "gid": layer_data.tiles[idx]})))
+                                } else {
+                                    Ok(error_text("OUT_OF_BOUNDS", &format!("({col},{row}) out of bounds"), None))
+                                }
+                            } else {
+                                Ok(error_text("LAYER_NOT_FOUND", &format!("Layer {layer} not found"), None))
+                            }
+                        } else {
+                            Ok(error_text("NO_TILEMAP", "No tilemap in scene", None))
+                        }
+                    }
+                    Err(e) => Ok(error_text("LOAD_FAILED", &e, None)),
+                }
+            }
+
             _ => Ok(error_text("UNKNOWN_TOOL", &format!("Unknown: {name}"), Some("Use tools/list"))),
         }
     }
@@ -244,6 +363,11 @@ impl ServerHandler for ToileMcpServer {
             make_tool("create_entity", "Add entity to scene", serde_json::json!({"type": "object", "properties": {"scene_path": {"type": "string"}, "name": {"type": "string"}, "x": {"type": "number"}, "y": {"type": "number"}}, "required": ["scene_path", "name", "x", "y"]})),
             make_tool("delete_entity", "Delete entity by ID", serde_json::json!({"type": "object", "properties": {"scene_path": {"type": "string"}, "entity_id": {"type": "integer"}}, "required": ["scene_path", "entity_id"]})),
             make_tool("update_entity", "Update entity properties", serde_json::json!({"type": "object", "properties": {"scene_path": {"type": "string"}, "entity_id": {"type": "integer"}, "name": {"type": "string"}, "x": {"type": "number"}, "y": {"type": "number"}, "width": {"type": "number"}, "height": {"type": "number"}, "layer": {"type": "integer"}}, "required": ["scene_path", "entity_id"]})),
+            // v0.2 tilemap tools
+            make_tool("create_tilemap", "Create a tilemap in a scene", serde_json::json!({"type": "object", "properties": {"scene_path": {"type": "string"}, "width": {"type": "integer", "description": "Map width in tiles"}, "height": {"type": "integer", "description": "Map height in tiles"}, "tile_size": {"type": "integer", "description": "Tile size in pixels"}, "tileset_path": {"type": "string"}, "columns": {"type": "integer", "description": "Tileset columns"}}, "required": ["scene_path", "width", "height"]})),
+            make_tool("set_tile", "Set a tile in the tilemap", serde_json::json!({"type": "object", "properties": {"scene_path": {"type": "string"}, "layer": {"type": "integer", "description": "Layer index (0-based)"}, "col": {"type": "integer"}, "row": {"type": "integer"}, "gid": {"type": "integer", "description": "Tile GID (0=empty)"}}, "required": ["scene_path", "col", "row", "gid"]})),
+            make_tool("fill_rect", "Fill a rectangle of tiles", serde_json::json!({"type": "object", "properties": {"scene_path": {"type": "string"}, "layer": {"type": "integer"}, "col": {"type": "integer"}, "row": {"type": "integer"}, "width": {"type": "integer"}, "height": {"type": "integer"}, "gid": {"type": "integer"}}, "required": ["scene_path", "col", "row", "width", "height", "gid"]})),
+            make_tool("get_tile", "Get the tile GID at a position", serde_json::json!({"type": "object", "properties": {"scene_path": {"type": "string"}, "layer": {"type": "integer"}, "col": {"type": "integer"}, "row": {"type": "integer"}}, "required": ["scene_path", "col", "row"]})),
         ];
         std::future::ready(Ok(ListToolsResult { tools, ..Default::default() }))
     }
