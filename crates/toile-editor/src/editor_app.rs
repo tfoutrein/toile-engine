@@ -152,6 +152,7 @@ pub struct EditorApp {
     particle_editor: ParticleEditorPanel,
     show_scene_settings: bool,
     last_mouse_pos: Vec2,
+    panning: bool,
     editor_mode: EditorMode,
 }
 
@@ -225,6 +226,7 @@ impl EditorApp {
             particle_editor: ParticleEditorPanel::new(),
             show_scene_settings: false,
             last_mouse_pos: Vec2::ZERO,
+            panning: false,
             editor_mode: EditorMode::Entity,
         }
     }
@@ -549,6 +551,9 @@ impl Game for EditorApp {
             let delta = mouse_pos - self.last_mouse_pos;
             self.camera_pos.x -= delta.x / self.camera_zoom;
             self.camera_pos.y += delta.y / self.camera_zoom; // y-up
+            self.panning = true;
+        } else {
+            self.panning = false;
         }
         self.last_mouse_pos = mouse_pos;
 
@@ -1116,6 +1121,11 @@ impl Game for EditorApp {
         overlay.begin_frame(window);
 
         let ctx = overlay.ctx().clone();
+
+        // Set grab cursor while panning
+        if self.panning {
+            ctx.set_cursor_icon(egui::CursorIcon::Grabbing);
+        }
 
         // ── Welcome / Project dialog ─────────────────────────────────────
         if self.project_dir.is_none() {
