@@ -35,6 +35,7 @@ struct LoadRequest {
     id: AsyncAssetId,
     path: PathBuf,
     kind: AssetKind,
+    simulated_delay_ms: u64,
 }
 
 /// Status of an asset being loaded.
@@ -71,6 +72,9 @@ impl AsyncLoader {
         // Spawn worker thread
         thread::spawn(move || {
             while let Ok(req) = req_rx.recv() {
+                if req.simulated_delay_ms > 0 {
+                    thread::sleep(std::time::Duration::from_millis(req.simulated_delay_ms));
+                }
                 let result = Self::load_file(&req.path, &req.kind);
                 let _ = done_tx.send(CompletedAsset {
                     id: req.id,
@@ -92,6 +96,11 @@ impl AsyncLoader {
 
     /// Queue an asset for background loading.
     pub fn request(&mut self, path: &Path, kind: AssetKind) -> AsyncAssetId {
+        self.request_with_delay(path, kind, 0)
+    }
+
+    /// Queue an asset with a simulated delay (for demo/testing).
+    pub fn request_with_delay(&mut self, path: &Path, kind: AssetKind, delay_ms: u64) -> AsyncAssetId {
         let id = AsyncAssetId(self.next_id);
         self.next_id += 1;
         self.total_requested += 1;
@@ -101,6 +110,7 @@ impl AsyncLoader {
             id,
             path: path.to_path_buf(),
             kind,
+            simulated_delay_ms: delay_ms,
         });
 
         id

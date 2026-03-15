@@ -35,16 +35,15 @@ impl Game for LoadingDemo {
         self.logo_tex = Some(ctx.load_texture(Path::new("assets/toile-logo-transparent.png")));
         self.font = Some(ctx.load_ttf(Path::new("assets/fonts/PressStart2P.ttf"), 32.0));
 
-        // Queue many textures for async loading (we reuse the same files to simulate load)
-        for _ in 0..10 {
+        // Queue textures with simulated delay so the progress bar is visible
+        for i in 0..20 {
+            let path = match i % 3 {
+                0 => "assets/white.png",
+                1 => "assets/toile-logo-transparent.png",
+                _ => "assets/test_sprite.png",
+            };
             self.loader
-                .request(Path::new("assets/white.png"), AssetKind::Texture);
-            self.loader.request(
-                Path::new("assets/toile-logo-transparent.png"),
-                AssetKind::Texture,
-            );
-            self.loader
-                .request(Path::new("assets/test_sprite.png"), AssetKind::Texture);
+                .request_with_delay(Path::new(path), AssetKind::Texture, 100);
         }
 
         self.phase = Phase::Loading;
@@ -97,11 +96,13 @@ impl Game for LoadingDemo {
                     });
                 }
 
-                // "Loading..." text
+                // "Loading..." text (centered)
                 if let Some(font) = self.font {
+                    let text = format!("Loading... {:.0}%", progress * 100.0);
+                    let text_w = text.len() as f32 * 8.0; // approximate
                     ctx.draw_text(
-                        &format!("Loading... {:.0}%", progress * 100.0),
-                        Vec2::new(-100.0, -60.0),
+                        &text,
+                        Vec2::new(-text_w * 0.5, -60.0),
                         font,
                         12.0,
                         COLOR_WHITE,
@@ -155,17 +156,21 @@ impl Game for LoadingDemo {
                 }
 
                 if let Some(font) = self.font {
+                    let t1 = "ALL LOADED!";
+                    let t1_w = t1.len() as f32 * 9.0;
                     ctx.draw_text(
-                        "ALL LOADED!",
-                        Vec2::new(-100.0, -60.0),
+                        t1,
+                        Vec2::new(-t1_w * 0.5, -60.0),
                         font,
                         14.0,
                         pack_color(80, 255, 120, 255),
                         10,
                     );
+                    let t2 = format!("{} textures ready", self.loaded_textures.len());
+                    let t2_w = t2.len() as f32 * 5.5;
                     ctx.draw_text(
-                        &format!("{} textures ready", self.loaded_textures.len()),
-                        Vec2::new(-100.0, -90.0),
+                        &t2,
+                        Vec2::new(-t2_w * 0.5, -90.0),
                         font,
                         8.0,
                         pack_color(150, 150, 180, 255),
