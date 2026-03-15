@@ -39,6 +39,8 @@ pub struct SceneSettings {
     pub clear_color: [f32; 4],
     #[serde(default = "default_camera_zoom")]
     pub camera_zoom: f32,
+    #[serde(default)]
+    pub camera_position: [f32; 2],
 }
 
 fn default_gravity() -> f32 { 800.0 }
@@ -55,6 +57,7 @@ impl Default for SceneSettings {
             viewport_height: default_viewport_h(),
             clear_color: default_clear_color(),
             camera_zoom: default_camera_zoom(),
+            camera_position: [0.0, 0.0],
         }
     }
 }

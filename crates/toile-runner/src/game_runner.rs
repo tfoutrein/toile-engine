@@ -308,7 +308,35 @@ impl Game for GameRunner {
             Ok(scene) => {
                 log::info!("Loaded scene '{}' with {} entities", scene.name, scene.entities.len());
                 self.load_scene_data(&scene, ctx);
-                ctx.camera.zoom = self.scene_settings.camera_zoom;
+                // Apply camera from scene settings
+                let s = &self.scene_settings;
+                ctx.camera.zoom = s.camera_zoom;
+                ctx.camera.position = Vec2::new(s.camera_position[0], s.camera_position[1]);
+                // If camera_position is (0,0) and no explicit override, auto-center on entities
+                if s.camera_position == [0.0, 0.0] && !self.entities.is_empty() {
+                    let (mut min_x, mut min_y, mut max_x, mut max_y) = (f32::MAX, f32::MAX, f32::MIN, f32::MIN);
+                    for ent in &self.entities {
+                        let hw = ent.es.size.x * 0.5;
+                        let hh = ent.es.size.y * 0.5;
+                        min_x = min_x.min(ent.es.position.x - hw);
+                        max_x = max_x.max(ent.es.position.x + hw);
+                        min_y = min_y.min(ent.es.position.y - hh);
+                        max_y = max_y.max(ent.es.position.y + hh);
+                    }
+                    let center = Vec2::new((min_x + max_x) * 0.5, (min_y + max_y) * 0.5);
+                    ctx.camera.position = center;
+                    // Auto-fit zoom: viewport_size is in physical pixels
+                    let vp = ctx.camera.viewport_size();
+                    let content_w = (max_x - min_x) * 1.1; // 10% padding
+                    let content_h = (max_y - min_y) * 1.1;
+                    if content_w > 0.0 && content_h > 0.0 {
+                        let zoom_w = vp.x / content_w;
+                        let zoom_h = vp.y / content_h;
+                        let auto_zoom = zoom_w.min(zoom_h).max(0.5);
+                        ctx.camera.zoom = auto_zoom;
+                        log::info!("Auto-fit camera: center=({:.0},{:.0}), zoom={:.2}", center.x, center.y, auto_zoom);
+                    }
+                }
             }
             Err(e) => log::error!("Failed to load scene {}: {e}", scene_path.display()),
         }
