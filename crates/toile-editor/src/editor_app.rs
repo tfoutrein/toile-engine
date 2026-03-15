@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use glam::Vec2;
 use toile_app::{App, Game, GameContext, Key, Sprite, TextureHandle, COLOR_WHITE};
@@ -113,6 +113,14 @@ fn behavior_inspector(ui: &mut egui::Ui, beh: &mut BehaviorConfig, idx: usize) {
 pub struct EditorApp {
     overlay: Option<EguiOverlay>,
     surface_format: Option<wgpu::TextureFormat>,
+    // Project state
+    project_dir: Option<PathBuf>,
+    show_project_dialog: bool,
+    project_path_input: String,
+    new_project_name: String,
+    new_project_template: String,
+    show_file_picker: Option<FilePickerTarget>,
+    // Scene state
     scene: SceneData,
     selected_id: Option<u64>,
     white_tex: Option<TextureHandle>,
@@ -146,6 +154,14 @@ pub struct EditorApp {
     editor_mode: EditorMode,
 }
 
+/// What field the file picker is targeting.
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum FilePickerTarget {
+    SpritePath,
+    EventSheet,
+    ParticleEmitter,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum EditorMode {
     Entity,
@@ -169,19 +185,17 @@ enum ResizeHandle {
 
 impl EditorApp {
     pub fn new() -> Self {
-        let mut scene = SceneData::new("Untitled");
-        // Add some default entities for demo
-        scene.add_entity("Player", 0.0, 50.0);
-        scene.add_entity("Enemy", 100.0, 50.0);
-        scene.add_entity("Platform", 0.0, 0.0);
-        if let Some(e) = scene.find_entity_mut(3) {
-            e.width = 200.0;
-            e.height = 20.0;
-        }
+        let scene = SceneData::new("Untitled");
 
         Self {
             overlay: None,
             surface_format: None,
+            project_dir: None,
+            show_project_dialog: true, // show welcome on startup
+            project_path_input: String::new(),
+            new_project_name: "my-game".to_string(),
+            new_project_template: "empty".to_string(),
+            show_file_picker: None,
             scene,
             selected_id: None,
             white_tex: None,
@@ -198,8 +212,8 @@ impl EditorApp {
             rotate_start_angle: 0.0,
             rotate_start_mouse_angle: 0.0,
             show_grid: true,
-            status_msg: "Ready".to_string(),
-            current_file: "scene.json".to_string(),
+            status_msg: "Welcome — open or create a project to begin".to_string(),
+            current_file: String::new(),
             file_path_input: String::new(),
             show_load_dialog: false,
             show_save_dialog: false,
@@ -211,6 +225,114 @@ impl EditorApp {
             show_scene_settings: false,
             editor_mode: EditorMode::Entity,
         }
+    }
+
+    /// Resolve a path relative to the project directory.
+    fn project_path(&self, relative: &str) -> PathBuf {
+        match &self.project_dir {
+            Some(dir) => dir.join(relative),
+            None => PathBuf::from(relative),
+        }
+    }
+
+    /// Create a minimal project structure.
+    fn create_project(&self, dir: &Path) -> Result<(), String> {
+        std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+        std::fs::create_dir_all(dir.join("scenes")).map_err(|e| e.to_string())?;
+        std::fs::create_dir_all(dir.join("scripts")).map_err(|e| e.to_string())?;
+        std::fs::create_dir_all(dir.join("prefabs")).map_err(|e| e.to_string())?;
+        std::fs::create_dir_all(dir.join("assets")).map_err(|e| e.to_string())?;
+        std::fs::create_dir_all(dir.join("particles")).map_err(|e| e.to_string())?;
+
+        let name = dir.file_name().unwrap_or_default().to_string_lossy();
+        let toml = format!(
+            "[project]\nname = \"{name}\"\nversion = \"0.1.0\"\ntemplate = \"{}\"\n\n[game]\nentry_scene = \"scenes/main.json\"\nwindow_width = 1280\nwindow_height = 720\n",
+            self.new_project_template
+        );
+        std::fs::write(dir.join("Toile.toml"), toml).map_err(|e| e.to_string())?;
+
+        // Create a default main scene
+        let scene = SceneData::new(&name);
+        toile_scene::save_scene(&dir.join("scenes/main.json"), &scene)
+            .map_err(|e| e.to_string())?;
+
+        Ok(())
+    }
+
+    /// Open an existing project and load the entry scene.
+    fn open_project(&mut self, dir: PathBuf) {
+        let name = dir.file_name().unwrap_or_default().to_string_lossy().to_string();
+        self.project_dir = Some(dir.clone());
+        self.show_project_dialog = false;
+
+        // Try to load Toile.toml to find entry scene
+        let entry = if let Ok(content) = std::fs::read_to_string(dir.join("Toile.toml")) {
+            // Simple parse — look for entry_scene
+            content.lines()
+                .find(|l| l.starts_with("entry_scene"))
+                .and_then(|l| l.split('=').nth(1))
+                .map(|v| v.trim().trim_matches('"').to_string())
+                .unwrap_or_else(|| "scenes/main.json".to_string())
+        } else {
+            "scenes/main.json".to_string()
+        };
+
+        let scene_path = dir.join(&entry);
+        if scene_path.exists() {
+            match toile_scene::load_scene(&scene_path) {
+                Ok(scene) => {
+                    self.scene = scene;
+                    self.current_file = entry;
+                    self.status_msg = format!("Opened project '{name}'");
+                }
+                Err(e) => {
+                    self.status_msg = format!("Error loading scene: {e}");
+                    self.scene = SceneData::new(&name);
+                    self.current_file = entry;
+                }
+            }
+        } else {
+            self.scene = SceneData::new(&name);
+            self.current_file = entry;
+            self.status_msg = format!("Opened project '{name}' (new scene)");
+        }
+        self.selected_id = None;
+    }
+
+    /// List scene files in the project's scenes/ directory.
+    fn list_project_scenes(&self) -> Vec<String> {
+        let dir = self.project_path("scenes");
+        let mut scenes = Vec::new();
+        if let Ok(entries) = std::fs::read_dir(&dir) {
+            for entry in entries.flatten() {
+                let p = entry.path();
+                if p.extension().is_some_and(|e| e == "json") {
+                    if let Some(name) = p.file_name() {
+                        scenes.push(format!("scenes/{}", name.to_string_lossy()));
+                    }
+                }
+            }
+        }
+        scenes.sort();
+        scenes
+    }
+
+    /// List files in a project subdirectory matching an extension.
+    fn list_project_files(&self, subdir: &str, ext: &str) -> Vec<String> {
+        let dir = self.project_path(subdir);
+        let mut files = Vec::new();
+        if let Ok(entries) = std::fs::read_dir(&dir) {
+            for entry in entries.flatten() {
+                let p = entry.path();
+                if p.extension().is_some_and(|e| e == ext) {
+                    if let Some(name) = p.file_name() {
+                        files.push(format!("{subdir}/{}", name.to_string_lossy()));
+                    }
+                }
+            }
+        }
+        files.sort();
+        files
     }
 
     fn ui_menu_bar(&mut self, ui: &mut egui::Ui) {
@@ -963,6 +1085,12 @@ impl Game for EditorApp {
             return;
         }
 
+        // Pre-collect data before borrowing overlay (avoids self borrow conflicts)
+        let project_scenes = self.list_project_scenes();
+        let project_scripts = self.list_project_files("scripts", "json");
+        let project_particles = self.list_project_files("particles", "json");
+        let pdir = self.project_dir.clone();
+
         let surface_format = self.surface_format.unwrap_or(wgpu::TextureFormat::Bgra8UnormSrgb);
         let overlay = self.overlay.get_or_insert_with(|| {
             let o = EguiOverlay::new(device, surface_format, window);
@@ -976,6 +1104,112 @@ impl Game for EditorApp {
 
         let ctx = overlay.ctx().clone();
 
+        // ── Welcome / Project dialog ─────────────────────────────────────
+        if self.project_dir.is_none() {
+            let mut action_create: Option<PathBuf> = None;
+            let mut action_open: Option<PathBuf> = None;
+
+            egui::CentralPanel::default().show(&ctx, |ui| {
+                ui.vertical_centered(|ui| {
+                    ui.add_space(80.0);
+                    ui.heading("Toile Editor");
+                    ui.add_space(20.0);
+                    ui.label("Open or create a project to begin.");
+                    ui.add_space(20.0);
+
+                    // ── New Project ──
+                    ui.group(|ui| {
+                        ui.label(egui::RichText::new("New Project").strong());
+                        ui.horizontal(|ui| {
+                            ui.label("Name:");
+                            ui.text_edit_singleline(&mut self.new_project_name);
+                        });
+                        ui.horizontal(|ui| {
+                            ui.label("Template:");
+                            egui::ComboBox::from_id_salt("template_combo")
+                                .selected_text(&self.new_project_template)
+                                .show_ui(ui, |ui| {
+                                    for t in &["empty", "platformer", "topdown", "shmup"] {
+                                        ui.selectable_value(&mut self.new_project_template, t.to_string(), *t);
+                                    }
+                                });
+                        });
+                        if ui.button("Create Project").clicked() {
+                            action_create = Some(PathBuf::from(&self.new_project_name));
+                        }
+                    });
+
+                    ui.add_space(16.0);
+
+                    // ── Open Project ──
+                    ui.group(|ui| {
+                        ui.label(egui::RichText::new("Open Project").strong());
+                        ui.horizontal(|ui| {
+                            ui.label("Path:");
+                            ui.text_edit_singleline(&mut self.project_path_input);
+                        });
+
+                        // Scan for directories with Toile.toml nearby
+                        let mut found_projects: Vec<String> = Vec::new();
+                        if let Ok(entries) = std::fs::read_dir(".") {
+                            for entry in entries.flatten() {
+                                let p = entry.path();
+                                if p.is_dir() && p.join("Toile.toml").exists() {
+                                    if let Some(name) = p.file_name() {
+                                        found_projects.push(name.to_string_lossy().to_string());
+                                    }
+                                }
+                            }
+                        }
+                        if Path::new("examples/run-demo/Toile.toml").exists() {
+                            found_projects.push("examples/run-demo".to_string());
+                        }
+
+                        if !found_projects.is_empty() {
+                            ui.add_space(4.0);
+                            ui.label(egui::RichText::new("Found projects:").size(11.0));
+                            for proj in &found_projects {
+                                if ui.selectable_label(self.project_path_input == *proj, proj).clicked() {
+                                    self.project_path_input = proj.clone();
+                                }
+                            }
+                        }
+
+                        if ui.button("Open").clicked() && !self.project_path_input.is_empty() {
+                            action_open = Some(PathBuf::from(&self.project_path_input));
+                        }
+                    });
+
+                    ui.add_space(20.0);
+                    if !self.status_msg.is_empty() {
+                        ui.label(egui::RichText::new(&self.status_msg).color(egui::Color32::YELLOW));
+                    }
+                });
+            });
+
+            overlay.end_frame_and_render(device, queue, encoder, view, window, size);
+
+            // Apply deferred actions (after overlay borrow ends)
+            if let Some(dir) = action_create {
+                if dir.exists() {
+                    self.status_msg = format!("Directory '{}' already exists", dir.display());
+                } else {
+                    match self.create_project(&dir) {
+                        Ok(()) => self.open_project(dir),
+                        Err(e) => self.status_msg = format!("Error: {e}"),
+                    }
+                }
+            }
+            if let Some(dir) = action_open {
+                if dir.join("Toile.toml").exists() {
+                    self.open_project(dir);
+                } else {
+                    self.status_msg = format!("No Toile.toml found in '{}'", dir.display());
+                }
+            }
+            return;
+        }
+
         // Menu bar
         let mut new_scene = false;
         let mut save_scene = false;
@@ -987,22 +1221,48 @@ impl Game for EditorApp {
             egui::menu::bar(ui, |ui| {
                 ui.menu_button("File", |ui| {
                     if ui.button("New Scene").clicked() { new_scene = true; ui.close_menu(); }
+                    // Scene switcher
+                    if !project_scenes.is_empty() {
+                        ui.menu_button("Open Scene", |ui| {
+                            for s in &project_scenes {
+                                let is_current = self.current_file == *s;
+                                if ui.selectable_label(is_current, s).clicked() {
+                                    let path = pdir.as_ref().map(|d| d.join(s)).unwrap_or_else(|| PathBuf::from(s));
+                                    match toile_scene::load_scene(&path) {
+                                        Ok(scene) => {
+                                            self.scene = scene;
+                                            self.current_file = s.clone();
+                                            self.selected_id = None;
+                                            self.status_msg = format!("Loaded {s}");
+                                        }
+                                        Err(e) => self.status_msg = format!("Error: {e}"),
+                                    }
+                                    ui.close_menu();
+                                }
+                            }
+                        });
+                    }
+                    ui.separator();
                     if ui.button("Save...").clicked() {
                         self.file_path_input = self.current_file.clone();
                         self.show_save_dialog = true;
                         ui.close_menu();
                     }
-                    if ui.button("Load...").clicked() {
-                        self.file_path_input = self.current_file.clone();
-                        self.show_load_dialog = true;
-                        ui.close_menu();
-                    }
-                    ui.separator();
                     if !self.current_file.is_empty() {
                         if ui.button(format!("Quick Save ({})", self.current_file)).clicked() {
                             save_scene = true;
                             ui.close_menu();
                         }
+                    }
+                    ui.separator();
+                    if ui.button("Close Project").clicked() {
+                        self.project_dir = None;
+                        self.show_project_dialog = true;
+                        self.scene = SceneData::new("Untitled");
+                        self.selected_id = None;
+                        self.current_file.clear();
+                        self.status_msg = "Project closed".to_string();
+                        ui.close_menu();
                     }
                 });
                 ui.menu_button("Edit", |ui| {
@@ -1052,8 +1312,9 @@ impl Game for EditorApp {
             self.status_msg = "New scene".to_string();
         }
         if save_scene && !self.current_file.is_empty() {
+            let path = pdir.as_ref().map(|d| d.join(&self.current_file)).unwrap_or_else(|| PathBuf::from(&self.current_file));
             let json = serde_json::to_string_pretty(&self.scene).unwrap();
-            match std::fs::write(&self.current_file, &json) {
+            match std::fs::write(&path, &json) {
                 Ok(()) => self.status_msg = format!("Saved to {} ({} entities)", self.current_file, self.scene.entities.len()),
                 Err(e) => self.status_msg = format!("Save failed: {e}"),
             }
@@ -1131,12 +1392,26 @@ impl Game for EditorApp {
                 .collapsible(false)
                 .resizable(false)
                 .show(&ctx, |ui| {
-                    ui.label("File path:");
+                    ui.label("Scene path (relative to project):");
                     ui.text_edit_singleline(&mut self.file_path_input);
+                    // Quick pick from existing scenes
+                    if !project_scenes.is_empty() {
+                        ui.label(egui::RichText::new("Existing scenes:").size(11.0));
+                        for s in &project_scenes {
+                            if ui.selectable_label(self.file_path_input == *s, s).clicked() {
+                                self.file_path_input = s.clone();
+                            }
+                        }
+                    }
+                    ui.add_space(4.0);
                     ui.horizontal(|ui| {
                         if ui.button("Save").clicked() {
+                            let path = pdir.as_ref().map(|d| d.join(&self.file_path_input)).unwrap_or_else(|| PathBuf::from(&self.file_path_input));
+                            if let Some(parent) = path.parent() {
+                                let _ = std::fs::create_dir_all(parent);
+                            }
                             let json = serde_json::to_string_pretty(&self.scene).unwrap();
-                            match std::fs::write(&self.file_path_input, &json) {
+                            match std::fs::write(&path, &json) {
                                 Ok(()) => {
                                     self.current_file = self.file_path_input.clone();
                                     self.status_msg = format!("Saved to {}", self.current_file);
@@ -1420,13 +1695,22 @@ impl Game for EditorApp {
                     egui::CollapsingHeader::new(egui::RichText::new("Event Sheet").strong())
                         .default_open(false)
                         .show(ui, |ui| {
-                            let mut path = entity.event_sheet.clone().unwrap_or_default();
-                            ui.horizontal(|ui| {
-                                ui.label("Path:");
-                                if ui.text_edit_singleline(&mut path).changed() {
-                                    entity.event_sheet = if path.is_empty() { None } else { Some(path.clone()) };
-                                }
-                            });
+                            let current = entity.event_sheet.clone().unwrap_or_default();
+                            ui.label(if current.is_empty() { "None" } else { &current });
+                            if !project_scripts.is_empty() {
+                                egui::ComboBox::from_id_salt("event_sheet_picker")
+                                    .selected_text(if current.is_empty() { "Select..." } else { &current })
+                                    .show_ui(ui, |ui| {
+                                        if ui.selectable_label(current.is_empty(), "(None)").clicked() {
+                                            entity.event_sheet = None;
+                                        }
+                                        for f in &project_scripts {
+                                            if ui.selectable_label(*f == current, f).clicked() {
+                                                entity.event_sheet = Some(f.clone());
+                                            }
+                                        }
+                                    });
+                            }
                             if entity.event_sheet.is_some() {
                                 if ui.small_button("Clear").clicked() {
                                     entity.event_sheet = None;
@@ -1438,13 +1722,22 @@ impl Game for EditorApp {
                     egui::CollapsingHeader::new(egui::RichText::new("Particle Emitter").strong())
                         .default_open(false)
                         .show(ui, |ui| {
-                            let mut path = entity.particle_emitter.clone().unwrap_or_default();
-                            ui.horizontal(|ui| {
-                                ui.label("Path:");
-                                if ui.text_edit_singleline(&mut path).changed() {
-                                    entity.particle_emitter = if path.is_empty() { None } else { Some(path.clone()) };
-                                }
-                            });
+                            let current = entity.particle_emitter.clone().unwrap_or_default();
+                            ui.label(if current.is_empty() { "None" } else { &current });
+                            if !project_particles.is_empty() {
+                                egui::ComboBox::from_id_salt("particle_picker")
+                                    .selected_text(if current.is_empty() { "Select..." } else { &current })
+                                    .show_ui(ui, |ui| {
+                                        if ui.selectable_label(current.is_empty(), "(None)").clicked() {
+                                            entity.particle_emitter = None;
+                                        }
+                                        for f in &project_particles {
+                                            if ui.selectable_label(*f == current, f).clicked() {
+                                                entity.particle_emitter = Some(f.clone());
+                                            }
+                                        }
+                                    });
+                            }
                             if entity.particle_emitter.is_some() {
                                 if ui.small_button("Clear").clicked() {
                                     entity.particle_emitter = None;
