@@ -95,7 +95,8 @@
           "magnitude": 6.0,
           "period": 1.5
         }
-      ]
+      ],
+      "event_sheet": "scripts/coin.event.json"
     },
     {
       "id": 11,
@@ -113,7 +114,8 @@
           "magnitude": 6.0,
           "period": 2.0
         }
-      ]
+      ],
+      "event_sheet": "scripts/coin.event.json"
     },
     {
       "id": 12,
@@ -131,7 +133,8 @@
           "magnitude": 8.0,
           "period": 1.0
         }
-      ]
+      ],
+      "event_sheet": "scripts/coin.event.json"
     },
     {
       "id": 20,

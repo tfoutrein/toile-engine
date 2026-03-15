@@ -291,6 +291,9 @@ impl Game for GameRunner {
         let white_path = self.resolve("assets/white.png");
         if white_path.exists() {
             self.white_tex = Some(ctx.load_texture(&white_path));
+        } else {
+            // Create a 1x1 white texture programmatically
+            self.white_tex = Some(ctx.create_texture_from_rgba(&[255, 255, 255, 255], 1, 1));
         }
 
         // Camera zoom for Retina
@@ -567,15 +570,11 @@ impl Game for GameRunner {
 pub fn run_project(project_dir: &Path) -> Result<(), String> {
     let runner = GameRunner::load(project_dir)?;
     let m = runner.manifest().clone();
-    let sc = runner.scene_settings.clone();
 
     App::new()
         .with_title(&m.window_title)
         .with_size(m.window_width, m.window_height)
-        .with_clear_color(Color::new(
-            sc.clear_color[0] as f64, sc.clear_color[1] as f64,
-            sc.clear_color[2] as f64, sc.clear_color[3] as f64,
-        ))
+        .with_clear_color(Color::new(0.08, 0.08, 0.12, 1.0))
         .run(runner);
 
     Ok(())

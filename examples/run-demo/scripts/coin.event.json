@@ -1,0 +1,16 @@
+{
+  "name": "coin_events",
+  "events": [
+    {
+      "conditions": [
+        { "kind": { "type": "OnCollisionWith", "tag": "Player" }, "negated": false }
+      ],
+      "actions": [
+        { "kind": { "type": "Log", "message": "Coin picked up!" } },
+        { "kind": { "type": "Destroy" } }
+      ],
+      "sub_events": [],
+      "enabled": true
+    }
+  ]
+}

@@ -87,16 +87,25 @@ pub struct TilemapLayerData {
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct EntityData {
     pub id: u64,
+    #[serde(default)]
     pub name: String,
+    #[serde(default)]
     pub x: f32,
+    #[serde(default)]
     pub y: f32,
+    #[serde(default)]
     pub rotation: f32,
+    #[serde(default = "default_scale")]
     pub scale_x: f32,
+    #[serde(default = "default_scale")]
     pub scale_y: f32,
+    #[serde(default)]
     pub layer: i32,
     #[serde(default)]
     pub sprite_path: String,
+    #[serde(default = "default_size")]
     pub width: f32,
+    #[serde(default = "default_size")]
     pub height: f32,
     // ── v0.5 fields ──────────────────────────────────────────────────────
     #[serde(default)]
@@ -115,6 +124,8 @@ pub struct EntityData {
     pub visible: bool,
 }
 
+fn default_scale() -> f32 { 1.0 }
+fn default_size() -> f32 { 32.0 }
 fn default_visible() -> bool { true }
 
 impl Default for EntityData {
