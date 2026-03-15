@@ -2441,15 +2441,30 @@ impl Game for EditorApp {
                         ui.end_row();
 
                         ui.label("Camera Mode");
+                        let mode_label = match &s.camera_mode {
+                            toile_scene::CameraMode::Fixed => "Fixed",
+                            toile_scene::CameraMode::FollowPlayer => "Follow Player",
+                            toile_scene::CameraMode::PlatformerFollow { .. } => "Platformer Follow",
+                        };
+                        let mut new_mode: Option<toile_scene::CameraMode> = None;
                         egui::ComboBox::from_id_salt("camera_mode")
-                            .selected_text(match s.camera_mode {
-                                toile_scene::CameraMode::Fixed => "Fixed",
-                                toile_scene::CameraMode::FollowPlayer => "Follow Player",
-                            })
+                            .selected_text(mode_label)
                             .show_ui(ui, |ui| {
-                                ui.selectable_value(&mut s.camera_mode, toile_scene::CameraMode::Fixed, "Fixed — camera stays at position");
-                                ui.selectable_value(&mut s.camera_mode, toile_scene::CameraMode::FollowPlayer, "Follow Player — camera tracks player");
+                                if ui.selectable_label(mode_label == "Fixed", "Fixed — camera stays at position").clicked() {
+                                    new_mode = Some(toile_scene::CameraMode::Fixed);
+                                }
+                                if ui.selectable_label(mode_label == "Follow Player", "Follow Player — always centered").clicked() {
+                                    new_mode = Some(toile_scene::CameraMode::FollowPlayer);
+                                }
+                                if ui.selectable_label(mode_label == "Platformer Follow", "Platformer — deadzone + bounds").clicked() {
+                                    new_mode = Some(toile_scene::CameraMode::PlatformerFollow {
+                                        deadzone_x: 0.3,
+                                        deadzone_y: 0.4,
+                                        bounds: [0.0; 4],
+                                    });
+                                }
                             });
+                        if let Some(m) = new_mode { s.camera_mode = m; }
                         ui.end_row();
 
                         ui.label("Clear R");
@@ -2462,6 +2477,36 @@ impl Game for EditorApp {
                         ui.add(egui::Slider::new(&mut s.clear_color[2], 0.0..=1.0));
                         ui.end_row();
                     });
+
+                    // Platformer camera settings
+                    if let toile_scene::CameraMode::PlatformerFollow { deadzone_x, deadzone_y, bounds } = &mut s.camera_mode {
+                        ui.add_space(4.0);
+                        ui.label(egui::RichText::new("Platformer Camera").strong());
+                        ui.separator();
+                        egui::Grid::new("platformer_cam_grid").num_columns(2).show(ui, |ui| {
+                            ui.label("Deadzone X");
+                            ui.add(egui::Slider::new(deadzone_x, 0.0..=0.8).text("of viewport"));
+                            ui.end_row();
+                            ui.label("Deadzone Y");
+                            ui.add(egui::Slider::new(deadzone_y, 0.0..=0.8).text("of viewport"));
+                            ui.end_row();
+                        });
+                        ui.add_space(4.0);
+                        ui.label(egui::RichText::new("Scene Bounds (camera clamp)").size(11.0));
+                        ui.label(egui::RichText::new("Leave all zero for no clamping").size(10.0).color(egui::Color32::from_gray(130)));
+                        egui::Grid::new("bounds_grid").num_columns(4).show(ui, |ui| {
+                            ui.label("Min X");
+                            ui.add(egui::DragValue::new(&mut bounds[0]).speed(1.0));
+                            ui.label("Min Y");
+                            ui.add(egui::DragValue::new(&mut bounds[1]).speed(1.0));
+                            ui.end_row();
+                            ui.label("Max X");
+                            ui.add(egui::DragValue::new(&mut bounds[2]).speed(1.0));
+                            ui.label("Max Y");
+                            ui.add(egui::DragValue::new(&mut bounds[3]).speed(1.0));
+                            ui.end_row();
+                        });
+                    }
 
                     // ── Background Image ──
                     ui.add_space(8.0);

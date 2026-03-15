@@ -80,9 +80,28 @@ pub enum CameraMode {
     /// Camera stays at camera_position, shows the designed viewport.
     #[default]
     Fixed,
-    /// Camera follows the Player entity smoothly.
+    /// Camera centers on the Player entity.
     FollowPlayer,
+    /// Platformer camera: follows player horizontally with deadzone,
+    /// only scrolls vertically when player reaches screen edges.
+    /// Camera is clamped to scene bounds so the background never shows gaps.
+    PlatformerFollow {
+        /// Horizontal deadzone: fraction of viewport width (0.0–1.0).
+        /// Player can move this much before camera scrolls. Default 0.3.
+        #[serde(default = "default_deadzone_x")]
+        deadzone_x: f32,
+        /// Vertical deadzone: fraction of viewport height. Default 0.4.
+        #[serde(default = "default_deadzone_y")]
+        deadzone_y: f32,
+        /// Scene bounds: camera won't show beyond these world-space limits.
+        /// [min_x, min_y, max_x, max_y]. If all zero, no clamping.
+        #[serde(default)]
+        bounds: [f32; 4],
+    },
 }
+
+fn default_deadzone_x() -> f32 { 0.3 }
+fn default_deadzone_y() -> f32 { 0.4 }
 
 /// Collision shape data for scene serialization.
 #[derive(Serialize, Deserialize, Clone, Debug)]

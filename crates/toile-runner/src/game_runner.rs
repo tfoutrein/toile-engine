@@ -104,8 +104,8 @@ pub struct GameRunner {
     pending_scene: Option<String>,
     next_id: u64,
     scene_settings: toile_scene::SceneSettings,
-    /// Initial AABB of the scene for auto-fit camera (recalculated on scene load).
-    scene_aabb: Option<(Vec2, Vec2)>, // (min, max)
+    /// Smooth camera position for platformer follow mode.
+    camera_pos: Vec2,
 }
 
 impl GameRunner {
@@ -124,7 +124,7 @@ impl GameRunner {
             pending_scene: None,
             next_id: 1,
             scene_settings: Default::default(),
-            scene_aabb: None,
+            camera_pos: Vec2::ZERO,
         })
     }
 
@@ -324,7 +324,11 @@ impl Game for GameRunner {
             Ok(scene) => {
                 log::info!("Loaded scene '{}' with {} entities", scene.name, scene.entities.len());
                 self.load_scene_data(&scene, ctx);
-                // Camera will be set each frame in update() based on scene settings
+                // Initialize camera position
+                self.camera_pos = Vec2::new(
+                    self.scene_settings.camera_position[0],
+                    self.scene_settings.camera_position[1],
+                );
                 log::info!("Scene camera: pos=({},{}), zoom={}",
                     self.scene_settings.camera_position[0],
                     self.scene_settings.camera_position[1],
@@ -347,16 +351,47 @@ impl Game for GameRunner {
             ctx.camera.zoom = zoom_w.min(zoom_h);
         }
         // Camera position depends on mode
-        match s.camera_mode {
+        let half_vp_w = designed_w * 0.5;
+        let half_vp_h = designed_h * 0.5;
+        match &s.camera_mode {
             toile_scene::CameraMode::Fixed => {
-                ctx.camera.position = Vec2::new(s.camera_position[0], s.camera_position[1]);
+                self.camera_pos = Vec2::new(s.camera_position[0], s.camera_position[1]);
             }
             toile_scene::CameraMode::FollowPlayer => {
                 if let Some(player) = self.entities.iter().find(|e| e.alive && is_player(&e.data)) {
-                    ctx.camera.position = player.es.position;
+                    self.camera_pos = player.es.position;
+                }
+            }
+            toile_scene::CameraMode::PlatformerFollow { deadzone_x, deadzone_y, bounds } => {
+                if let Some(player) = self.entities.iter().find(|e| e.alive && is_player(&e.data)) {
+                    let pp = player.es.position;
+                    let dz_w = half_vp_w * deadzone_x;
+                    let dz_h = half_vp_h * deadzone_y;
+
+                    // Horizontal: only scroll when player leaves deadzone
+                    if pp.x > self.camera_pos.x + dz_w {
+                        self.camera_pos.x = pp.x - dz_w;
+                    } else if pp.x < self.camera_pos.x - dz_w {
+                        self.camera_pos.x = pp.x + dz_w;
+                    }
+
+                    // Vertical: only scroll when player leaves deadzone
+                    if pp.y > self.camera_pos.y + dz_h {
+                        self.camera_pos.y = pp.y - dz_h;
+                    } else if pp.y < self.camera_pos.y - dz_h {
+                        self.camera_pos.y = pp.y + dz_h;
+                    }
+
+                    // Clamp to scene bounds if set (non-zero)
+                    if *bounds != [0.0, 0.0, 0.0, 0.0] {
+                        let (bmin_x, bmin_y, bmax_x, bmax_y) = (bounds[0], bounds[1], bounds[2], bounds[3]);
+                        self.camera_pos.x = self.camera_pos.x.clamp(bmin_x + half_vp_w, bmax_x - half_vp_w);
+                        self.camera_pos.y = self.camera_pos.y.clamp(bmin_y + half_vp_h, bmax_y - half_vp_h);
+                    }
                 }
             }
         }
+        ctx.camera.position = self.camera_pos;
 
         let dt_f = dt as f32;
         let input = Self::build_behavior_input(ctx);
