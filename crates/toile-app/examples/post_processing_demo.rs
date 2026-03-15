@@ -8,6 +8,7 @@
 ///   G  — toggle Color Grading (desaturate + high contrast)
 ///   Space — trigger screen shake (trauma)
 ///   F3 — debug title overlay
+use std::path::Path;
 use glam::Vec2;
 use toile_app::*;
 
@@ -16,6 +17,7 @@ use toile_app::*;
 struct PostDemo {
     tex_white: Option<TextureHandle>,
     tex_circle: Option<TextureHandle>,
+    font: Option<FontHandle>,
 
     // Effect toggles
     vignette: bool,
@@ -37,6 +39,7 @@ impl PostDemo {
         Self {
             tex_white: None,
             tex_circle: None,
+            font: None,
             vignette: false,
             crt: false,
             pixelate: false,
@@ -51,7 +54,7 @@ impl PostDemo {
 
 // ── Texture helpers ───────────────────────────────────────────────────────────
 
-fn make_circle_tex(ctx: &mut GameContext, size: u32, r: u8, g: u8, b: u8) -> TextureHandle {
+fn make_circle_tex(ctx: &mut GameContext, size: u32) -> TextureHandle {
     let mut data = vec![0u8; (size * size * 4) as usize];
     let cx = size as f32 / 2.0;
     let cy = size as f32 / 2.0;
@@ -63,23 +66,25 @@ fn make_circle_tex(ctx: &mut GameContext, size: u32, r: u8, g: u8, b: u8) -> Tex
             let dist = (dx * dx + dy * dy).sqrt();
             let alpha = ((rad - dist).clamp(0.0, 1.0) * 255.0) as u8;
             let i = ((py * size + px) * 4) as usize;
-            data[i]     = r;
-            data[i + 1] = g;
-            data[i + 2] = b;
+            data[i]     = 255;
+            data[i + 1] = 255;
+            data[i + 2] = 255;
             data[i + 3] = alpha;
         }
     }
     ctx.create_texture_from_rgba(&data, size, size)
 }
 
-fn make_white_tex(ctx: &mut GameContext) -> TextureHandle {
-    ctx.create_texture_from_rgba(&[255, 255, 255, 255], 1, 1)
-}
-
 // ── Pseudo-noise for shake ────────────────────────────────────────────────────
 
 fn noise1(t: f32) -> f32 {
     ((t * 127.1).sin() * 43758.545).fract() * 2.0 - 1.0
+}
+
+// ── Pack RGBA ─────────────────────────────────────────────────────────────────
+
+fn pack(r: u8, g: u8, b: u8, a: u8) -> u32 {
+    (r as u32) | ((g as u32) << 8) | ((b as u32) << 16) | ((a as u32) << 24)
 }
 
 // ── Game impl ─────────────────────────────────────────────────────────────────
@@ -89,8 +94,9 @@ impl Game for PostDemo {
         // macOS Retina: zoom 2.0 so content is not too small
         ctx.camera.zoom = 2.0;
 
-        self.tex_white  = Some(make_white_tex(ctx));
-        self.tex_circle = Some(make_circle_tex(ctx, 64, 255, 255, 255));
+        self.tex_white  = Some(ctx.create_texture_from_rgba(&[255, 255, 255, 255], 1, 1));
+        self.tex_circle = Some(make_circle_tex(ctx, 64));
+        self.font       = Some(ctx.load_ttf(Path::new("assets/fonts/PressStart2P.ttf"), 8.0));
     }
 
     fn update(&mut self, ctx: &mut GameContext, dt: f64) {
@@ -117,7 +123,8 @@ impl Game for PostDemo {
     }
 
     fn draw(&mut self, ctx: &mut GameContext) {
-        let (Some(tex_white), Some(tex_circle)) = (self.tex_white, self.tex_circle) else { return };
+        let (Some(tex_white), Some(tex_circle), Some(font)) =
+            (self.tex_white, self.tex_circle, self.font) else { return };
         let t = self.time;
 
         // ── Rebuild post-processing stack ─────────────────────────────────
@@ -166,10 +173,10 @@ impl Game for PostDemo {
 
         // ── Background strips ─────────────────────────────────────────────
         let colors: &[(u8, u8, u8)] = &[
-            (20, 10, 40),   // deep purple
-            (10, 20, 50),   // deep blue
-            (5, 30, 20),    // deep green
-            (40, 10, 10),   // deep red
+            (20, 10, 40),
+            (10, 20, 50),
+            (5,  30, 20),
+            (40, 10, 10),
         ];
         for (i, &(r, g, b)) in colors.iter().enumerate() {
             let x = -240.0 + i as f32 * 120.0;
@@ -187,13 +194,12 @@ impl Game for PostDemo {
 
         // ── Orbiting coloured circles ──────────────────────────────────────
         let orbit_data: &[(f32, f32, f32, u8, u8, u8, f32)] = &[
-            // radius, speed, phase, R, G, B, size
-            (120.0, 0.8, 0.0,   255, 100,  50,  30.0),
-            (100.0, 1.2, 1.2,    50, 200, 255,  24.0),
-            ( 80.0, 1.5, 2.4,   100, 255, 100,  20.0),
-            (140.0, 0.6, 3.7,   255, 255,  50,  28.0),
-            ( 60.0, 2.0, 0.8,   200,  50, 255,  18.0),
-            (110.0, 0.9, 4.5,   255,  80, 180,  22.0),
+            (120.0, 0.8, 0.0,  255, 100,  50, 30.0),
+            (100.0, 1.2, 1.2,   50, 200, 255, 24.0),
+            ( 80.0, 1.5, 2.4,  100, 255, 100, 20.0),
+            (140.0, 0.6, 3.7,  255, 255,  50, 28.0),
+            ( 60.0, 2.0, 0.8,  200,  50, 255, 18.0),
+            (110.0, 0.9, 4.5,  255,  80, 180, 22.0),
         ];
         for &(radius, speed, phase, r, g, b, size) in orbit_data {
             let angle = t * speed + phase;
@@ -212,7 +218,6 @@ impl Game for PostDemo {
 
         // ── Bright centre star (drives bloom) ─────────────────────────────
         let pulse = 0.85 + 0.15 * (t * 3.0).sin();
-        // Core
         ctx.draw_sprite(Sprite {
             texture: tex_circle,
             position: Vec2::ZERO,
@@ -223,7 +228,6 @@ impl Game for PostDemo {
             uv_min: Vec2::ZERO,
             uv_max: Vec2::ONE,
         });
-        // Glow ring (slightly larger, semi-transparent)
         ctx.draw_sprite(Sprite {
             texture: tex_circle,
             position: Vec2::ZERO,
@@ -235,7 +239,7 @@ impl Game for PostDemo {
             uv_max: Vec2::ONE,
         });
 
-        // ── Rotating bright squares (more bloom sources) ───────────────────
+        // ── Rotating bright squares ────────────────────────────────────────
         for i in 0..4 {
             let a = t * 0.5 + i as f32 * std::f32::consts::TAU / 4.0;
             let pos = Vec2::new(a.cos() * 55.0, a.sin() * 55.0);
@@ -258,59 +262,39 @@ impl Game for PostDemo {
         let b = self.bloom;
         let g = self.grading;
 
+        let on  = pack(100, 255, 100, 255);
+        let off = pack(120, 120, 120, 255);
+        let label_color = pack(200, 200, 200, 255);
+
         let mut y = -155.0_f32;
-        let lines = [
-            format!("[V] Vignette    {}", if v { "ON " } else { "off" }),
-            format!("[C] CRT         {}", if c { "ON " } else { "off" }),
-            format!("[P] Pixelate    {}", if p { "ON " } else { "off" }),
-            format!("[B] Bloom       {}", if b { "ON " } else { "off" }),
-            format!("[G] Color Grade {}", if g { "ON " } else { "off" }),
-            format!("[Space] Shake   trauma={:.2}", self.trauma),
+        let hud: &[(&str, bool)] = &[
+            ("[V] Vignette",    v),
+            ("[C] CRT",         c),
+            ("[P] Pixelate",    p),
+            ("[B] Bloom",       b),
+            ("[G] Color Grade", g),
         ];
-        for line in &lines {
-            draw_label(ctx, tex_white, line, Vec2::new(-230.0, y));
+        for &(name, active) in hud {
+            ctx.draw_text(name, Vec2::new(-230.0, y), font, 8.0, label_color, 10);
+            ctx.draw_text(
+                if active { "ON" } else { "off" },
+                Vec2::new(-60.0, y), font, 8.0,
+                if active { on } else { off },
+                10,
+            );
             y += 18.0;
         }
-    }
-}
 
-// ── Draw a text label using small pixel squares ───────────────────────────────
-// (We don't load a font to keep the demo self-contained — use sprite squares as chars.)
-fn draw_label(ctx: &mut GameContext, tex: TextureHandle, text: &str, pos: Vec2) {
-    // Minimal 5×7 digit/letter renderer using tiny squares
-    let char_w = 5.0;
-    let mut x = pos.x;
-    for ch in text.chars() {
-        let color = match ch {
-            'O' | 'N' => pack(100, 255, 100, 255),
-            'o' | 'f' => pack(160, 160, 160, 255),
-            '0'..='9' | '.' => pack(255, 220, 100, 255),
-            '[' | ']' => pack(180, 180, 255, 255),
-            _ => pack(220, 220, 220, 255),
-        };
-        if ch != ' ' {
-            ctx.draw_sprite(Sprite {
-                texture: tex,
-                position: Vec2::new(x + 2.0, pos.y),
-                size: Vec2::new(char_w - 1.0, 7.0),
-                rotation: 0.0,
-                color,
-                layer: 10,
-                uv_min: Vec2::ZERO,
-                uv_max: Vec2::ONE,
-            });
-        }
-        x += char_w;
+        // Shake line
+        let shake_label = format!("[Space] Shake  {:.0}%", self.trauma * 100.0);
+        let shake_color = if self.trauma > 0.01 { pack(255, 200, 80, 255) } else { label_color };
+        ctx.draw_text(&shake_label, Vec2::new(-230.0, y), font, 8.0, shake_color, 10);
     }
-}
-
-fn pack(r: u8, g: u8, b: u8, a: u8) -> u32 {
-    (r as u32) | ((g as u32) << 8) | ((b as u32) << 16) | ((a as u32) << 24)
 }
 
 fn main() {
     App::new()
-        .with_title("Toile v0.4 — Post-Processing Demo  [V]ignette [C]RT [P]ixelate [B]loom [G]rading [Space]shake")
+        .with_title("Toile v0.4 — Post-Processing  [V]ignette [C]RT [P]ixelate [B]loom [G]rading [Space]shake")
         .with_size(1280, 720)
         .with_clear_color(toile_app::core::color::Color::new(0.04, 0.02, 0.08, 1.0))
         .run(PostDemo::new());
