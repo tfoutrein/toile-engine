@@ -121,23 +121,29 @@ impl Game for MsdfDemo {
         y += 22.0;
 
         // ── Animated glow / pulse ─────────────────────────────────────────────
-        let pulse        = (t * 2.0).sin() * 0.5 + 0.5;
-        let ol_width     = 0.08 + pulse * 0.12;
-        let glow_a       = (160.0 + pulse * 95.0) as u8;
+        // Use 24px so the outline occupies enough pixels to be clearly visible.
+        // Three independent sine waves drive fill brightness, outline width, and hue.
+        let pulse     = (t * 2.5).sin() * 0.5 + 0.5;          // 0..1, period ~2.5s
+        let hue_t     = (t * 1.2).sin() * 0.5 + 0.5;           // slow color shift
+        let ol_width  = 0.05 + pulse * 0.30;                    // 0.05 .. 0.35
+        let fill_r    = (180.0 + hue_t * 75.0)  as u8;         // pink → orange
+        let fill_b    = (255.0 - hue_t * 120.0) as u8;         // purple → pink
+        let glow_r    = (80.0  + pulse * 120.0) as u8;
+        let glow_a    = (100.0 + pulse * 155.0) as u8;         // fade in/out
         ctx.draw_text_msdf(
             "ANIMATED GLOW",
-            Vec2::new(-115.0, y),
+            Vec2::new(-130.0, y),
             font,
             &TextStyle {
-                size:          14.0,
-                color:         pack_color(255, 160, 220, 255),
+                size:          24.0,
+                color:         pack_color(fill_r, 120, fill_b, 255),
                 outline_width: ol_width,
-                outline_color: pack_color(100, 0, 60, glow_a),
+                outline_color: pack_color(glow_r, 0, 80, glow_a),
                 ..Default::default()
             },
             0,
         );
-        y += 22.0;
+        y += 32.0;
 
         // ── SDF vs bitmap comparison ─────────────────────────────────────────
         y += 6.0;
