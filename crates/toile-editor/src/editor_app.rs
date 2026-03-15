@@ -1140,10 +1140,16 @@ impl Game for EditorApp {
         // Draw entities
         for entity in &self.scene.entities {
             let selected = self.selected_id == Some(entity.id);
+            let is_player_ent = entity.tags.iter().any(|t| t.eq_ignore_ascii_case("player"));
+            let is_solid = entity.behaviors.iter().any(|b| matches!(b, BehaviorConfig::Solid));
             let color = if selected {
                 pack_color(255, 220, 80, 255)
+            } else if is_player_ent {
+                pack_color(80, 220, 120, 255)  // green for player
+            } else if is_solid {
+                pack_color(160, 160, 180, 255)  // grey for solids
             } else {
-                pack_color(100, 150, 220, 255)
+                pack_color(100, 150, 220, 255)  // blue for regular entities
             };
 
             ctx.draw_sprite(Sprite {
@@ -1931,6 +1937,77 @@ impl Game for EditorApp {
                             ui.text_edit_singleline(&mut entity.name);
                             ui.end_row();
                         });
+
+                    // ── Role / Player Controller ─────────────────────────
+                    ui.add_space(4.0);
+                    let is_player = entity.tags.iter().any(|t| t.eq_ignore_ascii_case("player"));
+                    let current_controller = if !is_player {
+                        "None"
+                    } else if entity.behaviors.iter().any(|b| matches!(b, BehaviorConfig::Platform(_))) {
+                        "Platformer"
+                    } else if entity.behaviors.iter().any(|b| matches!(b, BehaviorConfig::TopDown(_))) {
+                        "Top-Down"
+                    } else {
+                        "Custom"
+                    };
+
+                    ui.horizontal(|ui| {
+                        ui.label("Role:");
+                        let mut new_controller = String::new();
+                        egui::ComboBox::from_id_salt("role_picker")
+                            .width(160.0)
+                            .selected_text(if is_player {
+                                format!("🧑 Player ({})", current_controller)
+                            } else {
+                                "📦 Object".to_string()
+                            })
+                            .show_ui(ui, |ui| {
+                                if ui.selectable_label(!is_player, "📦 Object (no controls)").clicked() {
+                                    new_controller = "object".to_string();
+                                }
+                                ui.separator();
+                                ui.label(egui::RichText::new("Player controllers:").size(11.0).color(egui::Color32::from_gray(150)));
+                                if ui.selectable_label(current_controller == "Platformer", "🧑 Platformer — arrows/WASD + jump").clicked() {
+                                    new_controller = "platformer".to_string();
+                                }
+                                if ui.selectable_label(current_controller == "Top-Down", "🧑 Top-Down — 4/8 directions").clicked() {
+                                    new_controller = "topdown".to_string();
+                                }
+                            });
+
+                        if !new_controller.is_empty() {
+                            match new_controller.as_str() {
+                                "object" => {
+                                    entity.tags.retain(|t| !t.eq_ignore_ascii_case("player"));
+                                    entity.behaviors.retain(|b| !matches!(b, BehaviorConfig::Platform(_) | BehaviorConfig::TopDown(_)));
+                                }
+                                "platformer" => {
+                                    if !entity.tags.iter().any(|t| t.eq_ignore_ascii_case("player")) {
+                                        entity.tags.push("Player".to_string());
+                                    }
+                                    // Remove any existing movement behavior
+                                    entity.behaviors.retain(|b| !matches!(b, BehaviorConfig::Platform(_) | BehaviorConfig::TopDown(_)));
+                                    entity.behaviors.insert(0, BehaviorConfig::Platform(Default::default()));
+                                }
+                                "topdown" => {
+                                    if !entity.tags.iter().any(|t| t.eq_ignore_ascii_case("player")) {
+                                        entity.tags.push("Player".to_string());
+                                    }
+                                    entity.behaviors.retain(|b| !matches!(b, BehaviorConfig::Platform(_) | BehaviorConfig::TopDown(_)));
+                                    entity.behaviors.insert(0, BehaviorConfig::TopDown(Default::default()));
+                                }
+                                _ => {}
+                            }
+                        }
+                    });
+
+                    if is_player {
+                        ui.label(egui::RichText::new(match current_controller {
+                            "Platformer" => "← → move, Space jump, double-jump enabled",
+                            "Top-Down" => "← → ↑ ↓ or WASD, 8 directions",
+                            _ => "Player tag set, add a movement behavior below",
+                        }).size(10.0).color(egui::Color32::from_gray(140)));
+                    }
 
                     ui.add_space(8.0);
                     ui.label(egui::RichText::new("Transform").strong());

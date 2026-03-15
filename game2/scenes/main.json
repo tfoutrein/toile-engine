@@ -4,15 +4,15 @@
     {
       "id": 1,
       "name": "Entity_1",
-      "x": -101.16599,
-      "y": -37.070377,
+      "x": -613.3655,
+      "y": -236.75592,
       "rotation": 0.0,
       "scale_x": 1.0,
       "scale_y": 1.0,
       "layer": 0,
       "sprite_path": "",
-      "width": 170.58986,
-      "height": 145.53906,
+      "width": 28.839859,
+      "height": 66.87552,
       "behaviors": [],
       "tags": [
         "Player"
@@ -41,6 +41,7 @@
       0.0,
       0.0
     ],
+    "background_image": "/Users/tfoutrein2/Downloads/Winter Game Background by VitaliyVill on @creativemarket.jpeg",
     "lighting": {
       "enabled": false,
       "ambient": [
