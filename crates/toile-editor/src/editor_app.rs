@@ -48,10 +48,16 @@ pub enum EditorMode {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum ResizeHandle {
+    // Corners (resize both axes)
     TopRight,
     BottomRight,
     BottomLeft,
     TopLeft,
+    // Edges (resize one axis, move position to keep opposite edge fixed)
+    Top,
+    Bottom,
+    Left,
+    Right,
 }
 
 impl EditorApp {
@@ -316,14 +322,20 @@ impl Game for EditorApp {
                     if let Some(entity) = self.scene.entities.iter().find(|e| e.id == sel_id) {
                         let hw = entity.width * entity.scale_x * 0.5;
                         let hh = entity.height * entity.scale_y * 0.5;
-                        let corners = [
+                        let handles = [
+                            // Corners
                             (Vec2::new(entity.x + hw, entity.y + hh), ResizeHandle::TopRight),
                             (Vec2::new(entity.x + hw, entity.y - hh), ResizeHandle::BottomRight),
                             (Vec2::new(entity.x - hw, entity.y - hh), ResizeHandle::BottomLeft),
                             (Vec2::new(entity.x - hw, entity.y + hh), ResizeHandle::TopLeft),
+                            // Edge midpoints
+                            (Vec2::new(entity.x, entity.y + hh), ResizeHandle::Top),
+                            (Vec2::new(entity.x, entity.y - hh), ResizeHandle::Bottom),
+                            (Vec2::new(entity.x - hw, entity.y), ResizeHandle::Left),
+                            (Vec2::new(entity.x + hw, entity.y), ResizeHandle::Right),
                         ];
-                        for (corner, handle) in &corners {
-                            if (world_pos - *corner).length() < handle_size * 1.5 {
+                        for (pos, handle) in &handles {
+                            if (world_pos - *pos).length() < handle_size * 1.5 {
                                 hit_handle = Some(*handle);
                                 break;
                             }
@@ -386,15 +398,39 @@ impl Game for EditorApp {
                 if let Some(handle) = self.resizing {
                     if let Some(sel_id) = self.selected_id {
                         let delta = world_pos - self.resize_start_mouse;
-                        let (dx, dy) = match handle {
-                            ResizeHandle::TopRight => (delta.x, delta.y),
-                            ResizeHandle::BottomRight => (delta.x, -delta.y),
-                            ResizeHandle::BottomLeft => (-delta.x, -delta.y),
-                            ResizeHandle::TopLeft => (-delta.x, delta.y),
-                        };
                         if let Some(entity) = self.scene.find_entity_mut(sel_id) {
-                            entity.width = (self.resize_start_size.x + dx * 2.0).max(4.0);
-                            entity.height = (self.resize_start_size.y + dy * 2.0).max(4.0);
+                            match handle {
+                                // Corners: resize both axes symmetrically
+                                ResizeHandle::TopRight => {
+                                    entity.width = (self.resize_start_size.x + delta.x * 2.0).max(4.0);
+                                    entity.height = (self.resize_start_size.y + delta.y * 2.0).max(4.0);
+                                }
+                                ResizeHandle::BottomRight => {
+                                    entity.width = (self.resize_start_size.x + delta.x * 2.0).max(4.0);
+                                    entity.height = (self.resize_start_size.y - delta.y * 2.0).max(4.0);
+                                }
+                                ResizeHandle::BottomLeft => {
+                                    entity.width = (self.resize_start_size.x - delta.x * 2.0).max(4.0);
+                                    entity.height = (self.resize_start_size.y - delta.y * 2.0).max(4.0);
+                                }
+                                ResizeHandle::TopLeft => {
+                                    entity.width = (self.resize_start_size.x - delta.x * 2.0).max(4.0);
+                                    entity.height = (self.resize_start_size.y + delta.y * 2.0).max(4.0);
+                                }
+                                // Edges: resize one axis only
+                                ResizeHandle::Right => {
+                                    entity.width = (self.resize_start_size.x + delta.x * 2.0).max(4.0);
+                                }
+                                ResizeHandle::Left => {
+                                    entity.width = (self.resize_start_size.x - delta.x * 2.0).max(4.0);
+                                }
+                                ResizeHandle::Top => {
+                                    entity.height = (self.resize_start_size.y + delta.y * 2.0).max(4.0);
+                                }
+                                ResizeHandle::Bottom => {
+                                    entity.height = (self.resize_start_size.y - delta.y * 2.0).max(4.0);
+                                }
+                            }
                         }
                     }
                 }
@@ -592,20 +628,49 @@ impl Game for EditorApp {
                     ctx.draw_sprite(s);
                 }
 
-                // Resize handles at 4 corners
-                let corners = [
+                // Resize handles: 4 corners (square) + 4 edge midpoints (rectangle)
+                let corner_handles = [
                     Vec2::new(entity.x + hw, entity.y + hh),
                     Vec2::new(entity.x + hw, entity.y - hh),
                     Vec2::new(entity.x - hw, entity.y - hh),
                     Vec2::new(entity.x - hw, entity.y + hh),
                 ];
-                for corner in corners {
+                for pos in corner_handles {
                     ctx.draw_sprite(DrawSprite {
                         texture: tex,
-                        position: corner,
+                        position: pos,
                         size: Vec2::splat(handle_size),
                         rotation: 0.0,
                         color: handle_color,
+                        layer: 91,
+                        uv_min: Vec2::ZERO,
+                        uv_max: Vec2::ONE,
+                    });
+                }
+
+                // Edge midpoint handles (wider/taller to indicate axis)
+                let edge_color = pack_color(200, 220, 255, 255);
+                // Top & Bottom (horizontal bars)
+                for y in [entity.y + hh, entity.y - hh] {
+                    ctx.draw_sprite(DrawSprite {
+                        texture: tex,
+                        position: Vec2::new(entity.x, y),
+                        size: Vec2::new(handle_size * 2.0, handle_size * 0.6),
+                        rotation: 0.0,
+                        color: edge_color,
+                        layer: 91,
+                        uv_min: Vec2::ZERO,
+                        uv_max: Vec2::ONE,
+                    });
+                }
+                // Left & Right (vertical bars)
+                for x in [entity.x - hw, entity.x + hw] {
+                    ctx.draw_sprite(DrawSprite {
+                        texture: tex,
+                        position: Vec2::new(x, entity.y),
+                        size: Vec2::new(handle_size * 0.6, handle_size * 2.0),
+                        rotation: 0.0,
+                        color: edge_color,
                         layer: 91,
                         uv_min: Vec2::ZERO,
                         uv_max: Vec2::ONE,
