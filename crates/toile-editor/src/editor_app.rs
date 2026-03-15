@@ -25,6 +25,7 @@ pub struct EditorApp {
     drag_offset: Vec2,
     resizing: Option<ResizeHandle>,
     resize_start_size: Vec2,
+    resize_start_pos: Vec2,
     resize_start_mouse: Vec2,
     show_grid: bool,
     status_msg: String,
@@ -84,6 +85,7 @@ impl EditorApp {
             drag_offset: Vec2::ZERO,
             resizing: None,
             resize_start_size: Vec2::ZERO,
+            resize_start_pos: Vec2::ZERO,
             resize_start_mouse: Vec2::ZERO,
             show_grid: true,
             status_msg: "Ready".to_string(),
@@ -350,6 +352,7 @@ impl Game for EditorApp {
                     if let Some(sel_id) = self.selected_id {
                         if let Some(entity) = self.scene.entities.iter().find(|e| e.id == sel_id) {
                             self.resize_start_size = Vec2::new(entity.width, entity.height);
+                            self.resize_start_pos = Vec2::new(entity.x, entity.y);
                         }
                     }
                 } else {
@@ -395,40 +398,106 @@ impl Game for EditorApp {
                 }
 
                 // Continue resize
+                // Default: asymmetric (only the dragged face moves, position shifts)
+                // Shift held: symmetric (both faces move, position stays centered)
                 if let Some(handle) = self.resizing {
                     if let Some(sel_id) = self.selected_id {
                         let delta = world_pos - self.resize_start_mouse;
+                        let symmetric = ctx.input.is_key_down(Key::ShiftLeft)
+                            || ctx.input.is_key_down(Key::ShiftRight);
+
                         if let Some(entity) = self.scene.find_entity_mut(sel_id) {
-                            match handle {
-                                // Corners: resize both axes symmetrically
-                                ResizeHandle::TopRight => {
-                                    entity.width = (self.resize_start_size.x + delta.x * 2.0).max(4.0);
-                                    entity.height = (self.resize_start_size.y + delta.y * 2.0).max(4.0);
+                            let sw = self.resize_start_size.x;
+                            let sh = self.resize_start_size.y;
+                            let sp = self.resize_start_pos;
+
+                            if symmetric {
+                                // Symmetric: both sides move, center stays
+                                match handle {
+                                    ResizeHandle::TopRight => {
+                                        entity.width = (sw + delta.x * 2.0).max(4.0);
+                                        entity.height = (sh + delta.y * 2.0).max(4.0);
+                                        entity.x = sp.x;
+                                        entity.y = sp.y;
+                                    }
+                                    ResizeHandle::BottomRight => {
+                                        entity.width = (sw + delta.x * 2.0).max(4.0);
+                                        entity.height = (sh - delta.y * 2.0).max(4.0);
+                                        entity.x = sp.x;
+                                        entity.y = sp.y;
+                                    }
+                                    ResizeHandle::BottomLeft => {
+                                        entity.width = (sw - delta.x * 2.0).max(4.0);
+                                        entity.height = (sh - delta.y * 2.0).max(4.0);
+                                        entity.x = sp.x;
+                                        entity.y = sp.y;
+                                    }
+                                    ResizeHandle::TopLeft => {
+                                        entity.width = (sw - delta.x * 2.0).max(4.0);
+                                        entity.height = (sh + delta.y * 2.0).max(4.0);
+                                        entity.x = sp.x;
+                                        entity.y = sp.y;
+                                    }
+                                    ResizeHandle::Right => {
+                                        entity.width = (sw + delta.x * 2.0).max(4.0);
+                                        entity.x = sp.x;
+                                    }
+                                    ResizeHandle::Left => {
+                                        entity.width = (sw - delta.x * 2.0).max(4.0);
+                                        entity.x = sp.x;
+                                    }
+                                    ResizeHandle::Top => {
+                                        entity.height = (sh + delta.y * 2.0).max(4.0);
+                                        entity.y = sp.y;
+                                    }
+                                    ResizeHandle::Bottom => {
+                                        entity.height = (sh - delta.y * 2.0).max(4.0);
+                                        entity.y = sp.y;
+                                    }
                                 }
-                                ResizeHandle::BottomRight => {
-                                    entity.width = (self.resize_start_size.x + delta.x * 2.0).max(4.0);
-                                    entity.height = (self.resize_start_size.y - delta.y * 2.0).max(4.0);
-                                }
-                                ResizeHandle::BottomLeft => {
-                                    entity.width = (self.resize_start_size.x - delta.x * 2.0).max(4.0);
-                                    entity.height = (self.resize_start_size.y - delta.y * 2.0).max(4.0);
-                                }
-                                ResizeHandle::TopLeft => {
-                                    entity.width = (self.resize_start_size.x - delta.x * 2.0).max(4.0);
-                                    entity.height = (self.resize_start_size.y + delta.y * 2.0).max(4.0);
-                                }
-                                // Edges: resize one axis only
-                                ResizeHandle::Right => {
-                                    entity.width = (self.resize_start_size.x + delta.x * 2.0).max(4.0);
-                                }
-                                ResizeHandle::Left => {
-                                    entity.width = (self.resize_start_size.x - delta.x * 2.0).max(4.0);
-                                }
-                                ResizeHandle::Top => {
-                                    entity.height = (self.resize_start_size.y + delta.y * 2.0).max(4.0);
-                                }
-                                ResizeHandle::Bottom => {
-                                    entity.height = (self.resize_start_size.y - delta.y * 2.0).max(4.0);
+                            } else {
+                                // Asymmetric: only the dragged face moves, position shifts
+                                match handle {
+                                    ResizeHandle::Right => {
+                                        entity.width = (sw + delta.x).max(4.0);
+                                        entity.x = sp.x + delta.x * 0.5;
+                                    }
+                                    ResizeHandle::Left => {
+                                        entity.width = (sw - delta.x).max(4.0);
+                                        entity.x = sp.x + delta.x * 0.5;
+                                    }
+                                    ResizeHandle::Top => {
+                                        entity.height = (sh + delta.y).max(4.0);
+                                        entity.y = sp.y + delta.y * 0.5;
+                                    }
+                                    ResizeHandle::Bottom => {
+                                        entity.height = (sh - delta.y).max(4.0);
+                                        entity.y = sp.y + delta.y * 0.5;
+                                    }
+                                    ResizeHandle::TopRight => {
+                                        entity.width = (sw + delta.x).max(4.0);
+                                        entity.height = (sh + delta.y).max(4.0);
+                                        entity.x = sp.x + delta.x * 0.5;
+                                        entity.y = sp.y + delta.y * 0.5;
+                                    }
+                                    ResizeHandle::BottomRight => {
+                                        entity.width = (sw + delta.x).max(4.0);
+                                        entity.height = (sh - delta.y).max(4.0);
+                                        entity.x = sp.x + delta.x * 0.5;
+                                        entity.y = sp.y - delta.y * 0.5;
+                                    }
+                                    ResizeHandle::BottomLeft => {
+                                        entity.width = (sw - delta.x).max(4.0);
+                                        entity.height = (sh - delta.y).max(4.0);
+                                        entity.x = sp.x + delta.x * 0.5;
+                                        entity.y = sp.y - delta.y * 0.5;
+                                    }
+                                    ResizeHandle::TopLeft => {
+                                        entity.width = (sw - delta.x).max(4.0);
+                                        entity.height = (sh + delta.y).max(4.0);
+                                        entity.x = sp.x + delta.x * 0.5;
+                                        entity.y = sp.y + delta.y * 0.5;
+                                    }
                                 }
                             }
                         }
