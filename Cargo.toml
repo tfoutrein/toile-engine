@@ -16,6 +16,7 @@ members = [
     "crates/toile-cli",
     "crates/toile-physics",
     "crates/toile-events",
+    "crates/toile-behaviors",
 ]
 
 [workspace.package]
