@@ -276,6 +276,8 @@ pub struct EditorApp {
     // Background
     background_tex: Option<TextureHandle>,
     background_path_loaded: String,
+    // Entity sprite texture cache: sprite_path → TextureHandle
+    sprite_cache: HashMap<String, TextureHandle>,
     // Particle editor
     particle_editor: ParticleEditorPanel,
     // Live particle preview pools (entity_id → pool)
@@ -359,6 +361,7 @@ impl EditorApp {
             tilemap_editor: TilemapEditor::new(),
             background_tex: None,
             background_path_loaded: String::new(),
+            sprite_cache: HashMap::new(),
             particle_editor: ParticleEditorPanel::new(),
             preview_particles: HashMap::new(),
             preview_particle_paths: HashMap::new(),
@@ -1368,6 +1371,19 @@ impl Game for EditorApp {
             }
         }
 
+        // Load sprite textures for entities
+        let sprite_paths: Vec<(usize, String)> = self.scene.entities.iter().enumerate()
+            .filter(|(_, e)| !e.sprite_path.is_empty() && !self.sprite_cache.contains_key(&e.sprite_path))
+            .map(|(i, e)| (i, e.sprite_path.clone()))
+            .collect();
+        for (_i, path) in sprite_paths {
+            let full = self.project_path(&path);
+            if full.exists() {
+                let handle = ctx.load_texture(&full);
+                self.sprite_cache.insert(path, handle);
+            }
+        }
+
         // Draw entities
         for entity in &self.scene.entities {
             let selected = self.selected_id == Some(entity.id);
@@ -1375,22 +1391,50 @@ impl Game for EditorApp {
             let is_solid = entity.behaviors.iter().any(|b| matches!(b, BehaviorConfig::Solid));
             let is_coin = entity.tags.iter().any(|t| t.eq_ignore_ascii_case("coin"));
             let is_enemy = entity.tags.iter().any(|t| t.eq_ignore_ascii_case("enemy"));
-            let color = if selected {
-                pack_color(255, 220, 80, 255)   // yellow — selected
-            } else if is_player_ent {
-                pack_color(80, 220, 120, 255)   // green — player
-            } else if is_solid {
-                pack_color(160, 160, 180, 255)  // grey — solid/ground
-            } else if is_coin {
-                pack_color(255, 220, 50, 200)   // gold — collectible
-            } else if is_enemy {
-                pack_color(220, 80, 80, 255)    // red — enemy
+
+            let has_sprite = !entity.sprite_path.is_empty() && self.sprite_cache.contains_key(&entity.sprite_path);
+            let entity_tex = if has_sprite {
+                self.sprite_cache[&entity.sprite_path]
             } else {
-                pack_color(100, 150, 220, 255)  // blue — default
+                tex
+            };
+
+            let color = if has_sprite {
+                if selected { pack_color(255, 255, 200, 255) } else { COLOR_WHITE }
+            } else if selected {
+                pack_color(255, 220, 80, 255)
+            } else if is_player_ent {
+                pack_color(80, 220, 120, 255)
+            } else if is_solid {
+                pack_color(160, 160, 180, 255)
+            } else if is_coin {
+                pack_color(255, 220, 50, 200)
+            } else if is_enemy {
+                pack_color(220, 80, 80, 255)
+            } else {
+                pack_color(100, 150, 220, 255)
+            };
+
+            // Compute UV from sprite sheet (show first frame or idle frame 0)
+            let (uv_min, uv_max) = if let Some(ref sheet) = entity.sprite_sheet {
+                let frame_idx = entity.default_animation.as_ref()
+                    .and_then(|anim_name| entity.animations.iter().find(|a| a.name == *anim_name))
+                    .and_then(|a| a.frames.first().copied())
+                    .unwrap_or(0);
+                let col = frame_idx % sheet.columns;
+                let row = frame_idx / sheet.columns;
+                let u_step = 1.0 / sheet.columns as f32;
+                let v_step = 1.0 / sheet.rows as f32;
+                (
+                    Vec2::new(col as f32 * u_step, row as f32 * v_step),
+                    Vec2::new((col + 1) as f32 * u_step, (row + 1) as f32 * v_step),
+                )
+            } else {
+                (Vec2::ZERO, Vec2::ONE)
             };
 
             ctx.draw_sprite(Sprite {
-                texture: tex,
+                texture: entity_tex,
                 position: Vec2::new(entity.x, entity.y),
                 size: Vec2::new(
                     entity.width * entity.scale_x,
@@ -1399,8 +1443,8 @@ impl Game for EditorApp {
                 rotation: entity.rotation,
                 color,
                 layer: entity.layer,
-                uv_min: Vec2::ZERO,
-                uv_max: Vec2::ONE,
+                uv_min,
+                uv_max,
             });
 
             // Selection outline + resize handles (rotated with entity)

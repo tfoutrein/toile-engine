@@ -10,7 +10,7 @@
       "scale_x": 1.0,
       "scale_y": 1.0,
       "layer": 0,
-      "sprite_path": "",
+      "sprite_path": "/Users/tfoutrein2/DEV/PERSO/2d-engine/game2/assets/player.png",
       "width": 28.839859,
       "height": 66.87552,
       "behaviors": [
@@ -36,7 +36,15 @@
         "half_h": 33.43776
       },
       "event_sheet": "scripts/entity_1.event.json",
-      "particle_emitter": "particles/fire.particles.json",
+      "particle_emitter": null,
+      "sprite_sheet": {
+        "frame_width": 32,
+        "frame_height": 32,
+        "columns": 4,
+        "rows": 4
+      },
+      "animations": [],
+      "default_animation": null,
       "light": null,
       "visible": true
     },
@@ -68,6 +76,9 @@
       },
       "event_sheet": null,
       "particle_emitter": null,
+      "sprite_sheet": null,
+      "animations": [],
+      "default_animation": null,
       "light": null,
       "visible": true
     },
@@ -95,6 +106,9 @@
       "collider": null,
       "event_sheet": null,
       "particle_emitter": null,
+      "sprite_sheet": null,
+      "animations": [],
+      "default_animation": null,
       "light": null,
       "visible": true
     },
@@ -122,6 +136,9 @@
       "collider": null,
       "event_sheet": null,
       "particle_emitter": null,
+      "sprite_sheet": null,
+      "animations": [],
+      "default_animation": null,
       "light": null,
       "visible": true
     },
@@ -149,6 +166,9 @@
       "collider": null,
       "event_sheet": null,
       "particle_emitter": null,
+      "sprite_sheet": null,
+      "animations": [],
+      "default_animation": null,
       "light": null,
       "visible": true
     }
