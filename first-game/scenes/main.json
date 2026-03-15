@@ -1,6 +1,27 @@
 {
   "name": "first-game",
-  "entities": [],
+  "entities": [
+    {
+      "id": 1,
+      "name": "Player",
+      "x": -96.58986,
+      "y": -36.058563,
+      "rotation": 0.0,
+      "scale_x": 1.0,
+      "scale_y": 1.0,
+      "layer": 0,
+      "sprite_path": "",
+      "width": 32.0,
+      "height": 32.0,
+      "behaviors": [],
+      "tags": [],
+      "variables": {},
+      "collider": null,
+      "event_sheet": null,
+      "particle_emitter": null,
+      "visible": true
+    }
+  ],
   "tilemap": null,
   "settings": {
     "gravity": 800.0,

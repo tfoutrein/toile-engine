@@ -1498,20 +1498,13 @@ impl Game for EditorApp {
                     }
                 }
                 // Spawn toile run as a child process
-                let toile_bin = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("toile"));
-                match std::process::Command::new(&toile_bin)
+                match std::process::Command::new("toile")
                     .arg("run")
                     .arg(dir)
                     .spawn()
                 {
                     Ok(_) => self.status_msg = "Game launched!".to_string(),
-                    Err(e) => {
-                        // Fallback: try "toile" from PATH
-                        match std::process::Command::new("toile").arg("run").arg(dir).spawn() {
-                            Ok(_) => self.status_msg = "Game launched!".to_string(),
-                            Err(e2) => self.status_msg = format!("Failed to launch game: {e2}"),
-                        }
-                    }
+                    Err(e) => self.status_msg = format!("Failed to launch: {e}. Is `toile` in PATH? (cargo install --path crates/toile-cli)"),
                 }
             } else {
                 self.status_msg = "No project open".to_string();
