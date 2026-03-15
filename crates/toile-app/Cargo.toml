@@ -6,7 +6,7 @@ license.workspace = true
 description = "Application framework for Toile Engine: game loop, lifecycle, re-exports"
 
 [dependencies]
-toile-core = { workspace = true }
+toile-core = { path = "../toile-core", features = ["serde"] }
 toile-platform = { workspace = true }
 toile-graphics = { workspace = true }
 toile-audio = { workspace = true }
@@ -24,3 +24,6 @@ wgpu = { workspace = true }
 winit = { workspace = true }
 log = { workspace = true }
 env_logger = { workspace = true }
+egui = { workspace = true }
+egui-wgpu = { workspace = true }
+egui-winit = { workspace = true }

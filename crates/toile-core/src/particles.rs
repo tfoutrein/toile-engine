@@ -5,6 +5,7 @@ use crate::gradient::Gradient;
 
 /// Shape of the particle emitter area.
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum EmitterShape {
     Point,
     Circle { radius: f32 },
@@ -14,6 +15,7 @@ pub enum EmitterShape {
 
 /// Blend mode for particle rendering.
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum BlendMode {
     Alpha,
     Additive,
@@ -21,6 +23,7 @@ pub enum BlendMode {
 
 /// Configuration for a particle emitter.
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ParticleEmitter {
     pub shape: EmitterShape,
     pub rate: f32,
@@ -35,6 +38,8 @@ pub struct ParticleEmitter {
     pub color_over_life: Gradient,
     pub rotation_speed: (f32, f32),
     pub blend_mode: BlendMode,
+    /// Optional sub-emitter spawned at each particle's death position.
+    pub on_death: Option<Box<ParticleEmitter>>,
 }
 
 impl Default for ParticleEmitter {
@@ -53,6 +58,7 @@ impl Default for ParticleEmitter {
             color_over_life: Gradient::fade_out(),
             rotation_speed: (0.0, 0.0),
             blend_mode: BlendMode::Alpha,
+            on_death: None,
         }
     }
 }
@@ -140,8 +146,33 @@ impl ParticlePool {
             p.rotation += p.rotation_speed * dt;
         }
 
+        // Collect positions of particles that are about to die (for on_death sub-emitter)
+        let death_positions: Vec<Vec2> = if self.emitter.on_death.is_some() {
+            self.particles
+                .iter()
+                .filter(|p| p.age >= p.lifetime)
+                .map(|p| p.position)
+                .collect()
+        } else {
+            Vec::new()
+        };
+
         // Remove dead particles
         self.particles.retain(|p| p.age < p.lifetime);
+
+        // Spawn sub-emitter bursts at death positions (no recursion: sub-emitters ignored)
+        if !death_positions.is_empty() {
+            if let Some(sub_emitter) = &self.emitter.on_death.clone() {
+                let saved_position = self.position;
+                let saved_emitter = std::mem::replace(&mut self.emitter, *sub_emitter.clone());
+                for death_pos in death_positions {
+                    self.position = death_pos;
+                    self.spawn_one();
+                }
+                self.emitter = saved_emitter;
+                self.position = saved_position;
+            }
+        }
     }
 
     /// Get the current visual state of each particle for rendering.

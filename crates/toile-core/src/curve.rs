@@ -2,9 +2,10 @@
 ///
 /// Used for particle size-over-lifetime and other property animations.
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Curve {
     /// Sorted keypoints: (time, value) where time is in 0..1.
-    points: Vec<(f32, f32)>,
+    pub points: Vec<(f32, f32)>,
 }
 
 impl Curve {

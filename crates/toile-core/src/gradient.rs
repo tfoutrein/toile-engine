@@ -2,9 +2,10 @@
 ///
 /// Used for particle color-over-lifetime and other color animations.
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Gradient {
     /// Sorted stops: (time, [r, g, b, a]) where time is in 0..1 and colors are 0..1.
-    stops: Vec<(f32, [f32; 4])>,
+    pub stops: Vec<(f32, [f32; 4])>,
 }
 
 impl Gradient {

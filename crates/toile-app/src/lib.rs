@@ -353,7 +353,13 @@ pub trait Game {
     ) -> bool {
         false
     }
+
+    /// Optional egui UI built each frame. Called during render_overlay by EguiGameApp helper.
+    fn egui_ui(&mut self, _ctx: &egui::Context, _game_ctx: &mut GameContext) {}
 }
+
+/// Re-export egui for use in game examples without adding it as a direct dependency.
+pub use egui;
 
 pub use wgpu;
 
