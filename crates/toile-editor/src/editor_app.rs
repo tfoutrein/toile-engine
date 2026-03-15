@@ -2023,25 +2023,43 @@ impl Game for EditorApp {
                         .show(ui, |ui| {
                             let current = entity.event_sheet.clone().unwrap_or_default();
                             ui.label(if current.is_empty() { "None" } else { &current });
-                            if !project_scripts.is_empty() {
-                                egui::ComboBox::from_id_salt("event_sheet_picker")
-                                    .selected_text(if current.is_empty() { "Select..." } else { &current })
-                                    .show_ui(ui, |ui| {
-                                        if ui.selectable_label(current.is_empty(), "(None)").clicked() {
-                                            entity.event_sheet = None;
+                            // Picker
+                            egui::ComboBox::from_id_salt("event_sheet_picker")
+                                .selected_text(if current.is_empty() { "Select..." } else { &current })
+                                .show_ui(ui, |ui| {
+                                    if ui.selectable_label(current.is_empty(), "(None)").clicked() {
+                                        entity.event_sheet = None;
+                                    }
+                                    for f in &project_scripts {
+                                        if ui.selectable_label(*f == current, f).clicked() {
+                                            entity.event_sheet = Some(f.clone());
                                         }
-                                        for f in &project_scripts {
-                                            if ui.selectable_label(*f == current, f).clicked() {
-                                                entity.event_sheet = Some(f.clone());
-                                            }
-                                        }
-                                    });
-                            }
-                            if entity.event_sheet.is_some() {
-                                if ui.small_button("Clear").clicked() {
-                                    entity.event_sheet = None;
+                                    }
+                                });
+                            ui.horizontal(|ui| {
+                                if entity.event_sheet.is_some() {
+                                    if ui.small_button("Clear").clicked() {
+                                        entity.event_sheet = None;
+                                    }
                                 }
-                            }
+                                // Create new event sheet
+                                if ui.small_button("+ New").clicked() {
+                                    let name = format!("{}.event.json", entity.name.to_lowercase().replace(' ', "_"));
+                                    let rel_path = format!("scripts/{name}");
+                                    let full_path = pdir.as_ref().map(|d| d.join(&rel_path)).unwrap_or_else(|| PathBuf::from(&rel_path));
+                                    if let Some(parent) = full_path.parent() {
+                                        let _ = std::fs::create_dir_all(parent);
+                                    }
+                                    if !full_path.exists() {
+                                        let empty_sheet = serde_json::json!({
+                                            "name": entity.name,
+                                            "events": []
+                                        });
+                                        let _ = std::fs::write(&full_path, serde_json::to_string_pretty(&empty_sheet).unwrap());
+                                    }
+                                    entity.event_sheet = Some(rel_path);
+                                }
+                            });
                         });
 
                     // ── Particle Emitter ──────────────────────────────────
@@ -2050,25 +2068,63 @@ impl Game for EditorApp {
                         .show(ui, |ui| {
                             let current = entity.particle_emitter.clone().unwrap_or_default();
                             ui.label(if current.is_empty() { "None" } else { &current });
-                            if !project_particles.is_empty() {
-                                egui::ComboBox::from_id_salt("particle_picker")
-                                    .selected_text(if current.is_empty() { "Select..." } else { &current })
-                                    .show_ui(ui, |ui| {
-                                        if ui.selectable_label(current.is_empty(), "(None)").clicked() {
-                                            entity.particle_emitter = None;
+                            // Picker
+                            egui::ComboBox::from_id_salt("particle_picker")
+                                .selected_text(if current.is_empty() { "Select..." } else { &current })
+                                .show_ui(ui, |ui| {
+                                    if ui.selectable_label(current.is_empty(), "(None)").clicked() {
+                                        entity.particle_emitter = None;
+                                    }
+                                    for f in &project_particles {
+                                        if ui.selectable_label(*f == current, f).clicked() {
+                                            entity.particle_emitter = Some(f.clone());
                                         }
-                                        for f in &project_particles {
-                                            if ui.selectable_label(*f == current, f).clicked() {
-                                                entity.particle_emitter = Some(f.clone());
+                                    }
+                                });
+                            ui.horizontal(|ui| {
+                                if entity.particle_emitter.is_some() {
+                                    if ui.small_button("Clear").clicked() {
+                                        entity.particle_emitter = None;
+                                    }
+                                }
+                                // Create new particle emitter from preset
+                                let mut create_preset = String::new();
+                                egui::ComboBox::from_id_salt("new_particle_preset")
+                                    .selected_text("+ New from preset")
+                                    .width(130.0)
+                                    .show_ui(ui, |ui| {
+                                        for name in &["Fire", "Smoke", "Sparks", "Rain", "Snow", "Dust", "Explosion", "Confetti"] {
+                                            if ui.selectable_label(false, *name).clicked() {
+                                                create_preset = name.to_string();
                                             }
                                         }
                                     });
-                            }
-                            if entity.particle_emitter.is_some() {
-                                if ui.small_button("Clear").clicked() {
-                                    entity.particle_emitter = None;
+                                if !create_preset.is_empty() {
+                                    let fname = format!("{}.particles.json", create_preset.to_lowercase());
+                                    let rel_path = format!("particles/{fname}");
+                                    let full_path = pdir.as_ref().map(|d| d.join(&rel_path)).unwrap_or_else(|| PathBuf::from(&rel_path));
+                                    if let Some(parent) = full_path.parent() {
+                                        let _ = std::fs::create_dir_all(parent);
+                                    }
+                                    if !full_path.exists() {
+                                        let emitter = match create_preset.as_str() {
+                                            "Fire"      => toile_core::particles::presets::fire(),
+                                            "Smoke"     => toile_core::particles::presets::smoke(),
+                                            "Sparks"    => toile_core::particles::presets::sparks(),
+                                            "Rain"      => toile_core::particles::presets::rain(),
+                                            "Snow"      => toile_core::particles::presets::snow(),
+                                            "Dust"      => toile_core::particles::presets::dust(),
+                                            "Explosion" => toile_core::particles::presets::explosion(),
+                                            "Confetti"  => toile_core::particles::presets::confetti(),
+                                            _           => toile_core::particles::ParticleEmitter::default(),
+                                        };
+                                        if let Ok(json) = serde_json::to_string_pretty(&emitter) {
+                                            let _ = std::fs::write(&full_path, &json);
+                                        }
+                                    }
+                                    entity.particle_emitter = Some(rel_path);
                                 }
-                            }
+                            });
                         });
 
                     // ── Light ─────────────────────────────────────────────
