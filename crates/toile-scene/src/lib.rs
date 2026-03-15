@@ -14,8 +14,27 @@ pub enum SceneError {
 pub struct SceneData {
     pub name: String,
     pub entities: Vec<EntityData>,
+    #[serde(default)]
+    pub tilemap: Option<TilemapData>,
     #[serde(skip)]
     pub next_id: u64,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct TilemapData {
+    pub tileset_path: String,
+    pub tile_size: u32,
+    pub columns: u32,
+    pub width: u32,
+    pub height: u32,
+    pub layers: Vec<TilemapLayerData>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct TilemapLayerData {
+    pub name: String,
+    pub tiles: Vec<u32>, // row-major, 0 = empty
+    pub visible: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -39,6 +58,7 @@ impl SceneData {
         Self {
             name: name.to_string(),
             entities: Vec::new(),
+            tilemap: None,
             next_id: 1,
         }
     }

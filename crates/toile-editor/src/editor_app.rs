@@ -9,6 +9,7 @@ use winit::window::Window;
 
 use crate::overlay::EguiOverlay;
 use crate::scene_data::{EntityData, SceneData};
+use crate::tilemap_tool::{self, TilemapEditor, TileTool};
 
 pub struct EditorApp {
     overlay: Option<EguiOverlay>,
@@ -30,6 +31,15 @@ pub struct EditorApp {
     // Splash screen
     splash_timer: f32,
     show_splash: bool,
+    // Tilemap editor
+    tilemap_editor: TilemapEditor,
+    editor_mode: EditorMode,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum EditorMode {
+    Entity,
+    Tilemap,
 }
 
 impl EditorApp {
@@ -63,6 +73,8 @@ impl EditorApp {
             logo_tex: None,
             splash_timer: 2.5,
             show_splash: true,
+            tilemap_editor: TilemapEditor::new(),
+            editor_mode: EditorMode::Entity,
         }
     }
 
@@ -243,6 +255,13 @@ impl Game for EditorApp {
         self.white_tex = Some(ctx.load_texture(Path::new("assets/white.png")));
         self.logo_tex = Some(ctx.load_texture(Path::new("assets/toile-logo-transparent.png")));
         self.surface_format = Some(ctx.surface_format());
+
+        // Pre-load the platformer tileset for tilemap mode
+        let tileset_path = Path::new("assets/platformer/tileset.png");
+        if tileset_path.exists() {
+            self.tilemap_editor.tileset_tex = Some(ctx.load_texture(tileset_path));
+        }
+
         log::info!("Toile Editor ready");
     }
 
@@ -265,6 +284,37 @@ impl Game for EditorApp {
 
         ctx.camera.position = self.camera_pos;
         ctx.camera.zoom = self.camera_zoom;
+
+        // Tilemap painting with mouse
+        if self.editor_mode == EditorMode::Tilemap {
+            if ctx.input.is_mouse_down(toile_app::MouseButton::Left) {
+                let world_pos = ctx.camera.screen_to_world(ctx.input.mouse_position());
+                if let Some(tilemap) = &mut self.scene.tilemap {
+                    let w = tilemap.width;
+                    let h = tilemap.height;
+                    if let Some((col, row)) = self.tilemap_editor.world_to_tile(world_pos, w, h) {
+                        match self.tilemap_editor.tool {
+                            TileTool::Brush => self.tilemap_editor.paint(tilemap, col, row),
+                            TileTool::Eraser => self.tilemap_editor.erase(tilemap, col, row),
+                            TileTool::Fill => {} // fill on click, not drag
+                        }
+                    }
+                }
+            }
+            // Fill on single click
+            if ctx.input.is_mouse_just_pressed(toile_app::MouseButton::Left) {
+                if self.tilemap_editor.tool == TileTool::Fill {
+                    let world_pos = ctx.camera.screen_to_world(ctx.input.mouse_position());
+                    if let Some(tilemap) = &mut self.scene.tilemap {
+                        let w = tilemap.width;
+                        let h = tilemap.height;
+                        if let Some((col, row)) = self.tilemap_editor.world_to_tile(world_pos, w, h) {
+                            self.tilemap_editor.flood_fill(tilemap, col, row);
+                        }
+                    }
+                }
+            }
+        }
     }
 
     fn draw(&mut self, ctx: &mut GameContext) {
@@ -332,6 +382,41 @@ impl Game for EditorApp {
                     uv_min: Vec2::ZERO,
                     uv_max: Vec2::ONE,
                 });
+            }
+        }
+
+        // Draw tilemap layers
+        if let Some(tilemap) = &self.scene.tilemap {
+            if let Some(tileset_tex) = self.tilemap_editor.tileset_tex {
+                let ts = tilemap.tile_size as f32;
+                let map_h = tilemap.height as f32 * ts;
+
+                for layer in &tilemap.layers {
+                    if !layer.visible {
+                        continue;
+                    }
+                    for row in 0..tilemap.height {
+                        for col in 0..tilemap.width {
+                            let gid = layer.tiles[(row * tilemap.width + col) as usize];
+                            if gid == 0 {
+                                continue;
+                            }
+                            let (uv_min, uv_max) = self.tilemap_editor.tile_uv(gid);
+                            let x = col as f32 * ts + ts * 0.5;
+                            let y = map_h - (row as f32 * ts + ts * 0.5);
+                            ctx.draw_sprite(Sprite {
+                                texture: tileset_tex,
+                                position: Vec2::new(x, y),
+                                size: Vec2::new(ts, ts),
+                                rotation: 0.0,
+                                color: COLOR_WHITE,
+                                layer: -5,
+                                uv_min,
+                                uv_max,
+                            });
+                        }
+                    }
+                }
             }
         }
 
@@ -439,6 +524,23 @@ impl Game for EditorApp {
                     if ui.button("Add Entity").clicked() { add_entity = true; ui.close_menu(); }
                     if ui.button("Delete Selected").clicked() { delete_selected = true; ui.close_menu(); }
                 });
+                ui.separator();
+                // Mode toggle
+                let entity_label = if self.editor_mode == EditorMode::Entity { "[ Entity ]" } else { "Entity" };
+                let tilemap_label = if self.editor_mode == EditorMode::Tilemap { "[ Tilemap ]" } else { "Tilemap" };
+                if ui.button(entity_label).clicked() {
+                    self.editor_mode = EditorMode::Entity;
+                }
+                if ui.button(tilemap_label).clicked() {
+                    self.editor_mode = EditorMode::Tilemap;
+                    // Create default tilemap if none exists
+                    if self.scene.tilemap.is_none() {
+                        self.scene.tilemap = Some(tilemap_tool::create_default_tilemap(
+                            25, 15, 32, "assets/platformer/tileset.png", 4,
+                        ));
+                        self.status_msg = "Created 25x15 tilemap".to_string();
+                    }
+                }
                 ui.menu_button("View", |ui| {
                     ui.checkbox(&mut self.show_grid, "Show Grid");
                     if ui.button("Reset Camera").clicked() {
@@ -677,6 +779,76 @@ impl Game for EditorApp {
         });
 
         // Status bar
+        // Tilemap tools panel (when in tilemap mode)
+        if self.editor_mode == EditorMode::Tilemap {
+            egui::TopBottomPanel::bottom("tilemap_tools").exact_height(80.0).show(&ctx, |ui| {
+                ui.horizontal(|ui| {
+                    ui.label(egui::RichText::new("Tilemap").strong());
+                    ui.separator();
+
+                    // Tool buttons
+                    let brush = self.tilemap_editor.tool == TileTool::Brush;
+                    let eraser = self.tilemap_editor.tool == TileTool::Eraser;
+                    let fill = self.tilemap_editor.tool == TileTool::Fill;
+
+                    if ui.selectable_label(brush, "Brush").clicked() {
+                        self.tilemap_editor.tool = TileTool::Brush;
+                    }
+                    if ui.selectable_label(eraser, "Eraser").clicked() {
+                        self.tilemap_editor.tool = TileTool::Eraser;
+                    }
+                    if ui.selectable_label(fill, "Fill").clicked() {
+                        self.tilemap_editor.tool = TileTool::Fill;
+                    }
+
+                    ui.separator();
+                    ui.label("Tile:");
+                    ui.add(egui::DragValue::new(&mut self.tilemap_editor.selected_gid)
+                        .range(1..=self.tilemap_editor.tileset_columns * self.tilemap_editor.tileset_rows));
+
+                    ui.separator();
+                    if let Some(tilemap) = &self.scene.tilemap {
+                        ui.label(format!("Map: {}x{}", tilemap.width, tilemap.height));
+                        ui.label(format!("Layers: {}", tilemap.layers.len()));
+                    }
+                });
+
+                // Tile palette preview (colored squares for each GID)
+                ui.horizontal(|ui| {
+                    let total = self.tilemap_editor.tileset_columns * self.tilemap_editor.tileset_rows;
+                    for gid in 1..=total {
+                        let selected = self.tilemap_editor.selected_gid == gid;
+                        let size = if selected { 28.0 } else { 24.0 };
+                        let color = if selected {
+                            egui::Color32::YELLOW
+                        } else {
+                            // Color-code by GID
+                            let hue = (gid as f32 * 0.25) % 1.0;
+                            let (r, g, b) = hsv_to_rgb(hue, 0.6, 0.8);
+                            egui::Color32::from_rgb(r, g, b)
+                        };
+                        let response = ui.add(egui::Button::new(format!("{gid}"))
+                            .fill(color)
+                            .min_size(egui::vec2(size, size)));
+                        if response.clicked() {
+                            self.tilemap_editor.selected_gid = gid;
+                        }
+                    }
+                });
+            });
+
+            // Load tileset texture if needed
+            if self.tilemap_editor.tileset_tex.is_none() {
+                if let Some(tilemap) = &self.scene.tilemap {
+                    let path = std::path::Path::new(&tilemap.tileset_path);
+                    if path.exists() {
+                        // We can't load here (no GameContext), mark for loading in init
+                        self.status_msg = format!("Tileset: {}", tilemap.tileset_path);
+                    }
+                }
+            }
+        }
+
         egui::TopBottomPanel::bottom("status").exact_height(24.0).show(&ctx, |ui| {
             ui.horizontal(|ui| {
                 ui.label(&self.status_msg);
@@ -702,6 +874,23 @@ impl Game for EditorApp {
             false
         }
     }
+}
+
+fn hsv_to_rgb(h: f32, s: f32, v: f32) -> (u8, u8, u8) {
+    let i = (h * 6.0).floor() as i32;
+    let f = h * 6.0 - i as f32;
+    let p = v * (1.0 - s);
+    let q = v * (1.0 - f * s);
+    let t = v * (1.0 - (1.0 - f) * s);
+    let (r, g, b) = match i % 6 {
+        0 => (v, t, p),
+        1 => (q, v, p),
+        2 => (p, v, t),
+        3 => (p, q, v),
+        4 => (t, p, v),
+        _ => (v, p, q),
+    };
+    ((r * 255.0) as u8, (g * 255.0) as u8, (b * 255.0) as u8)
 }
 
 /// Launch the editor.
