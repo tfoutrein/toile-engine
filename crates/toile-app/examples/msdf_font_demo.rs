@@ -46,12 +46,24 @@ impl Game for MsdfDemo {
         let Some(bitmap_font) = self.bitmap_font else { return };
 
         let t = self.elapsed;
-        let mut y = -128.0_f32;
+        // Layout convention: `y` = TOP of the next item (world-space, y-up).
+        // Each draw call uses pen_y = y - size (baseline), so text extends from
+        // pen_y up to pen_y + size ≈ y.  After drawing: y -= size + gap.
+        // With zoom=2 and 900px window: half-height = 225 wu.
+        let mut y = 215.0_f32;
+
+        macro_rules! top {
+            // Return pen_y for an item whose top should be at `y`
+            ($sz:expr) => { y - $sz }
+        }
+        macro_rules! step {
+            ($sz:expr, $gap:expr) => { y -= $sz + $gap; }
+        }
 
         // ── Title ─────────────────────────────────────────────────────────────
         ctx.draw_text_msdf(
             "SDF FONTS",
-            Vec2::new(-76.0, y),
+            Vec2::new(-76.0, top!(16.0)),
             font,
             &TextStyle {
                 size:          16.0,
@@ -62,7 +74,7 @@ impl Game for MsdfDemo {
             },
             0,
         );
-        y += 24.0;
+        step!(16.0, 10.0);
 
         // ── Multi-size rows — all from the same 32px atlas ────────────────────
         for &(size, label) in &[
@@ -75,7 +87,7 @@ impl Game for MsdfDemo {
         ] {
             ctx.draw_text_msdf(
                 label,
-                Vec2::new(-155.0, y),
+                Vec2::new(-155.0, top!(size)),
                 font,
                 &TextStyle {
                     size,
@@ -84,14 +96,14 @@ impl Game for MsdfDemo {
                 },
                 0,
             );
-            y += size + 5.0;
+            step!(size, 5.0);
         }
-        y += 8.0;
+        step!(0.0, 8.0);
 
         // ── Outline ───────────────────────────────────────────────────────────
         ctx.draw_text_msdf(
             "OUTLINE TEXT",
-            Vec2::new(-110.0, y),
+            Vec2::new(-110.0, top!(14.0)),
             font,
             &TextStyle {
                 size:          14.0,
@@ -102,12 +114,12 @@ impl Game for MsdfDemo {
             },
             0,
         );
-        y += 22.0;
+        step!(14.0, 8.0);
 
         // ── Drop shadow ───────────────────────────────────────────────────────
         ctx.draw_text_msdf(
             "DROP SHADOW",
-            Vec2::new(-95.0, y),
+            Vec2::new(-95.0, top!(14.0)),
             font,
             &TextStyle {
                 size:          14.0,
@@ -118,21 +130,20 @@ impl Game for MsdfDemo {
             },
             0,
         );
-        y += 22.0;
+        step!(14.0, 8.0);
 
         // ── Animated glow / pulse ─────────────────────────────────────────────
-        // Use 24px so the outline occupies enough pixels to be clearly visible.
         // Three independent sine waves drive fill brightness, outline width, and hue.
-        let pulse     = (t * 2.5).sin() * 0.5 + 0.5;          // 0..1, period ~2.5s
-        let hue_t     = (t * 1.2).sin() * 0.5 + 0.5;           // slow color shift
-        let ol_width  = 0.05 + pulse * 0.30;                    // 0.05 .. 0.35
-        let fill_r    = (180.0 + hue_t * 75.0)  as u8;         // pink → orange
-        let fill_b    = (255.0 - hue_t * 120.0) as u8;         // purple → pink
-        let glow_r    = (80.0  + pulse * 120.0) as u8;
-        let glow_a    = (100.0 + pulse * 155.0) as u8;         // fade in/out
+        let pulse    = (t * 2.5).sin() * 0.5 + 0.5;          // 0..1, period ~2.5s
+        let hue_t    = (t * 1.2).sin() * 0.5 + 0.5;           // slow color shift
+        let ol_width = 0.05 + pulse * 0.30;                    // 0.05 .. 0.35
+        let fill_r   = (180.0 + hue_t * 75.0)  as u8;         // pink → orange
+        let fill_b   = (255.0 - hue_t * 120.0) as u8;         // purple → pink
+        let glow_r   = (80.0  + pulse * 120.0) as u8;
+        let glow_a   = (100.0 + pulse * 155.0) as u8;         // fade in/out
         ctx.draw_text_msdf(
             "ANIMATED GLOW",
-            Vec2::new(-130.0, y),
+            Vec2::new(-130.0, top!(24.0)),
             font,
             &TextStyle {
                 size:          24.0,
@@ -143,39 +154,42 @@ impl Game for MsdfDemo {
             },
             0,
         );
-        y += 32.0;
+        step!(24.0, 16.0);
 
         // ── SDF vs bitmap comparison ─────────────────────────────────────────
-        y += 6.0;
+        // Both at 48px: bitmap baked at 32px stretched 1.5× → visibly blurry;
+        // SDF stays crisp because it re-evaluates the distance field at any size.
         ctx.draw_text_msdf(
-            "SDF  (crisp at 24px):",
-            Vec2::new(-155.0, y),
+            "SDF (crisp at 48px):",
+            Vec2::new(-155.0, top!(8.0)),
             font,
             &TextStyle { size: 8.0, color: pack_color(100, 255, 100, 255), ..Default::default() },
             0,
         );
+        step!(8.0, 4.0);
         ctx.draw_text_msdf(
             "Abc 123",
-            Vec2::new(-10.0, y - 2.0),
+            Vec2::new(-155.0, top!(48.0)),
             font,
-            &TextStyle { size: 24.0, color: pack_color(255, 255, 255, 255), ..Default::default() },
+            &TextStyle { size: 48.0, color: pack_color(255, 255, 255, 255), ..Default::default() },
             0,
         );
-        y += 30.0;
+        step!(48.0, 12.0);
 
         ctx.draw_text_msdf(
-            "Bitmap (blurry):",
-            Vec2::new(-155.0, y),
+            "Bitmap (blurry at 48px, baked at 32px):",
+            Vec2::new(-155.0, top!(8.0)),
             font,
             &TextStyle { size: 8.0, color: pack_color(255, 100, 100, 255), ..Default::default() },
             0,
         );
-        // Bitmap atlas baked at 32px, displayed at 24px → downsampling artefacts
+        step!(8.0, 4.0);
+        // Bitmap atlas baked at 32px, displayed at 48px → 1.5× upscale → pixelated
         ctx.draw_text(
             "Abc 123",
-            Vec2::new(-10.0, y - 2.0),
+            Vec2::new(-155.0, top!(48.0)),
             bitmap_font,
-            24.0,
+            48.0,
             pack_color(200, 200, 200, 255),
             0,
         );
@@ -187,7 +201,7 @@ impl Game for MsdfDemo {
 fn main() {
     App::new()
         .with_title("Toile — MSDF Font Demo (ADR-028)")
-        .with_size(800, 600)
+        .with_size(800, 900)
         .with_clear_color(Color::new(0.07, 0.07, 0.12, 1.0))
         .run(MsdfDemo::new());
 }
