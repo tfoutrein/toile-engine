@@ -19,6 +19,57 @@ use crate::tilemap_tool::{self, TilemapEditor, TileTool};
 
 // ── Behavior helpers for the Inspector ──────────────────────────────────
 
+/// Get image dimensions without loading the full image.
+fn get_image_dimensions(sprite_path: &str, pdir: &Option<PathBuf>) -> Option<(u32, u32)> {
+    if sprite_path.is_empty() { return None; }
+    let full = pdir.as_ref().map(|d| d.join(sprite_path)).unwrap_or_else(|| PathBuf::from(sprite_path));
+    image::image_dimensions(&full).ok()
+}
+
+/// Try to auto-detect sprite sheet layout from image dimensions.
+/// Tests common frame sizes and picks the best fit.
+fn auto_detect_sprite_sheet(sprite_path: &str, pdir: &Option<PathBuf>) -> toile_scene::SpriteSheetData {
+    let common_sizes: &[u32] = &[16, 24, 32, 48, 64, 96, 128, 256];
+
+    if let Some((img_w, img_h)) = get_image_dimensions(sprite_path, pdir) {
+        // Try each common size and see which divides evenly
+        let mut best = (32u32, 32u32, 1u32, 1u32); // (fw, fh, cols, rows)
+        let mut best_score = 0u32;
+
+        for &fw in common_sizes {
+            for &fh in common_sizes {
+                if fw > img_w || fh > img_h { continue; }
+                let cols = img_w / fw;
+                let rows = img_h / fh;
+                if cols == 0 || rows == 0 { continue; }
+                // Score: prefer exact division + more frames + square-ish frames
+                let exact = if img_w % fw == 0 && img_h % fh == 0 { 1000 } else { 0 };
+                let frame_count = cols * rows;
+                let squareness = if fw == fh { 100 } else { 0 };
+                let score = exact + frame_count.min(200) + squareness;
+                if score > best_score {
+                    best_score = score;
+                    best = (fw, fh, cols, rows);
+                }
+            }
+        }
+
+        toile_scene::SpriteSheetData {
+            frame_width: best.0,
+            frame_height: best.1,
+            columns: best.2,
+            rows: best.3,
+        }
+    } else {
+        toile_scene::SpriteSheetData {
+            frame_width: 32,
+            frame_height: 32,
+            columns: 4,
+            rows: 4,
+        }
+    }
+}
+
 /// Pick an icon based on entity properties.
 fn entity_icon(entity: &EntityData) -> &'static str {
     if entity.light.is_some() { return "💡"; }
@@ -2452,17 +2503,48 @@ impl Game for EditorApp {
                             let mut enabled = has_sheet;
                             if ui.checkbox(&mut enabled, "Enable sprite sheet").changed() {
                                 if enabled && entity.sprite_sheet.is_none() {
-                                    entity.sprite_sheet = Some(toile_scene::SpriteSheetData {
-                                        frame_width: 32,
-                                        frame_height: 32,
-                                        columns: 4,
-                                        rows: 4,
-                                    });
+                                    // Try auto-detect from sprite image
+                                    let sheet = auto_detect_sprite_sheet(&entity.sprite_path, &pdir);
+                                    entity.sprite_sheet = Some(sheet);
                                 } else if !enabled {
                                     entity.sprite_sheet = None;
                                 }
                             }
                             if let Some(ref mut sheet) = entity.sprite_sheet {
+                                // Presets
+                                ui.horizontal(|ui| {
+                                    ui.label(egui::RichText::new("Preset:").size(11.0));
+                                    let presets = [
+                                        ("Mana Seed", 64, 64, 8, 8),
+                                        ("RPG Maker", 48, 48, 3, 4),
+                                        ("16×16", 16, 16, 0, 0),
+                                        ("32×32", 32, 32, 0, 0),
+                                        ("64×64", 64, 64, 0, 0),
+                                        ("128×128", 128, 128, 0, 0),
+                                    ];
+                                    for (name, fw, fh, c, r) in &presets {
+                                        if ui.small_button(*name).clicked() {
+                                            sheet.frame_width = *fw;
+                                            sheet.frame_height = *fh;
+                                            if *c > 0 && *r > 0 {
+                                                sheet.columns = *c;
+                                                sheet.rows = *r;
+                                            } else {
+                                                // Auto-calc columns/rows from image
+                                                if let Some(dims) = get_image_dimensions(&entity.sprite_path, &pdir) {
+                                                    sheet.columns = (dims.0 / *fw).max(1);
+                                                    sheet.rows = (dims.1 / *fh).max(1);
+                                                }
+                                            }
+                                        }
+                                    }
+                                });
+                                // Auto-detect button
+                                if ui.small_button("Auto-detect from image").clicked() {
+                                    *sheet = auto_detect_sprite_sheet(&entity.sprite_path, &pdir);
+                                }
+
+                                ui.add_space(4.0);
                                 egui::Grid::new("sheet_grid").num_columns(2).show(ui, |ui| {
                                     ui.label("Frame W");
                                     ui.add(egui::DragValue::new(&mut sheet.frame_width).range(1..=1024));
@@ -2478,7 +2560,7 @@ impl Game for EditorApp {
                                     ui.end_row();
                                 });
                                 let total_frames = sheet.columns * sheet.rows;
-                                ui.label(egui::RichText::new(format!("{total_frames} frames total")).size(10.0).color(egui::Color32::from_gray(140)));
+                                ui.label(egui::RichText::new(format!("{total_frames} frames ({} × {}px)", sheet.columns * sheet.frame_width, sheet.rows * sheet.frame_height)).size(10.0).color(egui::Color32::from_gray(140)));
                             }
                         });
 
