@@ -27,6 +27,9 @@ pub struct EditorApp {
     resize_start_size: Vec2,
     resize_start_pos: Vec2,
     resize_start_mouse: Vec2,
+    rotating: bool,
+    rotate_start_angle: f32,
+    rotate_start_mouse_angle: f32,
     show_grid: bool,
     status_msg: String,
     current_file: String,
@@ -87,6 +90,9 @@ impl EditorApp {
             resize_start_size: Vec2::ZERO,
             resize_start_pos: Vec2::ZERO,
             resize_start_mouse: Vec2::ZERO,
+            rotating: false,
+            rotate_start_angle: 0.0,
+            rotate_start_mouse_angle: 0.0,
             show_grid: true,
             status_msg: "Ready".to_string(),
             current_file: "scene.json".to_string(),
@@ -317,6 +323,7 @@ impl Game for EditorApp {
             if ctx.input.is_mouse_down(toile_app::MouseButton::Left)
                 && self.dragging.is_none()
                 && self.resizing.is_none()
+                && !self.rotating
             {
                 // First check: are we clicking on a resize handle of the selected entity?
                 let mut hit_handle = None;
@@ -345,7 +352,31 @@ impl Game for EditorApp {
                     }
                 }
 
-                if let Some(handle) = hit_handle {
+                // Check rotation handle (circle above top edge)
+                let mut hit_rotate = false;
+                if hit_handle.is_none() {
+                    if let Some(sel_id) = self.selected_id {
+                        if let Some(entity) = self.scene.entities.iter().find(|e| e.id == sel_id) {
+                            let hh = entity.height * entity.scale_y * 0.5;
+                            let rotate_handle_pos = Vec2::new(entity.x, entity.y + hh + handle_size * 4.0);
+                            if (world_pos - rotate_handle_pos).length() < handle_size * 2.0 {
+                                hit_rotate = true;
+                            }
+                        }
+                    }
+                }
+
+                if hit_rotate {
+                    // Start rotation
+                    self.rotating = true;
+                    if let Some(sel_id) = self.selected_id {
+                        if let Some(entity) = self.scene.entities.iter().find(|e| e.id == sel_id) {
+                            self.rotate_start_angle = entity.rotation;
+                            let to_mouse = world_pos - Vec2::new(entity.x, entity.y);
+                            self.rotate_start_mouse_angle = to_mouse.y.atan2(to_mouse.x);
+                        }
+                    }
+                } else if let Some(handle) = hit_handle {
                     // Start resize
                     self.resizing = Some(handle);
                     self.resize_start_mouse = world_pos;
@@ -503,12 +534,33 @@ impl Game for EditorApp {
                         }
                     }
                 }
+
+                // Continue rotation
+                if self.rotating {
+                    if let Some(sel_id) = self.selected_id {
+                        if let Some(entity) = self.scene.find_entity_mut(sel_id) {
+                            let to_mouse = world_pos - Vec2::new(entity.x, entity.y);
+                            let current_angle = to_mouse.y.atan2(to_mouse.x);
+                            let delta_angle = current_angle - self.rotate_start_mouse_angle;
+                            entity.rotation = self.rotate_start_angle + delta_angle;
+
+                            // Snap to 15° increments when Shift is held
+                            if ctx.input.is_key_down(Key::ShiftLeft)
+                                || ctx.input.is_key_down(Key::ShiftRight)
+                            {
+                                let snap = std::f32::consts::PI / 12.0; // 15°
+                                entity.rotation = (entity.rotation / snap).round() * snap;
+                            }
+                        }
+                    }
+                }
             }
 
-            // End drag/resize on mouse release
+            // End drag/resize/rotate on mouse release
             if !ctx.input.is_mouse_down(toile_app::MouseButton::Left) {
                 self.dragging = None;
                 self.resizing = None;
+                self.rotating = false;
             }
         }
 
@@ -745,6 +797,34 @@ impl Game for EditorApp {
                         uv_max: Vec2::ONE,
                     });
                 }
+
+                // Rotation handle: line + circle above top edge
+                let rot_y = entity.y + hh + handle_size * 4.0;
+                let rot_color = pack_color(120, 220, 255, 255);
+
+                // Connection line
+                ctx.draw_sprite(DrawSprite {
+                    texture: tex,
+                    position: Vec2::new(entity.x, entity.y + hh + handle_size * 2.0),
+                    size: Vec2::new(thickness, handle_size * 4.0),
+                    rotation: 0.0,
+                    color: rot_color,
+                    layer: 91,
+                    uv_min: Vec2::ZERO,
+                    uv_max: Vec2::ONE,
+                });
+
+                // Rotation circle (rendered as a small square — we don't have circles)
+                ctx.draw_sprite(DrawSprite {
+                    texture: tex,
+                    position: Vec2::new(entity.x, rot_y),
+                    size: Vec2::splat(handle_size * 1.5),
+                    rotation: std::f32::consts::FRAC_PI_4, // 45° diamond shape
+                    color: rot_color,
+                    layer: 92,
+                    uv_min: Vec2::ZERO,
+                    uv_max: Vec2::ONE,
+                });
             }
         }
     }
