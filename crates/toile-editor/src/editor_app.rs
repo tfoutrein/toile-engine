@@ -289,10 +289,12 @@ impl Game for EditorApp {
         if self.editor_mode == EditorMode::Entity {
             let world_pos = ctx.camera.screen_to_world(ctx.input.mouse_position());
 
-            // Start drag: click on an entity to select and start dragging
-            if ctx.input.is_mouse_just_pressed(toile_app::MouseButton::Left) {
+            // Start drag: detect transition from mouse-up to mouse-down
+            if ctx.input.is_mouse_down(toile_app::MouseButton::Left) && self.dragging.is_none() {
+                // First frame of mouse down — try to pick an entity
                 let mut clicked_id = None;
-                for entity in &self.scene.entities {
+                // Iterate in reverse so topmost entities (drawn last) are picked first
+                for entity in self.scene.entities.iter().rev() {
                     let hw = entity.width * entity.scale_x * 0.5;
                     let hh = entity.height * entity.scale_y * 0.5;
                     if world_pos.x >= entity.x - hw
@@ -311,18 +313,22 @@ impl Game for EditorApp {
                         self.drag_offset = Vec2::new(entity.x - world_pos.x, entity.y - world_pos.y);
                     }
                     self.dragging = Some(id);
+                    self.status_msg = format!("Selected entity {id}");
                 } else {
                     self.selected_id = None;
-                    self.dragging = None;
+                    // Use a sentinel to prevent re-picking every frame while held
+                    self.dragging = Some(u64::MAX);
                 }
             }
 
             // Continue drag: move entity with mouse
             if ctx.input.is_mouse_down(toile_app::MouseButton::Left) {
                 if let Some(drag_id) = self.dragging {
-                    if let Some(entity) = self.scene.find_entity_mut(drag_id) {
-                        entity.x = world_pos.x + self.drag_offset.x;
-                        entity.y = world_pos.y + self.drag_offset.y;
+                    if drag_id != u64::MAX {
+                        if let Some(entity) = self.scene.find_entity_mut(drag_id) {
+                            entity.x = world_pos.x + self.drag_offset.x;
+                            entity.y = world_pos.y + self.drag_offset.y;
+                        }
                     }
                 }
             }
@@ -330,12 +336,6 @@ impl Game for EditorApp {
             // End drag on mouse release
             if !ctx.input.is_mouse_down(toile_app::MouseButton::Left) {
                 self.dragging = None;
-            }
-
-            // Camera pan with middle mouse
-            if ctx.input.is_mouse_down(toile_app::MouseButton::Middle) {
-                // Simple pan: move camera opposite to mouse delta
-                // (approximation — proper delta tracking would be better)
             }
         }
 
