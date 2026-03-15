@@ -2440,6 +2440,18 @@ impl Game for EditorApp {
                         ui.add(egui::DragValue::new(&mut s.camera_zoom).speed(0.1).range(0.1..=10.0));
                         ui.end_row();
 
+                        ui.label("Camera Mode");
+                        egui::ComboBox::from_id_salt("camera_mode")
+                            .selected_text(match s.camera_mode {
+                                toile_scene::CameraMode::Fixed => "Fixed",
+                                toile_scene::CameraMode::FollowPlayer => "Follow Player",
+                            })
+                            .show_ui(ui, |ui| {
+                                ui.selectable_value(&mut s.camera_mode, toile_scene::CameraMode::Fixed, "Fixed — camera stays at position");
+                                ui.selectable_value(&mut s.camera_mode, toile_scene::CameraMode::FollowPlayer, "Follow Player — camera tracks player");
+                            });
+                        ui.end_row();
+
                         ui.label("Clear R");
                         ui.add(egui::Slider::new(&mut s.clear_color[0], 0.0..=1.0));
                         ui.end_row();

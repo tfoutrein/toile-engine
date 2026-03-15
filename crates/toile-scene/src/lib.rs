@@ -42,6 +42,8 @@ pub struct SceneSettings {
     #[serde(default)]
     pub camera_position: [f32; 2],
     #[serde(default)]
+    pub camera_mode: CameraMode,
+    #[serde(default)]
     pub background_image: Option<String>,
     #[serde(default)]
     pub lighting: LightingSettings,
@@ -64,11 +66,22 @@ impl Default for SceneSettings {
             clear_color: default_clear_color(),
             camera_zoom: default_camera_zoom(),
             camera_position: [0.0, 0.0],
+            camera_mode: CameraMode::default(),
             background_image: None,
             lighting: LightingSettings::default(),
             post_effects: Vec::new(),
         }
     }
+}
+
+/// Camera behavior mode.
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+pub enum CameraMode {
+    /// Camera stays at camera_position, shows the designed viewport.
+    #[default]
+    Fixed,
+    /// Camera follows the Player entity smoothly.
+    FollowPlayer,
 }
 
 /// Collision shape data for scene serialization.

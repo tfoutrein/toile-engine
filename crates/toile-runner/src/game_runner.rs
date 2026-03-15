@@ -346,7 +346,17 @@ impl Game for GameRunner {
             let zoom_h = vp.y / designed_h;
             ctx.camera.zoom = zoom_w.min(zoom_h);
         }
-        ctx.camera.position = Vec2::new(s.camera_position[0], s.camera_position[1]);
+        // Camera position depends on mode
+        match s.camera_mode {
+            toile_scene::CameraMode::Fixed => {
+                ctx.camera.position = Vec2::new(s.camera_position[0], s.camera_position[1]);
+            }
+            toile_scene::CameraMode::FollowPlayer => {
+                if let Some(player) = self.entities.iter().find(|e| e.alive && is_player(&e.data)) {
+                    ctx.camera.position = player.es.position;
+                }
+            }
+        }
 
         let dt_f = dt as f32;
         let input = Self::build_behavior_input(ctx);
