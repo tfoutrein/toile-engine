@@ -222,6 +222,9 @@ pub struct EditorApp {
     show_splash: bool,
     // Tilemap editor
     tilemap_editor: TilemapEditor,
+    // Background
+    background_tex: Option<TextureHandle>,
+    background_path_loaded: String,
     // Particle editor
     particle_editor: ParticleEditorPanel,
     // Live particle preview pools (entity_id → pool)
@@ -302,6 +305,8 @@ impl EditorApp {
             splash_timer: 2.5,
             show_splash: true,
             tilemap_editor: TilemapEditor::new(),
+            background_tex: None,
+            background_path_loaded: String::new(),
             particle_editor: ParticleEditorPanel::new(),
             preview_particles: HashMap::new(),
             preview_particle_paths: HashMap::new(),
@@ -1013,6 +1018,44 @@ impl Game for EditorApp {
                     uv_min: Vec2::ZERO,
                     uv_max: Vec2::ONE,
                 });
+            }
+        }
+
+        // ── Background image ──────────────────────────────────────────────
+        if let Some(ref bg_path) = self.scene.settings.background_image {
+            // Load texture if needed
+            if self.background_path_loaded != *bg_path {
+                let full = self.project_path(bg_path);
+                if full.exists() {
+                    self.background_tex = Some(ctx.load_texture(&full));
+                } else {
+                    self.background_tex = None;
+                }
+                self.background_path_loaded = bg_path.clone();
+            }
+            if let Some(bg_tex) = self.background_tex {
+                // Fill the viewport guide area with the background
+                let s = &self.scene.settings;
+                let vp_w = s.viewport_width as f32 / s.camera_zoom;
+                let vp_h = s.viewport_height as f32 / s.camera_zoom;
+                let vp_cx = s.camera_position[0];
+                let vp_cy = s.camera_position[1];
+                ctx.draw_sprite(Sprite {
+                    texture: bg_tex,
+                    position: Vec2::new(vp_cx, vp_cy),
+                    size: Vec2::new(vp_w, vp_h),
+                    rotation: 0.0,
+                    color: COLOR_WHITE,
+                    layer: -100,
+                    uv_min: Vec2::ZERO,
+                    uv_max: Vec2::ONE,
+                });
+            }
+        } else {
+            // Clear cached texture when background is removed
+            if !self.background_path_loaded.is_empty() {
+                self.background_tex = None;
+                self.background_path_loaded.clear();
             }
         }
 
@@ -2279,6 +2322,40 @@ impl Game for EditorApp {
                         ui.add(egui::Slider::new(&mut s.clear_color[2], 0.0..=1.0));
                         ui.end_row();
                     });
+
+                    // ── Background Image ──
+                    ui.add_space(8.0);
+                    ui.label(egui::RichText::new("Background").strong());
+                    ui.separator();
+                    let mut bg_path = s.background_image.clone().unwrap_or_default();
+                    ui.horizontal(|ui| {
+                        ui.label("Image:");
+                        if ui.text_edit_singleline(&mut bg_path).changed() {
+                            s.background_image = if bg_path.is_empty() { None } else { Some(bg_path.clone()) };
+                        }
+                        if ui.small_button("Browse...").clicked() {
+                            if let Some(file) = rfd::FileDialog::new()
+                                .set_title("Select Background Image")
+                                .add_filter("Images", &["png", "jpg", "jpeg", "bmp"])
+                                .pick_file()
+                            {
+                                // Try to make relative to project dir
+                                let path_str = if let Some(ref pd) = pdir {
+                                    file.strip_prefix(pd)
+                                        .map(|p| p.to_string_lossy().to_string())
+                                        .unwrap_or_else(|_| file.to_string_lossy().to_string())
+                                } else {
+                                    file.to_string_lossy().to_string()
+                                };
+                                s.background_image = Some(path_str);
+                            }
+                        }
+                    });
+                    if s.background_image.is_some() {
+                        if ui.small_button("Clear background").clicked() {
+                            s.background_image = None;
+                        }
+                    }
 
                     // ── Lighting ──
                     ui.add_space(8.0);

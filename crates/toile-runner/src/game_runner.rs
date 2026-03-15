@@ -100,6 +100,7 @@ pub struct GameRunner {
     textures: HashMap<String, TextureHandle>,
     prefabs: HashMap<String, toile_scene::prefab::Prefab>,
     event_sheets: HashMap<String, EventSheet>,
+    background_tex: Option<TextureHandle>,
     pending_scene: Option<String>,
     next_id: u64,
     scene_settings: toile_scene::SceneSettings,
@@ -116,6 +117,7 @@ impl GameRunner {
             entities: Vec::new(),
             spatial_grid: SpatialGrid::new(64.0),
             white_tex: None,
+            background_tex: None,
             textures: HashMap::new(),
             prefabs: HashMap::new(),
             event_sheets: HashMap::new(),
@@ -136,6 +138,17 @@ impl GameRunner {
         self.entities.clear();
         self.next_id = scene.next_id.max(1);
         self.scene_settings = scene.settings.clone();
+
+        // Load background image
+        self.background_tex = scene.settings.background_image.as_ref().and_then(|path| {
+            let full = self.resolve(path);
+            if full.exists() {
+                Some(ctx.load_texture(&full))
+            } else {
+                log::warn!("Background image not found: {}", full.display());
+                None
+            }
+        });
 
         for edata in &scene.entities {
             let rt = self.spawn_entity(edata, ctx);
@@ -574,6 +587,23 @@ impl Game for GameRunner {
                 };
                 ctx.post_processing.effects.push(effect);
             }
+        }
+
+        // Render background image
+        if let Some(bg_tex) = self.background_tex {
+            let s = &self.scene_settings;
+            let vp_w = s.viewport_width as f32 / s.camera_zoom;
+            let vp_h = s.viewport_height as f32 / s.camera_zoom;
+            ctx.draw_sprite(DrawSprite {
+                texture: bg_tex,
+                position: Vec2::new(s.camera_position[0], s.camera_position[1]),
+                size: Vec2::new(vp_w, vp_h),
+                rotation: 0.0,
+                color: 0xFFFFFFFF,
+                layer: -100,
+                uv_min: Vec2::ZERO,
+                uv_max: Vec2::ONE,
+            });
         }
 
         for ent in &self.entities {

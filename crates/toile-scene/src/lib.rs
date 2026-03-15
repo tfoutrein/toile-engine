@@ -42,6 +42,8 @@ pub struct SceneSettings {
     #[serde(default)]
     pub camera_position: [f32; 2],
     #[serde(default)]
+    pub background_image: Option<String>,
+    #[serde(default)]
     pub lighting: LightingSettings,
     #[serde(default)]
     pub post_effects: Vec<PostEffectData>,
@@ -62,6 +64,7 @@ impl Default for SceneSettings {
             clear_color: default_clear_color(),
             camera_zoom: default_camera_zoom(),
             camera_position: [0.0, 0.0],
+            background_image: None,
             lighting: LightingSettings::default(),
             post_effects: Vec::new(),
         }
