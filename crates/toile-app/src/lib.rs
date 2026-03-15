@@ -12,6 +12,7 @@ use toile_assets::font::Font;
 use toile_core::color::Color;
 use toile_core::time::GameClock;
 use toile_graphics::camera::Camera2D;
+use toile_graphics::post_processing::PostProcessor;
 use toile_graphics::sprite_renderer::{DrawSprite, RenderStats, SpriteRenderer};
 use toile_graphics::GpuContext;
 use toile_platform::input::Input;
@@ -31,6 +32,7 @@ pub use toile_scripting as scripting;
 pub use toile_assets::font::FontHandle;
 pub use toile_audio::{MusicId, PlaybackId, SoundId};
 pub use toile_graphics::camera::Camera2D as Camera;
+pub use toile_graphics::post_processing::{PostEffect, PostProcessingStack};
 pub use toile_graphics::sprite_renderer::{DrawSprite as Sprite, COLOR_WHITE};
 pub use toile_graphics::texture::TextureHandle;
 pub use toile_platform::input::{Key, MouseButton};
@@ -45,6 +47,8 @@ pub struct GameContext<'a> {
     /// True only during the first fixed-update tick of each frame.
     /// Use this to guard one-shot actions (toggles) in update().
     pub first_tick: bool,
+    /// Configure post-processing effects applied after sprite rendering.
+    pub post_processing: &'a mut PostProcessingStack,
     gpu: &'a GpuContext,
     renderer: &'a mut SpriteRenderer,
     fonts: &'a mut Vec<Font>,
@@ -237,6 +241,8 @@ impl App {
             initialized: false,
             debug_overlay: false,
             debug_title_timer: Duration::ZERO,
+            post_processor: None,
+            post_stack: PostProcessingStack::default(),
         };
 
         event_loop.run_app(&mut handler).expect("Event loop error");
@@ -261,6 +267,8 @@ struct AppHandler {
     initialized: bool,
     debug_overlay: bool,
     debug_title_timer: Duration,
+    post_processor: Option<PostProcessor>,
+    post_stack: PostProcessingStack,
 }
 
 macro_rules! make_ctx {
@@ -276,6 +284,7 @@ macro_rules! make_ctx {
             first_tick: true,
             fonts: &mut $self.fonts,
             draw_list: &mut $self.draw_list,
+            post_processing: &mut $self.post_stack,
         }
     };
 }
@@ -303,6 +312,8 @@ impl ApplicationHandler for AppHandler {
         let camera = Camera2D::new(self.config.width as f32, self.config.height as f32);
         self.input.set_scale_factor(window.scale_factor());
         let audio = toile_audio::Audio::new().expect("Failed to initialize audio");
+        let (pw, ph) = gpu.size();
+        let post_processor = PostProcessor::new(gpu.device(), gpu.surface_format(), pw, ph);
 
         log::info!("Window created: {}x{}", self.config.width, self.config.height);
 
@@ -312,6 +323,7 @@ impl ApplicationHandler for AppHandler {
         self.camera = Some(camera);
         self.audio = Some(audio);
         self.clock = Some(GameClock::new(self.update_hz));
+        self.post_processor = Some(post_processor);
     }
 
     fn window_event(
@@ -335,6 +347,12 @@ impl ApplicationHandler for AppHandler {
                         .map(|w| w.scale_factor() as f32)
                         .unwrap_or(1.0);
                     camera.resize(size.width as f32 / scale, size.height as f32 / scale);
+                }
+                // Recreate post-processing textures for the new physical size
+                if let Some(gpu) = &self.gpu {
+                    if let Some(pp) = &mut self.post_processor {
+                        pp.resize(gpu.device(), size.width.max(1), size.height.max(1));
+                    }
                 }
             }
             // Let overlay (egui) consume events first
@@ -393,16 +411,34 @@ impl ApplicationHandler for AppHandler {
                 let gpu = self.gpu.as_mut().unwrap();
                 if let Some((frame, view, mut encoder)) = gpu.begin_frame() {
                     let camera = self.camera.as_ref().unwrap();
-                    let renderer = self.renderer.as_mut().unwrap();
-                    self.last_stats = renderer.draw(
-                        gpu.device(),
-                        gpu.queue(),
-                        &mut encoder,
-                        &view,
-                        camera,
-                        &self.draw_list,
-                        &self.clear_color,
-                    );
+                    let use_pp = self.post_stack.enabled
+                        && !self.post_stack.effects.is_empty()
+                        && self.post_processor.is_some();
+
+                    // Render sprites into the appropriate target
+                    {
+                        let render_target = if use_pp {
+                            &self.post_processor.as_ref().unwrap().scene_view
+                        } else {
+                            &view
+                        };
+                        let renderer = self.renderer.as_mut().unwrap();
+                        self.last_stats = renderer.draw(
+                            gpu.device(),
+                            gpu.queue(),
+                            &mut encoder,
+                            render_target,
+                            camera,
+                            &self.draw_list,
+                            &self.clear_color,
+                        );
+                    }
+
+                    // Apply post-processing chain to swapchain view
+                    if use_pp {
+                        let pp = self.post_processor.as_ref().unwrap();
+                        pp.apply(&self.post_stack, &view, gpu.queue(), &mut encoder);
+                    }
 
                     // Overlay rendering (egui for editor, no-op for regular games)
                     let size = gpu.size();

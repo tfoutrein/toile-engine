@@ -1,4 +1,5 @@
 pub mod camera;
+pub mod post_processing;
 pub mod sprite_renderer;
 pub mod texture;
 
