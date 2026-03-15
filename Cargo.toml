@@ -109,3 +109,6 @@ toile-runner = { path = "crates/toile-runner" }
 
 # TOML parsing
 toml_dep = { package = "toml", version = "0.8" }
+
+# Native file dialogs
+rfd = "0.15"

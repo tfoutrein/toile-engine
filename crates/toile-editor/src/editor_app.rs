@@ -1147,6 +1147,14 @@ impl Game for EditorApp {
                         ui.horizontal(|ui| {
                             ui.label("Path:");
                             ui.text_edit_singleline(&mut self.project_path_input);
+                            if ui.button("Browse...").clicked() {
+                                if let Some(dir) = rfd::FileDialog::new()
+                                    .set_title("Open Toile Project")
+                                    .pick_folder()
+                                {
+                                    self.project_path_input = dir.to_string_lossy().to_string();
+                                }
+                            }
                         });
 
                         // Scan for directories with Toile.toml nearby
