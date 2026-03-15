@@ -539,9 +539,9 @@ impl Game for EditorApp {
                     // Create default tilemap if none exists
                     if self.scene.tilemap.is_none() {
                         self.scene.tilemap = Some(tilemap_tool::create_default_tilemap(
-                            25, 15, 32, "assets/platformer/tileset.png", 4,
+                            40, 23, 32, "assets/platformer/tileset.png", 4,
                         ));
-                        self.status_msg = "Created 25x15 tilemap".to_string();
+                        self.status_msg = "Created 40x23 tilemap (1280x736px)".to_string();
                     }
                 }
                 ui.menu_button("View", |ui| {
