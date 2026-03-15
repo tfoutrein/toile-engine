@@ -222,9 +222,6 @@ impl Game for SceneDemo {
     }
 
     fn update(&mut self, ctx: &mut GameContext, dt: f64) {
-        // Zoom to fill the screen properly on Retina displays
-        ctx.camera.zoom = 2.0;
-
         let stack = self.stack.as_mut().unwrap();
 
         // Handle scene transitions based on input

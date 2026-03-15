@@ -299,8 +299,9 @@ impl ApplicationHandler for AppHandler {
 
         let gpu = GpuContext::new(window.clone());
         let renderer = SpriteRenderer::new(gpu.device(), gpu.surface_format());
-        let (w, h) = gpu.size();
-        let camera = Camera2D::new(w as f32, h as f32);
+        // Use logical size (not physical) for camera so content scales correctly on HiDPI
+        let camera = Camera2D::new(self.config.width as f32, self.config.height as f32);
+        self.input.set_scale_factor(window.scale_factor());
         let audio = toile_audio::Audio::new().expect("Failed to initialize audio");
 
         log::info!("Window created: {}x{}", self.config.width, self.config.height);
@@ -328,8 +329,12 @@ impl ApplicationHandler for AppHandler {
                 if let Some(gpu) = &mut self.gpu {
                     gpu.resize(size.width, size.height);
                 }
+                // Camera uses logical pixels (divide physical by scale factor)
                 if let Some(camera) = &mut self.camera {
-                    camera.resize(size.width as f32, size.height as f32);
+                    let scale = self.window.as_ref()
+                        .map(|w| w.scale_factor() as f32)
+                        .unwrap_or(1.0);
+                    camera.resize(size.width as f32 / scale, size.height as f32 / scale);
                 }
             }
             // Let overlay (egui) consume events first

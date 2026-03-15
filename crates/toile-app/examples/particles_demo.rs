@@ -53,9 +53,6 @@ impl Game for ParticlesDemo {
     fn update(&mut self, ctx: &mut GameContext, dt: f64) {
         let dt = dt as f32;
 
-        // Zoom camera so particles are bigger and fill the screen
-        ctx.camera.zoom = 2.0;
-
         // Move emitter with mouse
         let mouse_screen = ctx.input.mouse_position();
         self.emitter_pos = ctx.camera.screen_to_world(mouse_screen);

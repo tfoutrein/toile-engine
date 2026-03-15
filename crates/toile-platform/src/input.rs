@@ -25,6 +25,7 @@ pub struct Input {
     mouse_pressed_this_frame: HashSet<MouseButton>,
     mouse_position: Vec2,
     scroll_delta: Vec2,
+    scale_factor: f32,
 }
 
 impl Input {
@@ -37,6 +38,7 @@ impl Input {
             mouse_pressed_this_frame: HashSet::new(),
             mouse_position: Vec2::ZERO,
             scroll_delta: Vec2::ZERO,
+            scale_factor: 1.0,
         }
     }
 
@@ -81,7 +83,12 @@ impl Input {
     }
 
     pub fn handle_cursor_moved(&mut self, x: f64, y: f64) {
-        self.mouse_position = Vec2::new(x as f32, y as f32);
+        // Convert physical pixels to logical pixels
+        self.mouse_position = Vec2::new(x as f32 / self.scale_factor, y as f32 / self.scale_factor);
+    }
+
+    pub fn set_scale_factor(&mut self, scale: f64) {
+        self.scale_factor = scale as f32;
     }
 
     pub fn handle_mouse_wheel(&mut self, delta: &MouseScrollDelta) {
