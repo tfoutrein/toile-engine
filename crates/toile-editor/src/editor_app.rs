@@ -1,9 +1,11 @@
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use glam::Vec2;
 use toile_app::{App, Game, GameContext, Key, Sprite, TextureHandle, COLOR_WHITE};
 use toile_graphics::sprite_renderer::DrawSprite;
 use toile_core::color::Color;
+use toile_core::particles::{ParticleEmitter, ParticlePool};
 use toile_graphics::sprite_renderer::pack_color;
 use winit::event::WindowEvent;
 use winit::window::Window;
@@ -222,6 +224,10 @@ pub struct EditorApp {
     tilemap_editor: TilemapEditor,
     // Particle editor
     particle_editor: ParticleEditorPanel,
+    // Live particle preview pools (entity_id → pool)
+    preview_particles: HashMap<u64, ParticlePool>,
+    // Track which emitter path each pool was built from
+    preview_particle_paths: HashMap<u64, String>,
     show_scene_settings: bool,
     show_viewport_guide: bool,
     last_mouse_pos: Vec2,
@@ -297,6 +303,8 @@ impl EditorApp {
             show_splash: true,
             tilemap_editor: TilemapEditor::new(),
             particle_editor: ParticleEditorPanel::new(),
+            preview_particles: HashMap::new(),
+            preview_particle_paths: HashMap::new(),
             show_scene_settings: false,
             show_viewport_guide: true,
             last_mouse_pos: Vec2::ZERO,
@@ -901,6 +909,43 @@ impl Game for EditorApp {
         if self.editor_mode == EditorMode::Particle {
             self.particle_editor.update(_dt as f32);
         }
+
+        // Update preview particles for entities with emitters
+        if self.editor_mode == EditorMode::Entity {
+            let dt_f = _dt as f32;
+            // Collect entity ids and their emitter paths + positions
+            let mut active: Vec<(u64, String, Vec2)> = Vec::new();
+            for e in &self.scene.entities {
+                if let Some(ref path) = e.particle_emitter {
+                    active.push((e.id, path.clone(), Vec2::new(e.x, e.y)));
+                }
+            }
+            // Remove pools for entities that no longer have emitters
+            self.preview_particles.retain(|id, _| active.iter().any(|(eid, _, _)| eid == id));
+            self.preview_particle_paths.retain(|id, _| active.iter().any(|(eid, _, _)| eid == id));
+
+            for (eid, path, pos) in &active {
+                // Check if pool exists and matches the path
+                let needs_reload = match self.preview_particle_paths.get(eid) {
+                    Some(existing) => existing != path,
+                    None => true,
+                };
+                if needs_reload {
+                    let full = self.project_path(path);
+                    if let Ok(json) = std::fs::read_to_string(&full) {
+                        if let Ok(emitter) = serde_json::from_str::<ParticleEmitter>(&json) {
+                            self.preview_particles.insert(*eid, ParticlePool::new(emitter, *pos));
+                            self.preview_particle_paths.insert(*eid, path.clone());
+                        }
+                    }
+                }
+                // Update position and tick
+                if let Some(pool) = self.preview_particles.get_mut(eid) {
+                    pool.position = *pos;
+                    pool.update(dt_f);
+                }
+            }
+        }
     }
 
     fn draw(&mut self, ctx: &mut GameContext) {
@@ -1182,6 +1227,22 @@ impl Game for EditorApp {
                 });
             }
         }
+        // Render preview particles on entities
+        for pool in self.preview_particles.values() {
+            for (pos, size, rot, color) in pool.render_data() {
+                ctx.draw_sprite(DrawSprite {
+                    texture: tex,
+                    position: pos,
+                    size: Vec2::splat(size),
+                    rotation: rot,
+                    color,
+                    layer: 50,
+                    uv_min: Vec2::ZERO,
+                    uv_max: Vec2::ONE,
+                });
+            }
+        }
+
         } // end `if self.editor_mode != EditorMode::Particle`
 
         // Render particles in Particle mode

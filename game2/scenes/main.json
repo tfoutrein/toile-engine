@@ -4,8 +4,8 @@
     {
       "id": 1,
       "name": "Entity_1",
-      "x": 0.0,
-      "y": 0.0,
+      "x": -42.77733,
+      "y": -64.20706,
       "rotation": 0.0,
       "scale_x": 1.0,
       "scale_y": 1.0,
@@ -19,8 +19,8 @@
       ],
       "variables": {},
       "collider": null,
-      "event_sheet": null,
-      "particle_emitter": null,
+      "event_sheet": "scripts/entity_1.event.json",
+      "particle_emitter": "particles/fire.particles.json",
       "light": null,
       "visible": true
     }
