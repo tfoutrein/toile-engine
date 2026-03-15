@@ -285,6 +285,8 @@ pub struct EditorApp {
     // Track which emitter path each pool was built from
     preview_particle_paths: HashMap<u64, String>,
     show_scene_settings: bool,
+    show_frame_picker: bool,
+    frame_picker_anim: String, // which animation is being edited
     clipboard_entity: Option<EntityData>,
     show_viewport_guide: bool,
     last_mouse_pos: Vec2,
@@ -366,6 +368,8 @@ impl EditorApp {
             preview_particles: HashMap::new(),
             preview_particle_paths: HashMap::new(),
             show_scene_settings: false,
+            show_frame_picker: false,
+            frame_picker_anim: String::new(),
             clipboard_entity: None,
             show_viewport_guide: true,
             last_mouse_pos: Vec2::ZERO,
@@ -2618,57 +2622,52 @@ impl Game for EditorApp {
 
                     if entity.sprite_sheet.is_some() {
                     egui::CollapsingHeader::new(egui::RichText::new("Animations").strong())
-                        .default_open(false)
+                        .default_open(true)
                         .show(ui, |ui| {
-                            let total_frames = entity.sprite_sheet.as_ref()
-                                .map(|s| s.columns * s.rows).unwrap_or(1);
-
                             let mut remove_anim: Option<usize> = None;
                             for (i, anim) in entity.animations.iter_mut().enumerate() {
                                 ui.horizontal(|ui| {
                                     ui.label(egui::RichText::new(&anim.name).strong().size(12.0));
+                                    ui.add(egui::DragValue::new(&mut anim.fps).prefix("fps:").range(1.0..=60.0).speed(0.5));
+                                    ui.checkbox(&mut anim.looping, "loop");
                                     if ui.small_button("x").clicked() {
                                         remove_anim = Some(i);
                                     }
                                 });
-                                egui::Grid::new(format!("anim_grid_{i}")).num_columns(2).show(ui, |ui| {
-                                    ui.label("FPS");
-                                    ui.add(egui::DragValue::new(&mut anim.fps).range(1.0..=60.0).speed(0.5));
-                                    ui.end_row();
-                                    ui.label("Loop");
-                                    ui.checkbox(&mut anim.looping, "");
-                                    ui.end_row();
-                                });
-                                // Frame indices as text (editable)
-                                let mut frames_str = anim.frames.iter()
-                                    .map(|f| f.to_string()).collect::<Vec<_>>().join(", ");
-                                ui.horizontal(|ui| {
+                                // Show frames as clickable badges
+                                ui.horizontal_wrapped(|ui| {
                                     ui.label("Frames:");
-                                    if ui.text_edit_singleline(&mut frames_str).changed() {
-                                        anim.frames = frames_str.split(',')
-                                            .filter_map(|s| s.trim().parse::<u32>().ok())
-                                            .filter(|f| *f < total_frames)
-                                            .collect();
+                                    let mut remove_frame: Option<usize> = None;
+                                    for (fi, frame) in anim.frames.iter().enumerate() {
+                                        if ui.small_button(format!("{frame}")).on_hover_text("Click to remove").clicked() {
+                                            remove_frame = Some(fi);
+                                        }
+                                    }
+                                    if let Some(fi) = remove_frame {
+                                        anim.frames.remove(fi);
+                                    }
+                                    // Button to open frame picker
+                                    if ui.small_button("+ pick").on_hover_text("Open sprite sheet to pick frames").clicked() {
+                                        self.show_frame_picker = true;
+                                        self.frame_picker_anim = anim.name.clone();
                                     }
                                 });
-                                ui.label(egui::RichText::new(format!("(0-{}, comma separated)", total_frames - 1))
-                                    .size(9.0).color(egui::Color32::from_gray(120)));
                                 ui.separator();
                             }
                             if let Some(idx) = remove_anim {
                                 entity.animations.remove(idx);
                             }
 
-                            // Quick-add common animations
+                            // Quick-add animations
                             ui.horizontal(|ui| {
-                                for name in &["idle", "walk", "jump", "fall", "attack"] {
+                                for (name, fps, looping) in &[("idle", 4.0, true), ("walk", 7.0, true), ("run", 10.0, true), ("jump", 5.0, false)] {
                                     if !entity.animations.iter().any(|a| a.name == *name) {
                                         if ui.small_button(format!("+{name}")).clicked() {
                                             entity.animations.push(toile_scene::AnimationData {
                                                 name: name.to_string(),
-                                                frames: vec![0],
-                                                fps: 8.0,
-                                                looping: *name != "attack",
+                                                frames: vec![],
+                                                fps: *fps,
+                                                looping: *looping,
                                             });
                                         }
                                     }
@@ -2676,12 +2675,11 @@ impl Game for EditorApp {
                             });
 
                             // Default animation
-                            ui.add_space(4.0);
                             let anim_names: Vec<String> = entity.animations.iter().map(|a| a.name.clone()).collect();
                             if !anim_names.is_empty() {
                                 let current_default = entity.default_animation.clone().unwrap_or_default();
                                 egui::ComboBox::from_id_salt("default_anim")
-                                    .selected_text(if current_default.is_empty() { "Default animation..." } else { &current_default })
+                                    .selected_text(if current_default.is_empty() { "Default..." } else { &current_default })
                                     .show_ui(ui, |ui| {
                                         for name in &anim_names {
                                             if ui.selectable_label(*name == current_default, name).clicked() {
@@ -2857,6 +2855,137 @@ impl Game for EditorApp {
             }); // end ScrollArea
         });
         } // end `if self.editor_mode != EditorMode::Particle`
+
+        // ── Frame Picker window ───────────────────────────────────────────
+        if self.show_frame_picker {
+            if let Some(id) = self.selected_id {
+                let entity = self.scene.entities.iter().find(|e| e.id == id);
+                let sheet_info = entity.and_then(|e| e.sprite_sheet.as_ref().map(|s| (s.columns, s.rows, s.frame_width, s.frame_height)));
+                let sprite_path = entity.map(|e| e.sprite_path.clone()).unwrap_or_default();
+                let sprite_tex = if !sprite_path.is_empty() { self.sprite_cache.get(&sprite_path).copied() } else { None };
+
+                if let (Some((cols, rows, fw, fh)), Some(stex)) = (sheet_info, sprite_tex) {
+                    let mut open = true;
+                    let anim_name = self.frame_picker_anim.clone();
+                    egui::Window::new(format!("Frame Picker — {anim_name}"))
+                        .open(&mut open)
+                        .default_width(cols as f32 * 68.0 + 20.0)
+                        .show(&ctx, |ui| {
+                            ui.label(egui::RichText::new(format!("Click frames to add to '{anim_name}'. Grid: {cols}×{rows}, frame: {fw}×{fh}px")).size(11.0));
+                            ui.separator();
+
+                            // Render the sprite sheet as a grid of clickable frame buttons
+                            let cell_size = 64.0_f32;
+                            let total = cols * rows;
+                            let mut clicked_frame: Option<u32> = None;
+
+                            // Get current frames for highlighting
+                            let current_frames: Vec<u32> = self.scene.entities.iter()
+                                .find(|e| e.id == id)
+                                .and_then(|e| e.animations.iter().find(|a| a.name == anim_name))
+                                .map(|a| a.frames.clone())
+                                .unwrap_or_default();
+
+                            egui::ScrollArea::both().max_height(500.0).show(ui, |ui| {
+                                for row in 0..rows {
+                                    ui.horizontal(|ui| {
+                                        for col in 0..cols {
+                                            let frame_idx = row * cols + col;
+                                            if frame_idx >= total { break; }
+
+                                            let u_step = 1.0 / cols as f32;
+                                            let v_step = 1.0 / rows as f32;
+                                            let uv0 = egui::pos2(col as f32 * u_step, row as f32 * v_step);
+                                            let uv1 = egui::pos2((col + 1) as f32 * u_step, (row + 1) as f32 * v_step);
+
+                                            let is_selected = current_frames.contains(&frame_idx);
+                                            let (rect, response) = ui.allocate_exact_size(
+                                                egui::vec2(cell_size, cell_size),
+                                                egui::Sense::click(),
+                                            );
+
+                                            // Background
+                                            let bg = if is_selected {
+                                                egui::Color32::from_rgba_unmultiplied(80, 200, 80, 60)
+                                            } else if response.hovered() {
+                                                egui::Color32::from_rgba_unmultiplied(255, 255, 255, 30)
+                                            } else {
+                                                egui::Color32::from_rgba_unmultiplied(0, 0, 0, 40)
+                                            };
+                                            ui.painter().rect_filled(rect, 2.0, bg);
+
+                                            // Sprite frame
+                                            let tex_id = egui::TextureId::User(stex.index() as u64);
+                                            ui.painter().image(tex_id, rect.shrink(2.0), egui::Rect::from_min_max(uv0, uv1), egui::Color32::WHITE);
+
+                                            // Frame number
+                                            ui.painter().text(
+                                                rect.left_top() + egui::vec2(2.0, 1.0),
+                                                egui::Align2::LEFT_TOP,
+                                                format!("{frame_idx}"),
+                                                egui::FontId::proportional(9.0),
+                                                if is_selected { egui::Color32::YELLOW } else { egui::Color32::from_gray(180) },
+                                            );
+
+                                            // Border for selected
+                                            if is_selected {
+                                                ui.painter().rect_stroke(rect, 2.0, egui::Stroke::new(2.0, egui::Color32::YELLOW), egui::StrokeKind::Outside);
+                                            }
+
+                                            if response.clicked() {
+                                                clicked_frame = Some(frame_idx);
+                                            }
+                                        }
+                                    });
+                                }
+                            });
+
+                            // Apply clicked frame
+                            if let Some(frame) = clicked_frame {
+                                if let Some(entity) = self.scene.entities.iter_mut().find(|e| e.id == id) {
+                                    if let Some(anim) = entity.animations.iter_mut().find(|a| a.name == anim_name) {
+                                        anim.frames.push(frame);
+                                    }
+                                }
+                            }
+
+                            // Show current sequence
+                            ui.separator();
+                            if let Some(entity) = self.scene.entities.iter().find(|e| e.id == id) {
+                                if let Some(anim) = entity.animations.iter().find(|a| a.name == anim_name) {
+                                    ui.horizontal_wrapped(|ui| {
+                                        ui.label(egui::RichText::new(format!("{anim_name}:")).strong());
+                                        for f in &anim.frames {
+                                            ui.label(format!("{f}"));
+                                        }
+                                        if anim.frames.is_empty() {
+                                            ui.label(egui::RichText::new("(empty — click frames above)").color(egui::Color32::from_gray(130)));
+                                        }
+                                    });
+                                }
+                            }
+
+                            ui.horizontal(|ui| {
+                                if ui.button("Clear frames").clicked() {
+                                    if let Some(entity) = self.scene.entities.iter_mut().find(|e| e.id == id) {
+                                        if let Some(anim) = entity.animations.iter_mut().find(|a| a.name == anim_name) {
+                                            anim.frames.clear();
+                                        }
+                                    }
+                                }
+                                if ui.button("Done").clicked() {
+                                    self.show_frame_picker = false;
+                                }
+                            });
+                        });
+                    if !open { self.show_frame_picker = false; }
+                } else {
+                    self.show_frame_picker = false;
+                }
+            } else {
+                self.show_frame_picker = false;
+            }
+        }
 
         // Scene Settings window
         if self.show_scene_settings {

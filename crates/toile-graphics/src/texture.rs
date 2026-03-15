@@ -3,6 +3,11 @@ use std::path::Path;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct TextureHandle(pub(crate) u32);
 
+impl TextureHandle {
+    /// Returns the internal index. Useful for integrating with other renderers (e.g. egui).
+    pub fn index(&self) -> u32 { self.0 }
+}
+
 pub(crate) struct TextureEntry {
     pub _texture: wgpu::Texture,
     pub view: wgpu::TextureView,
