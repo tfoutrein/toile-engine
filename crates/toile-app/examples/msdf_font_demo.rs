@@ -4,7 +4,7 @@
 /// Also demonstrates outline, drop-shadow, and animated glow.
 ///
 /// Controls: none (purely visual).
-use std::path::PathBuf;
+use std::path::Path;
 
 use glam::Vec2;
 use toile_app::{App, Game, GameContext, MsdfFontHandle, TextStyle};
@@ -25,25 +25,16 @@ impl MsdfDemo {
     }
 }
 
-// ─── Helper ──────────────────────────────────────────────────────────────────
-
-fn font_path(name: &str) -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("assets")
-        .join("fonts")
-        .join(name)
-}
-
 // ─── Game ────────────────────────────────────────────────────────────────────
 
 impl Game for MsdfDemo {
     fn init(&mut self, ctx: &mut GameContext) {
         ctx.camera.zoom = 2.0;   // Retina: 2 screen px per world unit
-        let ttf = font_path("PressStart2P.ttf");
+        let ttf = Path::new("assets/fonts/PressStart2P.ttf");
         // SDF atlas baked at 32px — will render sharply at any size
-        self.font        = Some(ctx.load_msdf_font(&ttf, 32.0));
+        self.font        = Some(ctx.load_msdf_font(ttf, 32.0));
         // Bitmap font baked at 32px — used only for the comparison row
-        self.bitmap_font = Some(ctx.load_ttf(&ttf, 32.0));
+        self.bitmap_font = Some(ctx.load_ttf(ttf, 32.0));
     }
 
     fn update(&mut self, _ctx: &mut GameContext, dt: f64) {
@@ -75,12 +66,12 @@ impl Game for MsdfDemo {
 
         // ── Multi-size rows — all from the same 32px atlas ────────────────────
         for &(size, label) in &[
-            (8.0_f32, "8px  — tiny but sharp"),
-            (12.0,    "12px — readable"),
-            (16.0,    "16px — comfortable"),
-            (24.0,    "24px — heading"),
-            (32.0,    "32px — reference"),
-            (48.0,    "48px — large title"),
+            (8.0_f32, "8px tiny"),
+            (12.0,    "12px readable"),
+            (16.0,    "16px comfortable"),
+            (24.0,    "24px heading"),
+            (32.0,    "32px reference"),
+            (48.0,    "48px large"),
         ] {
             ctx.draw_text_msdf(
                 label,
