@@ -36,6 +36,7 @@ pub struct PlatformState {
     pub coyote_timer: f32,
     pub jump_buffer_timer: f32,
     pub jumps_remaining: u32,
+    jump_consumed: bool, // prevents re-filling buffer on same press
 }
 
 /// Update a platformer entity. Returns true if the entity is on the ground.
@@ -83,15 +84,35 @@ pub fn update(
         state.coyote_timer -= dt;
     }
 
-    // Jump buffer
-    if input.jump_pressed {
+    // Jump buffer — only fill once per press
+    if input.jump_pressed && !state.jump_consumed {
         state.jump_buffer_timer = config.jump_buffer;
-    } else {
-        state.jump_buffer_timer -= dt;
+        state.jump_consumed = true;
+        log::trace!("JUMP INPUT: pressed, buffer={:.3}", state.jump_buffer_timer);
+    }
+    if !input.jump_pressed && !input.jump_down {
+        state.jump_consumed = false; // reset when key is fully released
+    }
+    state.jump_buffer_timer -= dt;
+
+    // Jump — check conditions
+    let can_jump = state.jump_buffer_timer > 0.0
+        && (state.coyote_timer > 0.0 || state.jumps_remaining > 0);
+
+    if input.jump_pressed && !can_jump {
+        log::debug!(
+            "JUMP BLOCKED: buffer={:.3}, coyote={:.3}, jumps_left={}, on_ground={}",
+            state.jump_buffer_timer, state.coyote_timer,
+            state.jumps_remaining, entity.on_ground
+        );
     }
 
-    // Jump
-    if state.jump_buffer_timer > 0.0 && (state.coyote_timer > 0.0 || state.jumps_remaining > 0) {
+    if can_jump {
+        log::debug!(
+            "JUMP! coyote={:.3}, buffer={:.3}, on_ground={}, vel_y={:.1}",
+            state.coyote_timer, state.jump_buffer_timer,
+            entity.on_ground, entity.velocity.y
+        );
         entity.velocity.y = config.jump_force;
         state.coyote_timer = 0.0;
         state.jump_buffer_timer = 0.0;
@@ -118,6 +139,7 @@ pub fn update(
     }
 
     // Move Y
+    let was_on_ground = entity.on_ground;
     entity.position.y += entity.velocity.y * dt;
     entity.on_ground = false;
     if solid_check(entity.position, half) {
@@ -126,6 +148,10 @@ pub fn update(
         }
         entity.position.y -= entity.velocity.y * dt;
         entity.velocity.y = 0.0;
+    }
+
+    if was_on_ground != entity.on_ground {
+        log::trace!("GROUND STATE: {} -> {}", was_on_ground, entity.on_ground);
     }
 }
 

@@ -103,10 +103,16 @@ impl Input {
     }
 
     /// Call at the end of each frame.
-    pub fn end_frame(&mut self) {
-        self.keys_pressed_this_frame.clear();
-        self.keys_released_this_frame.clear();
-        self.mouse_pressed_this_frame.clear();
+    /// `had_ticks`: whether any update ticks ran this frame.
+    /// If no ticks ran, we preserve just_pressed events for the next frame
+    /// so they aren't lost (important for 120Hz screens with 60Hz fixed timestep).
+    pub fn end_frame(&mut self, had_ticks: bool) {
+        if had_ticks {
+            self.keys_pressed_this_frame.clear();
+            self.keys_released_this_frame.clear();
+            self.mouse_pressed_this_frame.clear();
+        }
+        // Always clear scroll delta (it accumulates)
         self.scroll_delta = Vec2::ZERO;
     }
 

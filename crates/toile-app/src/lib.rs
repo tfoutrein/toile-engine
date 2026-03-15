@@ -445,7 +445,7 @@ impl ApplicationHandler for AppHandler {
                     }
                 }
 
-                self.input.end_frame();
+                self.input.end_frame(ticks > 0);
 
                 if let Some(window) = &self.window {
                     window.request_redraw();
