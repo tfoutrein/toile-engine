@@ -45,6 +45,10 @@ pub struct SceneSettings {
     pub camera_mode: CameraMode,
     #[serde(default)]
     pub background_image: Option<String>,
+    /// Positions of background tile instances (world-space centers).
+    /// First entry is the main tile. Click "+" in editor to add adjacent tiles.
+    #[serde(default)]
+    pub background_tiles: Vec<[f32; 2]>,
     #[serde(default)]
     pub lighting: LightingSettings,
     #[serde(default)]
@@ -68,6 +72,7 @@ impl Default for SceneSettings {
             camera_position: [0.0, 0.0],
             camera_mode: CameraMode::default(),
             background_image: None,
+            background_tiles: Vec::new(),
             lighting: LightingSettings::default(),
             post_effects: Vec::new(),
         }

@@ -1021,7 +1021,7 @@ impl Game for EditorApp {
             }
         }
 
-        // ── Background image ──────────────────────────────────────────────
+        // ── Background tiles ─────────────────────────────────────────────
         if let Some(ref bg_path) = self.scene.settings.background_image {
             // Load texture if needed
             if self.background_path_loaded != *bg_path {
@@ -1033,26 +1033,83 @@ impl Game for EditorApp {
                 }
                 self.background_path_loaded = bg_path.clone();
             }
+            // Ensure at least one tile exists
+            if self.scene.settings.background_tiles.is_empty() {
+                let cp = self.scene.settings.camera_position;
+                self.scene.settings.background_tiles.push(cp);
+            }
+            let s = &self.scene.settings;
+            let tile_w = s.viewport_width as f32 / s.camera_zoom;
+            let tile_h = s.viewport_height as f32 / s.camera_zoom;
+
             if let Some(bg_tex) = self.background_tex {
-                // Fill the viewport guide area with the background
-                let s = &self.scene.settings;
-                let vp_w = s.viewport_width as f32 / s.camera_zoom;
-                let vp_h = s.viewport_height as f32 / s.camera_zoom;
-                let vp_cx = s.camera_position[0];
-                let vp_cy = s.camera_position[1];
-                ctx.draw_sprite(Sprite {
-                    texture: bg_tex,
-                    position: Vec2::new(vp_cx, vp_cy),
-                    size: Vec2::new(vp_w, vp_h),
-                    rotation: 0.0,
-                    color: COLOR_WHITE,
-                    layer: -100,
-                    uv_min: Vec2::ZERO,
-                    uv_max: Vec2::ONE,
-                });
+                // Draw all tiles
+                for pos in &s.background_tiles {
+                    ctx.draw_sprite(Sprite {
+                        texture: bg_tex,
+                        position: Vec2::new(pos[0], pos[1]),
+                        size: Vec2::new(tile_w, tile_h),
+                        rotation: 0.0,
+                        color: COLOR_WHITE,
+                        layer: -100,
+                        uv_min: Vec2::ZERO,
+                        uv_max: Vec2::ONE,
+                    });
+                }
+
+                // Draw "+" buttons on edges of outer tiles
+                let btn_size = 16.0 / self.camera_zoom;
+                let btn_color = pack_color(80, 200, 80, 200);
+                let tiles = s.background_tiles.clone();
+                let mut new_tile: Option<[f32; 2]> = None;
+
+                for pos in &tiles {
+                    let cx = pos[0];
+                    let cy = pos[1];
+                    // Check if adjacent positions are already occupied
+                    let has_right = tiles.iter().any(|t| (t[0] - (cx + tile_w)).abs() < 1.0 && (t[1] - cy).abs() < 1.0);
+                    let has_left  = tiles.iter().any(|t| (t[0] - (cx - tile_w)).abs() < 1.0 && (t[1] - cy).abs() < 1.0);
+                    let has_up    = tiles.iter().any(|t| (t[0] - cx).abs() < 1.0 && (t[1] - (cy + tile_h)).abs() < 1.0);
+                    let has_down  = tiles.iter().any(|t| (t[0] - cx).abs() < 1.0 && (t[1] - (cy - tile_h)).abs() < 1.0);
+
+                    // Draw "+" sprites on empty edges
+                    let candidates = [
+                        (!has_right, Vec2::new(cx + tile_w * 0.5, cy), [cx + tile_w, cy]),
+                        (!has_left,  Vec2::new(cx - tile_w * 0.5, cy), [cx - tile_w, cy]),
+                        (!has_up,    Vec2::new(cx, cy + tile_h * 0.5), [cx, cy + tile_h]),
+                        (!has_down,  Vec2::new(cx, cy - tile_h * 0.5), [cx, cy - tile_h]),
+                    ];
+
+                    for (show, btn_pos, new_pos) in &candidates {
+                        if !show { continue; }
+                        // Draw the "+" marker
+                        ctx.draw_sprite(Sprite {
+                            texture: tex,
+                            position: *btn_pos,
+                            size: Vec2::splat(btn_size),
+                            rotation: 0.0,
+                            color: btn_color,
+                            layer: 98,
+                            uv_min: Vec2::ZERO,
+                            uv_max: Vec2::ONE,
+                        });
+                        // Check click
+                        let world_mouse = ctx.camera.screen_to_world(ctx.input.mouse_position());
+                        let d = (world_mouse - *btn_pos).abs();
+                        if d.x < btn_size && d.y < btn_size
+                            && ctx.input.is_mouse_just_pressed(toile_app::MouseButton::Left)
+                            && new_tile.is_none()
+                        {
+                            new_tile = Some(*new_pos);
+                        }
+                    }
+                }
+
+                if let Some(pos) = new_tile {
+                    self.scene.settings.background_tiles.push(pos);
+                }
             }
         } else {
-            // Clear cached texture when background is removed
             if !self.background_path_loaded.is_empty() {
                 self.background_tex = None;
                 self.background_path_loaded.clear();

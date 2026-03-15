@@ -664,21 +664,28 @@ impl Game for GameRunner {
             }
         }
 
-        // Render background image
+        // Render background tiles
         if let Some(bg_tex) = self.background_tex {
             let s = &self.scene_settings;
-            let vp_w = s.viewport_width as f32 / s.camera_zoom;
-            let vp_h = s.viewport_height as f32 / s.camera_zoom;
-            ctx.draw_sprite(DrawSprite {
-                texture: bg_tex,
-                position: Vec2::new(s.camera_position[0], s.camera_position[1]),
-                size: Vec2::new(vp_w, vp_h),
-                rotation: 0.0,
-                color: 0xFFFFFFFF,
-                layer: -100,
-                uv_min: Vec2::ZERO,
-                uv_max: Vec2::ONE,
-            });
+            let tile_w = s.viewport_width as f32 / s.camera_zoom;
+            let tile_h = s.viewport_height as f32 / s.camera_zoom;
+            let positions = if s.background_tiles.is_empty() {
+                vec![s.camera_position]
+            } else {
+                s.background_tiles.clone()
+            };
+            for pos in &positions {
+                ctx.draw_sprite(DrawSprite {
+                    texture: bg_tex,
+                    position: Vec2::new(pos[0], pos[1]),
+                    size: Vec2::new(tile_w, tile_h),
+                    rotation: 0.0,
+                    color: 0xFFFFFFFF,
+                    layer: -100,
+                    uv_min: Vec2::ZERO,
+                    uv_max: Vec2::ONE,
+                });
+            }
         }
 
         for ent in &self.entities {
