@@ -130,15 +130,18 @@ pub fn update(
     // Gravity
     entity.velocity.y -= config.gravity * dt;
 
-    // Move X
-    entity.position.x += entity.velocity.x * dt;
+    // Move X — use a slightly shorter hitbox (shrink bottom by 2px)
+    // to avoid detecting the surface the player is standing on
     let half = entity.size * 0.5;
-    if solid_check(entity.position, half) {
+    entity.position.x += entity.velocity.x * dt;
+    let shrunk_half = Vec2::new(half.x, half.y - 2.0);
+    let check_pos = Vec2::new(entity.position.x, entity.position.y + 1.0);
+    if solid_check(check_pos, shrunk_half) {
         entity.position.x -= entity.velocity.x * dt;
         entity.velocity.x = 0.0;
     }
 
-    // Move Y
+    // Move Y — use full hitbox
     let was_on_ground = entity.on_ground;
     entity.position.y += entity.velocity.y * dt;
     entity.on_ground = false;
