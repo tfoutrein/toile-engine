@@ -42,6 +42,68 @@ fn default_behavior_config(name: &str) -> BehaviorConfig {
     }
 }
 
+// ── Post-effect helpers for Scene Settings ──────────────────────────
+
+fn post_effect_label(fx: &toile_scene::PostEffectData) -> &'static str {
+    match fx {
+        toile_scene::PostEffectData::Vignette { .. } => "Vignette",
+        toile_scene::PostEffectData::Crt { .. } => "CRT",
+        toile_scene::PostEffectData::Pixelate { .. } => "Pixelate",
+        toile_scene::PostEffectData::Bloom { .. } => "Bloom",
+        toile_scene::PostEffectData::ColorGrading { .. } => "Color Grading",
+    }
+}
+
+fn default_post_effect(name: &str) -> toile_scene::PostEffectData {
+    match name {
+        "Vignette" => toile_scene::PostEffectData::Vignette { intensity: 0.5, smoothness: 0.5 },
+        "Bloom" => toile_scene::PostEffectData::Bloom { threshold: 0.8, intensity: 0.5, radius: 2.0 },
+        "CRT" => toile_scene::PostEffectData::Crt { scanline_intensity: 0.3, curvature: 0.02, chromatic_aberration: 0.003 },
+        "Pixelate" => toile_scene::PostEffectData::Pixelate { pixel_size: 4.0 },
+        "ColorGrading" => toile_scene::PostEffectData::ColorGrading { saturation: 1.0, brightness: 1.0, contrast: 1.0 },
+        _ => toile_scene::PostEffectData::Vignette { intensity: 0.5, smoothness: 0.5 },
+    }
+}
+
+fn post_effect_inspector(ui: &mut egui::Ui, fx: &mut toile_scene::PostEffectData, idx: usize) {
+    let grid_id = format!("fx_grid_{idx}");
+    match fx {
+        toile_scene::PostEffectData::Vignette { intensity, smoothness } => {
+            egui::Grid::new(grid_id).num_columns(2).show(ui, |ui| {
+                ui.label("Intensity"); ui.add(egui::Slider::new(intensity, 0.0..=2.0)); ui.end_row();
+                ui.label("Smoothness"); ui.add(egui::Slider::new(smoothness, 0.0..=2.0)); ui.end_row();
+            });
+        }
+        toile_scene::PostEffectData::Bloom { threshold, intensity, radius } => {
+            egui::Grid::new(grid_id).num_columns(2).show(ui, |ui| {
+                ui.label("Threshold"); ui.add(egui::Slider::new(threshold, 0.0..=1.0)); ui.end_row();
+                ui.label("Intensity"); ui.add(egui::Slider::new(intensity, 0.0..=2.0)); ui.end_row();
+                ui.label("Radius"); ui.add(egui::Slider::new(radius, 0.5..=10.0)); ui.end_row();
+            });
+        }
+        toile_scene::PostEffectData::Crt { scanline_intensity, curvature, chromatic_aberration } => {
+            egui::Grid::new(grid_id).num_columns(2).show(ui, |ui| {
+                ui.label("Scanlines"); ui.add(egui::Slider::new(scanline_intensity, 0.0..=1.0)); ui.end_row();
+                ui.label("Curvature"); ui.add(egui::Slider::new(curvature, 0.0..=0.1)); ui.end_row();
+                ui.label("Chrom. Ab."); ui.add(egui::Slider::new(chromatic_aberration, 0.0..=0.02)); ui.end_row();
+            });
+        }
+        toile_scene::PostEffectData::Pixelate { pixel_size } => {
+            ui.horizontal(|ui| {
+                ui.label("Pixel size");
+                ui.add(egui::Slider::new(pixel_size, 1.0..=32.0));
+            });
+        }
+        toile_scene::PostEffectData::ColorGrading { saturation, brightness, contrast } => {
+            egui::Grid::new(grid_id).num_columns(2).show(ui, |ui| {
+                ui.label("Saturation"); ui.add(egui::Slider::new(saturation, 0.0..=3.0)); ui.end_row();
+                ui.label("Brightness"); ui.add(egui::Slider::new(brightness, 0.0..=3.0)); ui.end_row();
+                ui.label("Contrast"); ui.add(egui::Slider::new(contrast, 0.0..=3.0)); ui.end_row();
+            });
+        }
+    }
+}
+
 fn behavior_inspector(ui: &mut egui::Ui, beh: &mut BehaviorConfig, idx: usize) {
     let grid_id = format!("beh_grid_{idx}");
     match beh {
@@ -1904,6 +1966,46 @@ impl Game for EditorApp {
                             }
                         });
 
+                    // ── Light ─────────────────────────────────────────────
+                    egui::CollapsingHeader::new(egui::RichText::new("Light").strong())
+                        .default_open(false)
+                        .show(ui, |ui| {
+                            let has_light = entity.light.is_some();
+                            let mut enabled = has_light;
+                            if ui.checkbox(&mut enabled, "Point light").changed() {
+                                if enabled && entity.light.is_none() {
+                                    entity.light = Some(toile_scene::LightData::default());
+                                } else if !enabled {
+                                    entity.light = None;
+                                }
+                            }
+                            if let Some(ref mut light) = entity.light {
+                                egui::Grid::new("light_grid").num_columns(2).show(ui, |ui| {
+                                    ui.label("Radius");
+                                    ui.add(egui::DragValue::new(&mut light.radius).speed(1.0).range(1.0..=2000.0));
+                                    ui.end_row();
+                                    ui.label("Falloff");
+                                    ui.add(egui::DragValue::new(&mut light.falloff).speed(0.1).range(0.1..=10.0));
+                                    ui.end_row();
+                                    ui.label("Intensity");
+                                    ui.add(egui::DragValue::new(&mut light.intensity).speed(0.05).range(0.0..=10.0));
+                                    ui.end_row();
+                                    ui.label("Color R");
+                                    ui.add(egui::Slider::new(&mut light.color[0], 0.0..=1.0));
+                                    ui.end_row();
+                                    ui.label("Color G");
+                                    ui.add(egui::Slider::new(&mut light.color[1], 0.0..=1.0));
+                                    ui.end_row();
+                                    ui.label("Color B");
+                                    ui.add(egui::Slider::new(&mut light.color[2], 0.0..=1.0));
+                                    ui.end_row();
+                                    ui.label("Shadows");
+                                    ui.checkbox(&mut light.cast_shadow, "Cast shadow");
+                                    ui.end_row();
+                                });
+                            }
+                        });
+
                     // ── Delete button ─────────────────────────────────────
                     ui.add_space(12.0);
                     if ui.button(egui::RichText::new("Delete Entity").color(egui::Color32::from_rgb(255, 80, 80))).clicked() {
@@ -1955,6 +2057,57 @@ impl Game for EditorApp {
                         ui.add(egui::Slider::new(&mut s.clear_color[2], 0.0..=1.0));
                         ui.end_row();
                     });
+
+                    // ── Lighting ──
+                    ui.add_space(8.0);
+                    ui.label(egui::RichText::new("Lighting").strong());
+                    ui.separator();
+                    ui.checkbox(&mut s.lighting.enabled, "Enable lighting");
+                    if s.lighting.enabled {
+                        egui::Grid::new("lighting_grid").num_columns(2).show(ui, |ui| {
+                            ui.label("Ambient R");
+                            ui.add(egui::Slider::new(&mut s.lighting.ambient[0], 0.0..=1.0));
+                            ui.end_row();
+                            ui.label("Ambient G");
+                            ui.add(egui::Slider::new(&mut s.lighting.ambient[1], 0.0..=1.0));
+                            ui.end_row();
+                            ui.label("Ambient B");
+                            ui.add(egui::Slider::new(&mut s.lighting.ambient[2], 0.0..=1.0));
+                            ui.end_row();
+                            ui.label("Ambient Int");
+                            ui.add(egui::Slider::new(&mut s.lighting.ambient[3], 0.0..=2.0));
+                            ui.end_row();
+                        });
+                        ui.checkbox(&mut s.lighting.shadows_enabled, "Enable shadows");
+                    }
+
+                    // ── Post-Processing ──
+                    ui.add_space(8.0);
+                    ui.label(egui::RichText::new("Post-Processing").strong());
+                    ui.separator();
+                    let mut remove_fx: Option<usize> = None;
+                    for (i, fx) in s.post_effects.iter_mut().enumerate() {
+                        ui.horizontal(|ui| {
+                            ui.label(post_effect_label(fx));
+                            if ui.small_button("x").clicked() { remove_fx = Some(i); }
+                        });
+                        post_effect_inspector(ui, fx, i);
+                        ui.separator();
+                    }
+                    if let Some(idx) = remove_fx { s.post_effects.remove(idx); }
+                    let mut add_fx = String::new();
+                    egui::ComboBox::from_id_salt("add_fx")
+                        .selected_text("+ Add Effect")
+                        .show_ui(ui, |ui| {
+                            for name in &["Vignette", "Bloom", "CRT", "Pixelate", "ColorGrading"] {
+                                if ui.selectable_label(false, *name).clicked() {
+                                    add_fx = name.to_string();
+                                }
+                            }
+                        });
+                    if !add_fx.is_empty() {
+                        s.post_effects.push(default_post_effect(&add_fx));
+                    }
                 });
             if !open { self.show_scene_settings = false; }
         }

@@ -551,6 +551,49 @@ impl Game for GameRunner {
             None => return,
         };
 
+        // ── Apply lighting from scene settings + entity lights ───────────
+        let ls = &self.scene_settings.lighting;
+        if ls.enabled {
+            ctx.lighting.enabled = true;
+            ctx.lighting.ambient = ls.ambient;
+            ctx.lighting.shadow.enabled = ls.shadows_enabled;
+            ctx.lighting.lights.clear();
+            for ent in &self.entities {
+                if !ent.alive { continue; }
+                if let Some(ref light) = ent.data.light {
+                    ctx.lighting.lights.push(toile_app::Light {
+                        position: ent.es.position,
+                        radius: light.radius,
+                        falloff: light.falloff,
+                        color: light.color,
+                        intensity: light.intensity,
+                        cast_shadow: light.cast_shadow,
+                    });
+                }
+            }
+        }
+
+        // ── Apply post-processing from scene settings ────────────────────
+        if !self.scene_settings.post_effects.is_empty() {
+            ctx.post_processing.enabled = true;
+            ctx.post_processing.effects.clear();
+            for fx in &self.scene_settings.post_effects {
+                let effect = match fx {
+                    toile_scene::PostEffectData::Vignette { intensity, smoothness } =>
+                        toile_app::PostEffect::Vignette { intensity: *intensity, smoothness: *smoothness },
+                    toile_scene::PostEffectData::Crt { scanline_intensity, curvature, chromatic_aberration } =>
+                        toile_app::PostEffect::Crt { scanline_intensity: *scanline_intensity, curvature: *curvature, chromatic_aberration: *chromatic_aberration },
+                    toile_scene::PostEffectData::Pixelate { pixel_size } =>
+                        toile_app::PostEffect::Pixelate { pixel_size: *pixel_size },
+                    toile_scene::PostEffectData::Bloom { threshold, intensity, radius } =>
+                        toile_app::PostEffect::Bloom { threshold: *threshold, intensity: *intensity, radius: *radius },
+                    toile_scene::PostEffectData::ColorGrading { saturation, brightness, contrast } =>
+                        toile_app::PostEffect::ColorGrading { saturation: *saturation, brightness: *brightness, contrast: *contrast },
+                };
+                ctx.post_processing.effects.push(effect);
+            }
+        }
+
         for ent in &self.entities {
             if !ent.alive || !ent.data.visible { continue; }
 

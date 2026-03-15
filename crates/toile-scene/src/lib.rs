@@ -41,6 +41,10 @@ pub struct SceneSettings {
     pub camera_zoom: f32,
     #[serde(default)]
     pub camera_position: [f32; 2],
+    #[serde(default)]
+    pub lighting: LightingSettings,
+    #[serde(default)]
+    pub post_effects: Vec<PostEffectData>,
 }
 
 fn default_gravity() -> f32 { 800.0 }
@@ -58,6 +62,8 @@ impl Default for SceneSettings {
             clear_color: default_clear_color(),
             camera_zoom: default_camera_zoom(),
             camera_position: [0.0, 0.0],
+            lighting: LightingSettings::default(),
+            post_effects: Vec::new(),
         }
     }
 }
@@ -68,6 +74,62 @@ impl Default for SceneSettings {
 pub enum ColliderData {
     Aabb { half_w: f32, half_h: f32 },
     Circle { radius: f32 },
+}
+
+/// Point light data attached to an entity.
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct LightData {
+    #[serde(default = "default_light_radius")]
+    pub radius: f32,
+    #[serde(default = "default_light_falloff")]
+    pub falloff: f32,
+    #[serde(default = "default_light_color")]
+    pub color: [f32; 3],
+    #[serde(default = "default_light_intensity")]
+    pub intensity: f32,
+    #[serde(default)]
+    pub cast_shadow: bool,
+}
+
+fn default_light_radius() -> f32 { 150.0 }
+fn default_light_falloff() -> f32 { 2.0 }
+fn default_light_color() -> [f32; 3] { [1.0, 1.0, 1.0] }
+fn default_light_intensity() -> f32 { 1.0 }
+
+impl Default for LightData {
+    fn default() -> Self {
+        Self {
+            radius: default_light_radius(),
+            falloff: default_light_falloff(),
+            color: default_light_color(),
+            intensity: default_light_intensity(),
+            cast_shadow: false,
+        }
+    }
+}
+
+/// Lighting settings for the scene.
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+pub struct LightingSettings {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default = "default_ambient")]
+    pub ambient: [f32; 4],
+    #[serde(default)]
+    pub shadows_enabled: bool,
+}
+
+fn default_ambient() -> [f32; 4] { [0.1, 0.1, 0.15, 1.0] }
+
+/// Post-processing effect entry (serializable subset).
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(tag = "type")]
+pub enum PostEffectData {
+    Vignette { intensity: f32, smoothness: f32 },
+    Crt { scanline_intensity: f32, curvature: f32, chromatic_aberration: f32 },
+    Pixelate { pixel_size: f32 },
+    Bloom { threshold: f32, intensity: f32, radius: f32 },
+    ColorGrading { saturation: f32, brightness: f32, contrast: f32 },
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -123,6 +185,8 @@ pub struct EntityData {
     pub event_sheet: Option<String>,
     #[serde(default)]
     pub particle_emitter: Option<String>,
+    #[serde(default)]
+    pub light: Option<LightData>,
     #[serde(default = "default_visible")]
     pub visible: bool,
 }
@@ -148,6 +212,7 @@ impl Default for EntityData {
             collider: None,
             event_sheet: None,
             particle_emitter: None,
+            light: None,
             visible: true,
         }
     }
@@ -170,22 +235,8 @@ impl SceneData {
         self.entities.push(EntityData {
             id,
             name: name.to_string(),
-            x,
-            y,
-            rotation: 0.0,
-            scale_x: 1.0,
-            scale_y: 1.0,
-            layer: 0,
-            sprite_path: String::new(),
-            width: 32.0,
-            height: 32.0,
-            behaviors: Vec::new(),
-            tags: Vec::new(),
-            variables: HashMap::new(),
-            collider: None,
-            event_sheet: None,
-            particle_emitter: None,
-            visible: true,
+            x, y,
+            ..Default::default()
         });
         id
     }
