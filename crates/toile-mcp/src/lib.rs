@@ -323,6 +323,66 @@ impl ToileMcpServer {
                 }
             }
 
+            "create_prefab" => {
+                let sp = Self::get_str(args, "scene_path").unwrap_or("scene.json");
+                let eid = Self::get_u64(args, "entity_id").unwrap_or(0);
+                let pname = Self::get_str(args, "prefab_name").unwrap_or("prefab");
+                match self.load(sp) {
+                    Ok((_, scene)) => {
+                        if let Some(entity) = scene.entities.iter().find(|e| e.id == eid) {
+                            let prefab = toile_scene::prefab::Prefab::from_entity(pname, entity);
+                            let prefab_dir = self.project_dir.join("prefabs");
+                            let _ = std::fs::create_dir_all(&prefab_dir);
+                            let path = prefab_dir.join(format!("{pname}.prefab.json"));
+                            toile_scene::prefab::save_prefab(&path, &prefab)
+                                .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+                            Ok(success_text(serde_json::json!({"created_prefab": pname, "path": path.display().to_string()})))
+                        } else {
+                            let ids: Vec<u64> = scene.entities.iter().map(|e| e.id).collect();
+                            Ok(error_text("ENTITY_NOT_FOUND", &format!("Entity {eid} not found"), Some(&format!("Available: {ids:?}"))))
+                        }
+                    }
+                    Err(e) => Ok(error_text("LOAD_FAILED", &e, None)),
+                }
+            }
+
+            "list_prefabs" => {
+                let prefab_dir = self.project_dir.join("prefabs");
+                let prefabs = toile_scene::prefab::list_prefabs(&prefab_dir)
+                    .unwrap_or_default()
+                    .iter()
+                    .filter_map(|p| p.file_stem().map(|n| n.to_string_lossy().replace(".prefab", "")))
+                    .collect::<Vec<_>>();
+                Ok(success_text(prefabs))
+            }
+
+            "instantiate_prefab" => {
+                let sp = Self::get_str(args, "scene_path").unwrap_or("scene.json");
+                let pname = Self::get_str(args, "prefab_name").unwrap_or("prefab");
+                let x = Self::get_f32(args, "x").unwrap_or(0.0);
+                let y = Self::get_f32(args, "y").unwrap_or(0.0);
+                let prefab_path = self.project_dir.join("prefabs").join(format!("{pname}.prefab.json"));
+                match toile_scene::prefab::load_prefab(&prefab_path) {
+                    Ok(prefab) => {
+                        match self.load(sp) {
+                            Ok((path, mut scene)) => {
+                                let mut overrides = std::collections::HashMap::new();
+                                overrides.insert("x".into(), serde_json::json!(x));
+                                overrides.insert("y".into(), serde_json::json!(y));
+                                let id = scene.next_id;
+                                scene.next_id += 1;
+                                let instance = prefab.instantiate(id, &overrides);
+                                scene.entities.push(instance);
+                                self.save(&path, &scene).map_err(|e| McpError::internal_error(e, None))?;
+                                Ok(success_text(serde_json::json!({"instantiated": pname, "id": id, "x": x, "y": y})))
+                            }
+                            Err(e) => Ok(error_text("LOAD_FAILED", &e, None)),
+                        }
+                    }
+                    Err(e) => Ok(error_text("PREFAB_NOT_FOUND", &format!("{pname}: {e}"), Some("Use list_prefabs to see available prefabs"))),
+                }
+            }
+
             _ => Ok(error_text("UNKNOWN_TOOL", &format!("Unknown: {name}"), Some("Use tools/list"))),
         }
     }
@@ -368,6 +428,10 @@ impl ServerHandler for ToileMcpServer {
             make_tool("set_tile", "Set a tile in the tilemap", serde_json::json!({"type": "object", "properties": {"scene_path": {"type": "string"}, "layer": {"type": "integer", "description": "Layer index (0-based)"}, "col": {"type": "integer"}, "row": {"type": "integer"}, "gid": {"type": "integer", "description": "Tile GID (0=empty)"}}, "required": ["scene_path", "col", "row", "gid"]})),
             make_tool("fill_rect", "Fill a rectangle of tiles", serde_json::json!({"type": "object", "properties": {"scene_path": {"type": "string"}, "layer": {"type": "integer"}, "col": {"type": "integer"}, "row": {"type": "integer"}, "width": {"type": "integer"}, "height": {"type": "integer"}, "gid": {"type": "integer"}}, "required": ["scene_path", "col", "row", "width", "height", "gid"]})),
             make_tool("get_tile", "Get the tile GID at a position", serde_json::json!({"type": "object", "properties": {"scene_path": {"type": "string"}, "layer": {"type": "integer"}, "col": {"type": "integer"}, "row": {"type": "integer"}}, "required": ["scene_path", "col", "row"]})),
+            // v0.3 prefab tools
+            make_tool("create_prefab", "Save an entity as a reusable prefab", serde_json::json!({"type": "object", "properties": {"scene_path": {"type": "string"}, "entity_id": {"type": "integer"}, "prefab_name": {"type": "string"}}, "required": ["scene_path", "entity_id", "prefab_name"]})),
+            make_tool("list_prefabs", "List all prefab files in the project", serde_json::json!({"type": "object", "properties": {}})),
+            make_tool("instantiate_prefab", "Create an entity from a prefab", serde_json::json!({"type": "object", "properties": {"scene_path": {"type": "string"}, "prefab_name": {"type": "string"}, "x": {"type": "number"}, "y": {"type": "number"}}, "required": ["scene_path", "prefab_name", "x", "y"]})),
         ];
         std::future::ready(Ok(ListToolsResult { tools, ..Default::default() }))
     }

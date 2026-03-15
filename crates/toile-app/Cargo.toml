@@ -17,6 +17,8 @@ toile-scripting = { workspace = true }
 toile-physics = { workspace = true }
 toile-events = { workspace = true }
 toile-behaviors = { workspace = true }
+toile-scene = { workspace = true }
+serde_json = { workspace = true }
 glam = { workspace = true }
 wgpu = { workspace = true }
 winit = { workspace = true }
