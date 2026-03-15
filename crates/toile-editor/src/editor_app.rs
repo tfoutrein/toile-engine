@@ -2288,8 +2288,22 @@ impl Game for EditorApp {
                             ui.end_row();
 
                             ui.label("Sprite");
-                            ui.text_edit_singleline(&mut entity.sprite_path);
-                            ui.label("");
+                            ui.add_sized([120.0, 18.0], egui::TextEdit::singleline(&mut entity.sprite_path));
+                            if ui.small_button("Browse").clicked() {
+                                if let Some(file) = rfd::FileDialog::new()
+                                    .set_title("Select Sprite Image")
+                                    .add_filter("Images", &["png", "jpg", "jpeg", "bmp"])
+                                    .pick_file()
+                                {
+                                    entity.sprite_path = if let Some(ref pd) = pdir {
+                                        file.strip_prefix(pd)
+                                            .map(|p| p.to_string_lossy().to_string())
+                                            .unwrap_or_else(|_| file.to_string_lossy().to_string())
+                                    } else {
+                                        file.to_string_lossy().to_string()
+                                    };
+                                }
+                            }
                             ui.label("");
                             ui.end_row();
                         });
