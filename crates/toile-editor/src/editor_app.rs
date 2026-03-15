@@ -2,6 +2,7 @@ use std::path::Path;
 
 use glam::Vec2;
 use toile_app::{App, Game, GameContext, Key, Sprite, TextureHandle, COLOR_WHITE};
+use toile_graphics::sprite_renderer::DrawSprite;
 use toile_core::color::Color;
 use toile_graphics::sprite_renderer::pack_color;
 use winit::event::WindowEvent;
@@ -22,6 +23,9 @@ pub struct EditorApp {
     camera_zoom: f32,
     dragging: Option<u64>,
     drag_offset: Vec2,
+    resizing: Option<ResizeHandle>,
+    resize_start_size: Vec2,
+    resize_start_mouse: Vec2,
     show_grid: bool,
     status_msg: String,
     current_file: String,
@@ -40,6 +44,14 @@ pub struct EditorApp {
 pub enum EditorMode {
     Entity,
     Tilemap,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum ResizeHandle {
+    TopRight,
+    BottomRight,
+    BottomLeft,
+    TopLeft,
 }
 
 impl EditorApp {
@@ -64,6 +76,9 @@ impl EditorApp {
             camera_zoom: 1.0,
             dragging: None,
             drag_offset: Vec2::ZERO,
+            resizing: None,
+            resize_start_size: Vec2::ZERO,
+            resize_start_mouse: Vec2::ZERO,
             show_grid: true,
             status_msg: "Ready".to_string(),
             current_file: "scene.json".to_string(),
@@ -285,43 +300,78 @@ impl Game for EditorApp {
         ctx.camera.position = self.camera_pos;
         ctx.camera.zoom = self.camera_zoom;
 
-        // Entity selection and drag in Entity mode
+        // Entity selection, drag, and resize in Entity mode
         if self.editor_mode == EditorMode::Entity {
             let world_pos = ctx.camera.screen_to_world(ctx.input.mouse_position());
+            let handle_size = 8.0 / self.camera_zoom; // handle size in world units
 
-            // Start drag: detect transition from mouse-up to mouse-down
-            if ctx.input.is_mouse_down(toile_app::MouseButton::Left) && self.dragging.is_none() {
-                // First frame of mouse down — try to pick an entity
-                let mut clicked_id = None;
-                // Iterate in reverse so topmost entities (drawn last) are picked first
-                for entity in self.scene.entities.iter().rev() {
-                    let hw = entity.width * entity.scale_x * 0.5;
-                    let hh = entity.height * entity.scale_y * 0.5;
-                    if world_pos.x >= entity.x - hw
-                        && world_pos.x <= entity.x + hw
-                        && world_pos.y >= entity.y - hh
-                        && world_pos.y <= entity.y + hh
-                    {
-                        clicked_id = Some(entity.id);
-                        break;
+            // Start interaction: detect transition from mouse-up to mouse-down
+            if ctx.input.is_mouse_down(toile_app::MouseButton::Left)
+                && self.dragging.is_none()
+                && self.resizing.is_none()
+            {
+                // First check: are we clicking on a resize handle of the selected entity?
+                let mut hit_handle = None;
+                if let Some(sel_id) = self.selected_id {
+                    if let Some(entity) = self.scene.entities.iter().find(|e| e.id == sel_id) {
+                        let hw = entity.width * entity.scale_x * 0.5;
+                        let hh = entity.height * entity.scale_y * 0.5;
+                        let corners = [
+                            (Vec2::new(entity.x + hw, entity.y + hh), ResizeHandle::TopRight),
+                            (Vec2::new(entity.x + hw, entity.y - hh), ResizeHandle::BottomRight),
+                            (Vec2::new(entity.x - hw, entity.y - hh), ResizeHandle::BottomLeft),
+                            (Vec2::new(entity.x - hw, entity.y + hh), ResizeHandle::TopLeft),
+                        ];
+                        for (corner, handle) in &corners {
+                            if (world_pos - *corner).length() < handle_size * 1.5 {
+                                hit_handle = Some(*handle);
+                                break;
+                            }
+                        }
                     }
                 }
 
-                if let Some(id) = clicked_id {
-                    self.selected_id = Some(id);
-                    if let Some(entity) = self.scene.entities.iter().find(|e| e.id == id) {
-                        self.drag_offset = Vec2::new(entity.x - world_pos.x, entity.y - world_pos.y);
+                if let Some(handle) = hit_handle {
+                    // Start resize
+                    self.resizing = Some(handle);
+                    self.resize_start_mouse = world_pos;
+                    if let Some(sel_id) = self.selected_id {
+                        if let Some(entity) = self.scene.entities.iter().find(|e| e.id == sel_id) {
+                            self.resize_start_size = Vec2::new(entity.width, entity.height);
+                        }
                     }
-                    self.dragging = Some(id);
-                    self.status_msg = format!("Selected entity {id}");
                 } else {
-                    self.selected_id = None;
-                    // Use a sentinel to prevent re-picking every frame while held
-                    self.dragging = Some(u64::MAX);
+                    // Try to pick an entity for drag
+                    let mut clicked_id = None;
+                    for entity in self.scene.entities.iter().rev() {
+                        let hw = entity.width * entity.scale_x * 0.5;
+                        let hh = entity.height * entity.scale_y * 0.5;
+                        if world_pos.x >= entity.x - hw
+                            && world_pos.x <= entity.x + hw
+                            && world_pos.y >= entity.y - hh
+                            && world_pos.y <= entity.y + hh
+                        {
+                            clicked_id = Some(entity.id);
+                            break;
+                        }
+                    }
+
+                    if let Some(id) = clicked_id {
+                        self.selected_id = Some(id);
+                        if let Some(entity) = self.scene.entities.iter().find(|e| e.id == id) {
+                            self.drag_offset =
+                                Vec2::new(entity.x - world_pos.x, entity.y - world_pos.y);
+                        }
+                        self.dragging = Some(id);
+                        self.status_msg = format!("Selected entity {id}");
+                    } else {
+                        self.selected_id = None;
+                        self.dragging = Some(u64::MAX); // sentinel
+                    }
                 }
             }
 
-            // Continue drag: move entity with mouse
+            // Continue drag
             if ctx.input.is_mouse_down(toile_app::MouseButton::Left) {
                 if let Some(drag_id) = self.dragging {
                     if drag_id != u64::MAX {
@@ -331,11 +381,29 @@ impl Game for EditorApp {
                         }
                     }
                 }
+
+                // Continue resize
+                if let Some(handle) = self.resizing {
+                    if let Some(sel_id) = self.selected_id {
+                        let delta = world_pos - self.resize_start_mouse;
+                        let (dx, dy) = match handle {
+                            ResizeHandle::TopRight => (delta.x, delta.y),
+                            ResizeHandle::BottomRight => (delta.x, -delta.y),
+                            ResizeHandle::BottomLeft => (-delta.x, -delta.y),
+                            ResizeHandle::TopLeft => (-delta.x, delta.y),
+                        };
+                        if let Some(entity) = self.scene.find_entity_mut(sel_id) {
+                            entity.width = (self.resize_start_size.x + dx * 2.0).max(4.0);
+                            entity.height = (self.resize_start_size.y + dy * 2.0).max(4.0);
+                        }
+                    }
+                }
             }
 
-            // End drag on mouse release
+            // End drag/resize on mouse release
             if !ctx.input.is_mouse_down(toile_app::MouseButton::Left) {
                 self.dragging = None;
+                self.resizing = None;
             }
         }
 
@@ -500,23 +568,49 @@ impl Game for EditorApp {
                 uv_max: Vec2::ONE,
             });
 
-            // Selection outline
+            // Selection outline + resize handles
             if selected {
-                let outline = pack_color(255, 255, 100, 255);
-                let w = entity.width * entity.scale_x + 4.0;
-                let h = entity.height * entity.scale_y + 4.0;
+                let hw = entity.width * entity.scale_x * 0.5;
+                let hh = entity.height * entity.scale_y * 0.5;
+                let ow = hw + 2.0; // outline half-width
+                let oh = hh + 2.0;
                 let thickness = 2.0 / self.camera_zoom;
-                // Top
-                ctx.draw_sprite(Sprite::new(tex, Vec2::new(entity.x, entity.y + h / 2.0), Vec2::new(w, thickness)));
-                // Bottom
-                ctx.draw_sprite(Sprite::new(tex, Vec2::new(entity.x, entity.y - h / 2.0), Vec2::new(w, thickness)));
-                // Left
-                ctx.draw_sprite(Sprite::new(tex, Vec2::new(entity.x - w / 2.0, entity.y), Vec2::new(thickness, h)));
-                // Right
-                ctx.draw_sprite(Sprite::new(tex, Vec2::new(entity.x + w / 2.0, entity.y), Vec2::new(thickness, h)));
-                // Set color on last 4 sprites
-                let len = ctx.stats.sprite_count; // approximate
-                // (outline sprites use default white color from Sprite::new — that's fine for now)
+                let handle_size = 8.0 / self.camera_zoom;
+                let outline_color = pack_color(255, 255, 100, 200);
+                let handle_color = pack_color(255, 255, 255, 255);
+
+                // Outline edges
+                for sprite in [
+                    Sprite::new(tex, Vec2::new(entity.x, entity.y + oh), Vec2::new(ow * 2.0, thickness)),
+                    Sprite::new(tex, Vec2::new(entity.x, entity.y - oh), Vec2::new(ow * 2.0, thickness)),
+                    Sprite::new(tex, Vec2::new(entity.x - ow, entity.y), Vec2::new(thickness, oh * 2.0)),
+                    Sprite::new(tex, Vec2::new(entity.x + ow, entity.y), Vec2::new(thickness, oh * 2.0)),
+                ] {
+                    let mut s = sprite;
+                    s.color = outline_color;
+                    s.layer = 90;
+                    ctx.draw_sprite(s);
+                }
+
+                // Resize handles at 4 corners
+                let corners = [
+                    Vec2::new(entity.x + hw, entity.y + hh),
+                    Vec2::new(entity.x + hw, entity.y - hh),
+                    Vec2::new(entity.x - hw, entity.y - hh),
+                    Vec2::new(entity.x - hw, entity.y + hh),
+                ];
+                for corner in corners {
+                    ctx.draw_sprite(DrawSprite {
+                        texture: tex,
+                        position: corner,
+                        size: Vec2::splat(handle_size),
+                        rotation: 0.0,
+                        color: handle_color,
+                        layer: 91,
+                        uv_min: Vec2::ZERO,
+                        uv_max: Vec2::ONE,
+                    });
+                }
             }
         }
     }
