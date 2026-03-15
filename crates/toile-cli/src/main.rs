@@ -4,6 +4,7 @@ use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
 use toile_scene::{SceneData, load_scene, save_scene};
+use toile_editor::editor_app::run_editor;
 
 #[derive(Parser)]
 #[command(name = "toile", about = "Toile Engine CLI", version)]
@@ -22,6 +23,8 @@ enum Commands {
         #[arg(short, long, default_value = "empty")]
         template: String,
     },
+    /// Launch the visual editor
+    Editor,
     /// List available project templates
     Templates,
     /// List entities in a scene file
@@ -46,6 +49,8 @@ fn main() {
     let cli = Cli::parse();
 
     match cli.command {
+        Commands::Editor => run_editor(),
+
         Commands::New { name, template } => {
             if !templates::TEMPLATES.contains(&template.as_str()) {
                 eprintln!(

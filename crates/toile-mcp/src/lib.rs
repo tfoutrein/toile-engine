@@ -11,6 +11,7 @@ use rmcp::service::RequestContext;
 use rmcp::{Error as McpError, RoleServer, ServerHandler};
 use serde::Serialize;
 use toile_scene::SceneData;
+use toile_core::particles::{ParticleEmitter, presets};
 
 #[derive(Clone)]
 pub struct ToileMcpServer {
@@ -383,6 +384,123 @@ impl ToileMcpServer {
                 }
             }
 
+            // ── v0.4 particle tools ──────────────────────────────────────────────
+
+            "list_particle_presets" => {
+                Ok(success_text(serde_json::json!([
+                    {"name": "Fire",      "description": "Upward fire, orange/yellow gradient, rate 120"},
+                    {"name": "Smoke",     "description": "Rising smoke that grows over lifetime, rate 30"},
+                    {"name": "Sparks",    "description": "Fast radial sparks, short lifetime, rate 150"},
+                    {"name": "Rain",      "description": "Downward rainfall from a 800px line emitter, rate 200"},
+                    {"name": "Snow",      "description": "Gently falling snowflakes with rotation, rate 80"},
+                    {"name": "Dust",      "description": "Small dust puff from rectangle area, rate 20"},
+                    {"name": "Explosion", "description": "Burst of 100 particles, no continuous emission"},
+                    {"name": "Confetti",  "description": "Colorful confetti with rotation, rate 50"},
+                ])))
+            }
+
+            "list_particle_emitters" => {
+                let dir = self.project_dir.join("particles");
+                let files: Vec<String> = std::fs::read_dir(&dir)
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|e| e.ok())
+                    .filter(|e| e.path().extension().is_some_and(|x| x == "json"))
+                    .filter_map(|e| e.file_name().into_string().ok())
+                    .collect();
+                Ok(success_text(files))
+            }
+
+            "create_particle_emitter" => {
+                let preset = Self::get_str(args, "preset").unwrap_or("Fire");
+                let raw_name = Self::get_str(args, "filename").unwrap_or("custom");
+                let fname = if raw_name.ends_with(".particles.json") {
+                    raw_name.to_string()
+                } else {
+                    format!("{raw_name}.particles.json")
+                };
+                let dir = self.project_dir.join("particles");
+                let path = dir.join(&fname);
+                if path.exists() {
+                    return Ok(error_text("FILE_EXISTS", &format!("'{fname}' already exists"),
+                        Some("Use get_particle_emitter to read it or update_particle_emitter to modify")));
+                }
+                let emitter = match preset {
+                    "Fire"      => presets::fire(),
+                    "Smoke"     => presets::smoke(),
+                    "Sparks"    => presets::sparks(),
+                    "Rain"      => presets::rain(),
+                    "Snow"      => presets::snow(),
+                    "Dust"      => presets::dust(),
+                    "Explosion" => presets::explosion(),
+                    "Confetti"  => presets::confetti(),
+                    _ => ParticleEmitter::default(),
+                };
+                let _ = std::fs::create_dir_all(&dir);
+                let json = serde_json::to_string_pretty(&emitter)
+                    .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+                std::fs::write(&path, &json)
+                    .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+                Ok(success_text(serde_json::json!({
+                    "created": fname,
+                    "preset": preset,
+                    "path": path.display().to_string(),
+                })))
+            }
+
+            "get_particle_emitter" => {
+                let raw_name = Self::get_str(args, "filename").unwrap_or("custom.particles.json");
+                let fname = if raw_name.ends_with(".particles.json") {
+                    raw_name.to_string()
+                } else {
+                    format!("{raw_name}.particles.json")
+                };
+                let path = self.project_dir.join("particles").join(&fname);
+                match std::fs::read_to_string(&path) {
+                    Ok(s) => {
+                        match serde_json::from_str::<ParticleEmitter>(&s) {
+                            Ok(emitter) => Ok(success_text(&emitter)),
+                            Err(e) => Ok(error_text("PARSE_ERROR", &format!("{fname}: {e}"), None)),
+                        }
+                    }
+                    Err(_) => Ok(error_text("NOT_FOUND", &format!("'{fname}' not found"),
+                        Some("Use list_particle_emitters or create_particle_emitter first"))),
+                }
+            }
+
+            "update_particle_emitter" => {
+                let raw_name = Self::get_str(args, "filename").unwrap_or("custom.particles.json");
+                let fname = if raw_name.ends_with(".particles.json") {
+                    raw_name.to_string()
+                } else {
+                    format!("{raw_name}.particles.json")
+                };
+                let path = self.project_dir.join("particles").join(&fname);
+                let existing = std::fs::read_to_string(&path)
+                    .unwrap_or_else(|_| serde_json::to_string(&ParticleEmitter::default()).unwrap());
+                let mut base: serde_json::Value = serde_json::from_str(&existing)
+                    .unwrap_or(serde_json::json!({}));
+                // Merge "patch" object over the existing JSON
+                if let Some(patch) = args.get("patch") {
+                    if let (
+                        serde_json::Value::Object(b),
+                        serde_json::Value::Object(p),
+                    ) = (&mut base, patch)
+                    {
+                        for (k, v) in p { b.insert(k.clone(), v.clone()); }
+                    }
+                }
+                // Validate the result can round-trip to ParticleEmitter
+                let emitter: ParticleEmitter = serde_json::from_value(base)
+                    .map_err(|e| McpError::internal_error(format!("Invalid emitter data: {e}"), None))?;
+                let _ = std::fs::create_dir_all(path.parent().unwrap());
+                let json = serde_json::to_string_pretty(&emitter)
+                    .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+                std::fs::write(&path, &json)
+                    .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+                Ok(success_text(serde_json::json!({"updated": fname})))
+            }
+
             _ => Ok(error_text("UNKNOWN_TOOL", &format!("Unknown: {name}"), Some("Use tools/list"))),
         }
     }
@@ -432,6 +550,12 @@ impl ServerHandler for ToileMcpServer {
             make_tool("create_prefab", "Save an entity as a reusable prefab", serde_json::json!({"type": "object", "properties": {"scene_path": {"type": "string"}, "entity_id": {"type": "integer"}, "prefab_name": {"type": "string"}}, "required": ["scene_path", "entity_id", "prefab_name"]})),
             make_tool("list_prefabs", "List all prefab files in the project", serde_json::json!({"type": "object", "properties": {}})),
             make_tool("instantiate_prefab", "Create an entity from a prefab", serde_json::json!({"type": "object", "properties": {"scene_path": {"type": "string"}, "prefab_name": {"type": "string"}, "x": {"type": "number"}, "y": {"type": "number"}}, "required": ["scene_path", "prefab_name", "x", "y"]})),
+            // v0.4 particle tools
+            make_tool("list_particle_presets", "List built-in particle presets (Fire, Smoke, Sparks, Rain, Snow, Dust, Explosion, Confetti)", serde_json::json!({"type": "object", "properties": {}})),
+            make_tool("list_particle_emitters", "List saved .particles.json files in the project", serde_json::json!({"type": "object", "properties": {}})),
+            make_tool("create_particle_emitter", "Create a particle emitter config from a preset", serde_json::json!({"type": "object", "properties": {"filename": {"type": "string", "description": "Output filename (without .particles.json)"}, "preset": {"type": "string", "description": "Preset name: Fire|Smoke|Sparks|Rain|Snow|Dust|Explosion|Confetti"}}, "required": ["filename"]})),
+            make_tool("get_particle_emitter", "Read and return a particle emitter config", serde_json::json!({"type": "object", "properties": {"filename": {"type": "string", "description": "Filename (with or without .particles.json)"}}, "required": ["filename"]})),
+            make_tool("update_particle_emitter", "Merge-update fields of a particle emitter config", serde_json::json!({"type": "object", "properties": {"filename": {"type": "string"}, "patch": {"type": "object", "description": "Fields to override (e.g. {\"rate\": 200, \"blend_mode\": \"Additive\"})"}}, "required": ["filename", "patch"]})),
         ];
         std::future::ready(Ok(ListToolsResult { tools, ..Default::default() }))
     }

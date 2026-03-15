@@ -11,6 +11,7 @@ path = "src/main.rs"
 
 [dependencies]
 toile-scene = { workspace = true }
+toile-editor = { workspace = true }
 toile-behaviors = { workspace = true }
 clap = { workspace = true }
 serde = { workspace = true }

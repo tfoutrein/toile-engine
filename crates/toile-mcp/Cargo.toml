@@ -11,6 +11,7 @@ path = "src/bin/server.rs"
 
 [dependencies]
 toile-scene = { workspace = true }
+toile-core = { path = "../toile-core", features = ["serde"] }
 rmcp = { workspace = true }
 tokio = { workspace = true }
 serde = { workspace = true }
