@@ -16,15 +16,17 @@ struct VsOut { @builtin(position) pos: vec4<f32>, @location(0) uv: vec2<f32> };
 @fragment fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
     var c = textureSample(t_screen, s_screen, in.uv);
 
+    // Saturation first (pure relative op — works in linear or sRGB)
+    let lum = dot(c.rgb, vec3<f32>(0.2126, 0.7152, 0.0722));
+    c = vec4<f32>(mix(vec3<f32>(lum), c.rgb, p.saturation), c.a);
+
     // Brightness
     c = vec4<f32>(c.rgb * p.brightness, c.a);
 
-    // Contrast (pivot at 0.5)
-    c = vec4<f32>((c.rgb - 0.5) * p.contrast + 0.5, c.a);
-
-    // Saturation
-    let lum = dot(c.rgb, vec3<f32>(0.2126, 0.7152, 0.0722));
-    c = vec4<f32>(mix(vec3<f32>(lum), c.rgb, p.saturation), c.a);
+    // Contrast: pivot at middle-grey (0.18 in linear ≈ 46% sRGB)
+    // Uses mix() so contrast=1.0 is a no-op
+    let pivot = vec3<f32>(0.18);
+    c = vec4<f32>(mix(pivot, c.rgb, p.contrast), c.a);
 
     return clamp(c, vec4<f32>(0.0), vec4<f32>(1.0));
 }

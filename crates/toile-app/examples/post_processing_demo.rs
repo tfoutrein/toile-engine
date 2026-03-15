@@ -155,10 +155,11 @@ impl Game for PostDemo {
             ctx.post_processing.effects.push(PostEffect::Pixelate { pixel_size: 6.0 });
         }
         if self.grading {
+            // B&W + slight contrast boost — clearly visible, safe in linear space
             ctx.post_processing.effects.push(PostEffect::ColorGrading {
-                saturation: 0.3,
-                brightness: 1.1,
-                contrast: 1.4,
+                saturation: 0.0,   // full black & white
+                brightness: 1.3,   // compensate for B&W looking darker
+                contrast: 1.2,     // mild contrast boost around 0.18 pivot
             });
         }
         if self.trauma > 0.001 {
@@ -272,7 +273,7 @@ impl Game for PostDemo {
             ("[C] CRT",         c),
             ("[P] Pixelate",    p),
             ("[B] Bloom",       b),
-            ("[G] Color Grade", g),
+            ("[G] B&W Grade",   g),
         ];
         for &(name, active) in hud {
             ctx.draw_text(name, Vec2::new(-230.0, y), font, 8.0, label_color, 10);
