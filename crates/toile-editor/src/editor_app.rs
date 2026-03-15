@@ -151,6 +151,7 @@ pub struct EditorApp {
     // Particle editor
     particle_editor: ParticleEditorPanel,
     show_scene_settings: bool,
+    last_mouse_pos: Vec2,
     editor_mode: EditorMode,
 }
 
@@ -223,6 +224,7 @@ impl EditorApp {
             tilemap_editor: TilemapEditor::new(),
             particle_editor: ParticleEditorPanel::new(),
             show_scene_settings: false,
+            last_mouse_pos: Vec2::ZERO,
             editor_mode: EditorMode::Entity,
         }
     }
@@ -534,12 +536,21 @@ impl Game for EditorApp {
             return;
         }
 
-        // Camera zoom with scroll (when egui doesn't consume it)
+        // Camera zoom with scroll
         let scroll = ctx.input.scroll_delta();
         if scroll.y != 0.0 {
             self.camera_zoom *= 1.0 + scroll.y * 0.1;
             self.camera_zoom = self.camera_zoom.clamp(0.2, 5.0);
         }
+
+        // Camera pan with middle mouse button drag
+        let mouse_pos = ctx.input.mouse_position();
+        if ctx.input.is_mouse_down(toile_app::MouseButton::Middle) {
+            let delta = mouse_pos - self.last_mouse_pos;
+            self.camera_pos.x -= delta.x / self.camera_zoom;
+            self.camera_pos.y += delta.y / self.camera_zoom; // y-up
+        }
+        self.last_mouse_pos = mouse_pos;
 
         ctx.camera.position = self.camera_pos;
         ctx.camera.zoom = self.camera_zoom;
