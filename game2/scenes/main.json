@@ -50,7 +50,9 @@
             16
           ],
           "fps": 4.0,
-          "looping": true
+          "looping": true,
+          "sprite_file": null,
+          "strip_frames": null
         },
         {
           "name": "walk",
@@ -63,7 +65,9 @@
             53
           ],
           "fps": 7.0,
-          "looping": true
+          "looping": true,
+          "sprite_file": null,
+          "strip_frames": null
         },
         {
           "name": "run",
@@ -72,7 +76,9 @@
             55
           ],
           "fps": 10.0,
-          "looping": true
+          "looping": true,
+          "sprite_file": null,
+          "strip_frames": null
         },
         {
           "name": "jump",
@@ -82,7 +88,9 @@
             23
           ],
           "fps": 5.0,
-          "looping": false
+          "looping": false,
+          "sprite_file": null,
+          "strip_frames": null
         }
       ],
       "default_animation": null,
@@ -92,8 +100,8 @@
     {
       "id": 2,
       "name": "sol",
-      "x": -5.5098267,
-      "y": -300.42822,
+      "x": -5.740448,
+      "y": -300.655,
       "rotation": 0.0,
       "scale_x": 1.0,
       "scale_y": 1.0,
@@ -126,7 +134,7 @@
     {
       "id": 3,
       "name": "Entity_3",
-      "x": -457.8857,
+      "x": -458.11636,
       "y": -211.38438,
       "rotation": 0.0,
       "scale_x": 1.0,
@@ -271,7 +279,7 @@
         "bounds": [
           -640.0,
           -360.0,
-          1920.0,
+          3200.0,
           360.0
         ]
       }
@@ -284,6 +292,10 @@
       ],
       [
         1280.0,
+        0.0
+      ],
+      [
+        2560.0,
         0.0
       ]
     ],

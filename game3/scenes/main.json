@@ -33,9 +33,9 @@
     },
     {
       "id": 2,
-      "name": "Entity_2",
-      "x": -586.02106,
-      "y": -212.81958,
+      "name": "Player",
+      "x": -586.2515,
+      "y": -212.58916,
       "rotation": 0.0,
       "scale_x": 1.0,
       "scale_y": 1.0,
@@ -74,18 +74,12 @@
           "name": "idle",
           "frames": [
             0,
-            1,
-            2,
-            3,
-            4,
-            5,
-            6,
-            7
+            1
           ],
           "fps": 10.0,
           "looping": true,
-          "sprite_file": null,
-          "strip_frames": null
+          "sprite_file": "assets/G3stalt_Idle_32x32_V4_atlas.png",
+          "strip_frames": 2
         },
         {
           "name": "run",
@@ -103,9 +97,49 @@
           "looping": true,
           "sprite_file": null,
           "strip_frames": null
+        },
+        {
+          "name": "jump",
+          "frames": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13
+          ],
+          "fps": 10.0,
+          "looping": true,
+          "sprite_file": "assets/G3stalt_Jump_V13_atlas.png",
+          "strip_frames": 14
+        },
+        {
+          "name": "walk",
+          "frames": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7
+          ],
+          "fps": 7.0,
+          "looping": true,
+          "sprite_file": null,
+          "strip_frames": null
         }
       ],
-      "default_animation": "idle",
+      "default_animation": "jump",
       "light": null,
       "visible": true
     }
@@ -131,6 +165,10 @@
     "background_tiles": [
       [
         0.0,
+        0.0
+      ],
+      [
+        1280.0,
         0.0
       ]
     ],

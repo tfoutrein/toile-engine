@@ -1271,10 +1271,11 @@ impl Game for EditorApp {
                     }
                 }
 
-                // Right-click on a tile to remove it (keep at least one)
+                // Shift + Right-click on a tile to remove it (keep at least one)
                 let world_mouse = ctx.camera.screen_to_world(ctx.input.mouse_position());
                 let mut remove_tile: Option<usize> = None;
-                if ctx.input.is_mouse_just_pressed(toile_app::MouseButton::Right) && tiles.len() > 1 {
+                let shift_held = ctx.input.is_key_down(Key::ShiftLeft) || ctx.input.is_key_down(Key::ShiftRight);
+                if ctx.input.is_mouse_just_pressed(toile_app::MouseButton::Right) && shift_held && tiles.len() > 1 {
                     for (i, pos) in tiles.iter().enumerate() {
                         let dx = (world_mouse.x - pos[0]).abs();
                         let dy = (world_mouse.y - pos[1]).abs();
@@ -1288,6 +1289,7 @@ impl Game for EditorApp {
                 if let Some(idx) = remove_tile {
                     self.scene.settings.background_tiles.remove(idx);
                     self.auto_update_bounds_from_tiles();
+                    self.status_msg = format!("Removed background tile (Shift+Right-click). {} tiles remaining.", self.scene.settings.background_tiles.len());
                 }
                 if let Some(pos) = new_tile {
                     self.scene.settings.background_tiles.push(pos);
@@ -3308,9 +3310,18 @@ impl Game for EditorApp {
                         }
                     });
                     if s.background_image.is_some() {
-                        if ui.small_button("Clear background").clicked() {
+                        ui.horizontal(|ui| {
+                            if ui.small_button("Reset tiles").on_hover_text("Re-create the initial background tile at camera position").clicked() {
+                                s.background_tiles.clear();
+                                s.background_tiles.push(s.camera_position);
+                            }
+                            ui.label(egui::RichText::new(format!("{} tile(s)", s.background_tiles.len())).size(10.0).color(egui::Color32::from_gray(140)));
+                        });
+                        if ui.small_button("Clear background").on_hover_text("Remove background image entirely").clicked() {
                             s.background_image = None;
+                            s.background_tiles.clear();
                         }
+                        ui.label(egui::RichText::new("Shift + Right-click a tile in viewport to remove it").size(9.0).color(egui::Color32::from_gray(120)));
                     }
 
                     // ── Lighting ──
