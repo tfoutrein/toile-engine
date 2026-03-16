@@ -1287,9 +1287,13 @@ impl Game for EditorApp {
                 }
 
                 if let Some(idx) = remove_tile {
-                    self.scene.settings.background_tiles.remove(idx);
-                    self.auto_update_bounds_from_tiles();
-                    self.status_msg = format!("Removed background tile (Shift+Right-click). {} tiles remaining.", self.scene.settings.background_tiles.len());
+                    if self.scene.settings.background_tiles.len() > 1 {
+                        self.scene.settings.background_tiles.remove(idx);
+                        self.auto_update_bounds_from_tiles();
+                        self.status_msg = format!("Removed background tile. {} remaining.", self.scene.settings.background_tiles.len());
+                    } else {
+                        self.status_msg = "Cannot remove last background tile. Use Clear in Scene Settings.".to_string();
+                    }
                 }
                 if let Some(pos) = new_tile {
                     self.scene.settings.background_tiles.push(pos);
@@ -3316,9 +3320,11 @@ impl Game for EditorApp {
                                 s.background_tiles.push(s.camera_position);
                                 self.background_path_loaded.clear(); // force texture reload
                             }
-                            if ui.small_button("Reload").on_hover_text("Force reload the background image from disk").clicked() {
+                            if ui.small_button("Reload").on_hover_text("Force reload background + restore tiles if missing").clicked() {
                                 self.background_tex = None;
                                 self.background_path_loaded.clear();
+                                self.sprite_cache.clear();
+                                // Always ensure at least one tile exists
                                 if s.background_tiles.is_empty() {
                                     s.background_tiles.push(s.camera_position);
                                 }
