@@ -3314,6 +3314,14 @@ impl Game for EditorApp {
                             if ui.small_button("Reset tiles").on_hover_text("Re-create the initial background tile at camera position").clicked() {
                                 s.background_tiles.clear();
                                 s.background_tiles.push(s.camera_position);
+                                self.background_path_loaded.clear(); // force texture reload
+                            }
+                            if ui.small_button("Reload").on_hover_text("Force reload the background image from disk").clicked() {
+                                self.background_tex = None;
+                                self.background_path_loaded.clear();
+                                if s.background_tiles.is_empty() {
+                                    s.background_tiles.push(s.camera_position);
+                                }
                             }
                             ui.label(egui::RichText::new(format!("{} tile(s)", s.background_tiles.len())).size(10.0).color(egui::Color32::from_gray(140)));
                         });
