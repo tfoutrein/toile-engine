@@ -2680,6 +2680,85 @@ impl Game for EditorApp {
                                 }
                             });
 
+                            // Import .aseprite file — auto-extract atlas + animations from tags
+                            if ui.small_button("Import .aseprite").clicked() {
+                                if let Some(file) = rfd::FileDialog::new()
+                                    .set_title("Import Aseprite File")
+                                    .add_filter("Aseprite", &["aseprite", "ase"])
+                                    .pick_file()
+                                {
+                                    match toile_assets::aseprite::load_ase_file(&file) {
+                                        Ok(ase) => {
+                                            let (atlas_rgba, atlas_w, atlas_h, _durations) = toile_assets::aseprite::build_atlas(&ase);
+                                            let frame_count = ase.frames.len() as u32;
+                                            let fw = ase.width as u32;
+                                            let fh = ase.height as u32;
+
+                                            // Save atlas PNG in project assets/
+                                            let stem = file.file_stem().unwrap_or_default().to_string_lossy().to_string();
+                                            let atlas_filename = format!("assets/{stem}_atlas.png");
+                                            let atlas_full = pdir.as_ref().map(|d| d.join(&atlas_filename)).unwrap_or_else(|| PathBuf::from(&atlas_filename));
+                                            if let Some(parent) = atlas_full.parent() {
+                                                let _ = std::fs::create_dir_all(parent);
+                                            }
+                                            if let Some(img) = image::RgbaImage::from_raw(atlas_w, atlas_h, atlas_rgba) {
+                                                let _ = img.save(&atlas_full);
+                                            }
+
+                                            // Configure entity
+                                            entity.sprite_path = atlas_filename;
+                                            entity.sprite_sheet = Some(toile_scene::SpriteSheetData {
+                                                frame_width: fw,
+                                                frame_height: fh,
+                                                columns: frame_count,
+                                                rows: 1,
+                                            });
+
+                                            // Create animations from tags
+                                            entity.animations.clear();
+                                            if ase.tags.is_empty() {
+                                                // No tags — single "default" animation
+                                                entity.animations.push(toile_scene::AnimationData {
+                                                    name: "idle".to_string(),
+                                                    frames: (0..frame_count).collect(),
+                                                    fps: if frame_count > 0 { 1000.0 / ase.frames[0].duration_ms.max(1) as f32 } else { 10.0 },
+                                                    looping: true,
+                                                    sprite_file: None,
+                                                    strip_frames: None,
+                                                });
+                                            } else {
+                                                for tag in &ase.tags {
+                                                    let from = tag.from as u32;
+                                                    let to = tag.to as u32;
+                                                    let frames: Vec<u32> = (from..=to).collect();
+                                                    let avg_dur = ase.frames[from as usize..=to as usize].iter()
+                                                        .map(|f| f.duration_ms as f32).sum::<f32>() / frames.len() as f32;
+                                                    let fps = (1000.0 / avg_dur.max(1.0)).round();
+                                                    entity.animations.push(toile_scene::AnimationData {
+                                                        name: tag.name.to_lowercase(),
+                                                        frames,
+                                                        fps,
+                                                        looping: tag.direction != 1, // reverse = no loop
+                                                        sprite_file: None,
+                                                        strip_frames: None,
+                                                    });
+                                                }
+                                            }
+
+                                            if entity.default_animation.is_none() {
+                                                entity.default_animation = entity.animations.first().map(|a| a.name.clone());
+                                            }
+                                            // Clear sprite cache to force reload
+                                            self.sprite_cache.clear();
+                                            self.status_msg = format!("Imported {} — {} frames, {} animations", stem, frame_count, entity.animations.len());
+                                        }
+                                        Err(e) => {
+                                            self.status_msg = format!("Aseprite import failed: {e}");
+                                        }
+                                    }
+                                }
+                            }
+
                             // Import Aseprite strip — browse for a horizontal strip PNG
                             if ui.small_button("Import strip...").clicked() {
                                 if let Some(file) = rfd::FileDialog::new()

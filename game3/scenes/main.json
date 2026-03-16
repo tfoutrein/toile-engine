@@ -1,0 +1,35 @@
+{
+  "name": "game3",
+  "entities": [],
+  "tilemap": null,
+  "settings": {
+    "gravity": 800.0,
+    "viewport_width": 1280,
+    "viewport_height": 720,
+    "clear_color": [
+      0.1,
+      0.1,
+      0.15,
+      1.0
+    ],
+    "camera_zoom": 1.0,
+    "camera_position": [
+      0.0,
+      0.0
+    ],
+    "camera_mode": "Fixed",
+    "background_image": null,
+    "background_tiles": [],
+    "lighting": {
+      "enabled": false,
+      "ambient": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "shadows_enabled": false
+    },
+    "post_effects": []
+  }
+}

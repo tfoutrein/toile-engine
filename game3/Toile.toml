@@ -1,0 +1,9 @@
+[project]
+name = "game3"
+version = "0.1.0"
+template = "platformer"
+
+[game]
+entry_scene = "scenes/main.json"
+window_width = 1280
+window_height = 720
