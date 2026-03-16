@@ -4,8 +4,8 @@
     {
       "id": 1,
       "name": "Entity_1",
-      "x": -620.09894,
-      "y": -266.00928,
+      "x": -618.9726,
+      "y": -265.99628,
       "rotation": 0.0,
       "scale_x": 1.0,
       "scale_y": 1.0,
@@ -43,7 +43,48 @@
         "columns": 8,
         "rows": 8
       },
-      "animations": [],
+      "animations": [
+        {
+          "name": "idle",
+          "frames": [
+            16
+          ],
+          "fps": 4.0,
+          "looping": true
+        },
+        {
+          "name": "walk",
+          "frames": [
+            48,
+            49,
+            50,
+            51,
+            52,
+            53
+          ],
+          "fps": 7.0,
+          "looping": true
+        },
+        {
+          "name": "run",
+          "frames": [
+            54,
+            55
+          ],
+          "fps": 10.0,
+          "looping": true
+        },
+        {
+          "name": "jump",
+          "frames": [
+            21,
+            22,
+            23
+          ],
+          "fps": 5.0,
+          "looping": false
+        }
+      ],
       "default_animation": null,
       "light": null,
       "visible": true
@@ -170,6 +211,40 @@
       "animations": [],
       "default_animation": null,
       "light": null,
+      "visible": true
+    },
+    {
+      "id": 6,
+      "name": "Entity_6",
+      "x": 566.1979,
+      "y": 226.98898,
+      "rotation": 0.0,
+      "scale_x": 1.0,
+      "scale_y": 1.0,
+      "layer": 0,
+      "sprite_path": "",
+      "width": 45.385384,
+      "height": 44.337246,
+      "behaviors": [],
+      "tags": [],
+      "variables": {},
+      "collider": null,
+      "event_sheet": null,
+      "particle_emitter": null,
+      "sprite_sheet": null,
+      "animations": [],
+      "default_animation": null,
+      "light": {
+        "radius": 150.0,
+        "falloff": 2.0,
+        "color": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "intensity": 1.0,
+        "cast_shadow": false
+      },
       "visible": true
     }
   ],

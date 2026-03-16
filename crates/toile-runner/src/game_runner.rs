@@ -172,6 +172,19 @@ impl GameRunner {
             None
         };
 
+        // Load animation strip textures
+        for anim in &data.animations {
+            if let Some(ref sprite_file) = anim.sprite_file {
+                if !self.textures.contains_key(sprite_file) {
+                    let full = self.resolve(sprite_file);
+                    if full.exists() {
+                        let tex = ctx.load_texture(&full);
+                        self.textures.insert(sprite_file.clone(), tex);
+                    }
+                }
+            }
+        }
+
         // Load event sheet if referenced
         let event_sheet = data.event_sheet.as_ref().and_then(|path| {
             if let Some(cached) = self.event_sheets.get(path) {
@@ -777,23 +790,39 @@ impl Game for GameRunner {
                 u32::from_be_bytes([r, g, b, alpha])
             };
 
-            // Compute UV from sprite sheet + animation
+            // Compute UV + texture from animation
             let (mut uv_min, mut uv_max) = (Vec2::ZERO, Vec2::ONE);
-            if let Some(ref sheet) = ent.data.sprite_sheet {
-                let frame_idx = if let Some(ref anim_name) = ent.current_anim {
-                    ent.data.animations.iter()
-                        .find(|a| a.name == *anim_name)
-                        .and_then(|a| a.frames.get(ent.anim_frame as usize).copied())
-                        .unwrap_or(0)
-                } else {
-                    0
-                };
-                let col = frame_idx % sheet.columns;
-                let row = frame_idx / sheet.columns;
+            let mut anim_tex: Option<TextureHandle> = None;
+
+            if let Some(ref anim_name) = ent.current_anim {
+                if let Some(anim) = ent.data.animations.iter().find(|a| a.name == *anim_name) {
+                    let frame_idx = anim.frames.get(ent.anim_frame as usize).copied().unwrap_or(0);
+
+                    if let Some(ref sprite_file) = anim.sprite_file {
+                        // Aseprite strip: separate file, horizontal strip (1 row)
+                        let strip_total = anim.strip_frames.unwrap_or(anim.frames.len() as u32).max(1);
+                        let u_step = 1.0 / strip_total as f32;
+                        uv_min = Vec2::new(frame_idx as f32 * u_step, 0.0);
+                        uv_max = Vec2::new((frame_idx + 1) as f32 * u_step, 1.0);
+                        // Use the strip texture
+                        if let Some(&t) = self.textures.get(sprite_file) {
+                            anim_tex = Some(t);
+                        }
+                    } else if let Some(ref sheet) = ent.data.sprite_sheet {
+                        // Sprite sheet grid
+                        let col = frame_idx % sheet.columns;
+                        let row = frame_idx / sheet.columns;
+                        let u_step = 1.0 / sheet.columns as f32;
+                        let v_step = 1.0 / sheet.rows as f32;
+                        uv_min = Vec2::new(col as f32 * u_step, row as f32 * v_step);
+                        uv_max = Vec2::new((col + 1) as f32 * u_step, (row + 1) as f32 * v_step);
+                    }
+                }
+            } else if let Some(ref sheet) = ent.data.sprite_sheet {
+                // No animation playing — show frame 0
                 let u_step = 1.0 / sheet.columns as f32;
                 let v_step = 1.0 / sheet.rows as f32;
-                uv_min = Vec2::new(col as f32 * u_step, row as f32 * v_step);
-                uv_max = Vec2::new((col + 1) as f32 * u_step, (row + 1) as f32 * v_step);
+                uv_max = Vec2::new(u_step, v_step);
             }
 
             // Flip UV horizontally when facing left
@@ -810,7 +839,7 @@ impl Game for GameRunner {
             };
 
             ctx.draw_sprite(DrawSprite {
-                texture: tex,
+                texture: anim_tex.unwrap_or(tex),
                 position: ent.es.position,
                 size: render_size,
                 rotation: ent.es.rotation,

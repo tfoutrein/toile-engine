@@ -132,6 +132,13 @@ pub struct AnimationData {
     /// Whether the animation loops.
     #[serde(default = "default_true_val")]
     pub looping: bool,
+    /// Optional: separate sprite file for this animation (Aseprite strip).
+    /// If set, this overrides the entity's sprite_path + sprite_sheet for this anim.
+    #[serde(default)]
+    pub sprite_file: Option<String>,
+    /// If sprite_file is set, auto-detected frame count from image width / frame_height.
+    #[serde(default)]
+    pub strip_frames: Option<u32>,
 }
 
 fn default_true_val() -> bool { true }

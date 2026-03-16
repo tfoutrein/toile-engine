@@ -2672,11 +2672,65 @@ impl Game for EditorApp {
                                                 frames: vec![],
                                                 fps: *fps,
                                                 looping: *looping,
+                                                sprite_file: None,
+                                                strip_frames: None,
                                             });
                                         }
                                     }
                                 }
                             });
+
+                            // Import Aseprite strip — browse for a horizontal strip PNG
+                            if ui.small_button("Import strip...").clicked() {
+                                if let Some(file) = rfd::FileDialog::new()
+                                    .set_title("Import Aseprite Strip PNG")
+                                    .add_filter("PNG", &["png"])
+                                    .pick_file()
+                                {
+                                    let rel_path = if let Some(ref pd) = pdir {
+                                        file.strip_prefix(pd).map(|p| p.to_string_lossy().to_string())
+                                            .unwrap_or_else(|_| file.to_string_lossy().to_string())
+                                    } else { file.to_string_lossy().to_string() };
+
+                                    // Auto-detect from image: horizontal strip (1 row)
+                                    if let Ok((w, h)) = image::image_dimensions(&file) {
+                                        let frame_size = h; // square frames: width of frame = height
+                                        let num_frames = w / frame_size;
+                                        // Guess animation name from filename
+                                        let anim_name = file.file_stem()
+                                            .map(|s| s.to_string_lossy().to_string())
+                                            .unwrap_or("anim".into())
+                                            .replace("-Sheet", "")
+                                            .replace("_Sheet", "")
+                                            .to_lowercase();
+                                        let anim_name = if anim_name.contains("idle") { "idle".into() }
+                                            else if anim_name.contains("run") { "run".into() }
+                                            else if anim_name.contains("walk") || anim_name.contains("flow") { "walk".into() }
+                                            else if anim_name.contains("jump") { "jump".into() }
+                                            else if anim_name.contains("die") || anim_name.contains("death") { "die".into() }
+                                            else if anim_name.contains("dash") { "dash".into() }
+                                            else if anim_name.contains("slide") { "slide".into() }
+                                            else { anim_name };
+
+                                        // Don't duplicate
+                                        if !entity.animations.iter().any(|a| a.name == anim_name) {
+                                            entity.animations.push(toile_scene::AnimationData {
+                                                name: anim_name,
+                                                frames: (0..num_frames).collect(),
+                                                fps: 10.0,
+                                                looping: true,
+                                                sprite_file: Some(rel_path),
+                                                strip_frames: Some(num_frames),
+                                            });
+                                            // Set entity size from frame if not yet set
+                                            if entity.sprite_sheet.is_none() && entity.sprite_path.is_empty() {
+                                                entity.width = frame_size as f32;
+                                                entity.height = frame_size as f32;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
 
                             // Default animation
                             let anim_names: Vec<String> = entity.animations.iter().map(|a| a.name.clone()).collect();
