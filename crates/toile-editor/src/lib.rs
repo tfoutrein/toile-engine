@@ -2,4 +2,6 @@ pub mod overlay;
 pub mod scene_data;
 pub mod tilemap_tool;
 pub mod particle_editor;
+pub mod helpers;
+pub mod panels;
 pub mod editor_app;
