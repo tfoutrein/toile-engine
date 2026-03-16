@@ -248,6 +248,7 @@ pub struct EditorApp {
     // Scene state
     scene: SceneData,
     selected_id: Option<u64>,
+    hovered_id: Option<u64>,
     white_tex: Option<TextureHandle>,
     logo_tex: Option<TextureHandle>,
     camera_pos: Vec2,
@@ -340,6 +341,7 @@ impl EditorApp {
             show_file_picker: None,
             scene,
             selected_id: None,
+            hovered_id: None,
             white_tex: None,
             camera_pos: Vec2::ZERO,
             camera_zoom: 1.0,
@@ -810,6 +812,23 @@ impl Game for EditorApp {
             if let Some(id) = self.selected_id.take() {
                 self.scene.remove_entity(id);
                 self.status_msg = format!("Deleted entity {id}");
+            }
+        }
+
+        // Hover detection — find entity under mouse cursor
+        self.hovered_id = None;
+        if self.editor_mode == EditorMode::Entity && !self.panning {
+            let world_mouse = ctx.camera.screen_to_world(ctx.input.mouse_position());
+            // Check entities in reverse order (top-most first)
+            for entity in self.scene.entities.iter().rev() {
+                let hw = entity.width * entity.scale_x * 0.5;
+                let hh = entity.height * entity.scale_y * 0.5;
+                let dx = (world_mouse.x - entity.x).abs();
+                let dy = (world_mouse.y - entity.y).abs();
+                if dx <= hw && dy <= hh {
+                    self.hovered_id = Some(entity.id);
+                    break;
+                }
             }
         }
 
@@ -1401,6 +1420,7 @@ impl Game for EditorApp {
         // Draw entities
         for entity in &self.scene.entities {
             let selected = self.selected_id == Some(entity.id);
+            let hovered = self.hovered_id == Some(entity.id) && !selected;
             let is_player_ent = entity.tags.iter().any(|t| t.eq_ignore_ascii_case("player"));
             let is_solid = entity.behaviors.iter().any(|b| matches!(b, BehaviorConfig::Solid));
             let is_coin = entity.tags.iter().any(|t| t.eq_ignore_ascii_case("coin"));
@@ -1416,20 +1436,30 @@ impl Game for EditorApp {
             // Alpha: invisible entities shown as semi-transparent in editor
             let alpha: u8 = if !entity.visible { 60 } else { 255 };
 
+            // Lighten colors when hovered (add ~40 to each channel)
+            let brighten = |r: u8, g: u8, b: u8, a: u8| -> u32 {
+                if hovered {
+                    pack_color(r.saturating_add(50), g.saturating_add(50), b.saturating_add(50), a)
+                } else {
+                    pack_color(r, g, b, a)
+                }
+            };
+
             let color = if has_sprite {
-                if selected { pack_color(255, 255, 200, alpha) } else { pack_color(255, 255, 255, alpha) }
+                if selected { pack_color(255, 255, 200, alpha) }
+                else { brighten(255, 255, 255, alpha) }
             } else if selected {
                 pack_color(255, 220, 80, alpha)
             } else if is_player_ent {
-                pack_color(80, 220, 120, alpha)
+                brighten(80, 220, 120, alpha)
             } else if is_solid {
-                pack_color(160, 160, 180, alpha)
+                brighten(160, 160, 180, alpha)
             } else if is_coin {
-                pack_color(255, 220, 50, alpha.min(200))
+                brighten(255, 220, 50, alpha.min(200))
             } else if is_enemy {
-                pack_color(220, 80, 80, alpha)
+                brighten(220, 80, 80, alpha)
             } else {
-                pack_color(100, 150, 220, alpha)
+                brighten(100, 150, 220, alpha)
             };
 
             // Compute UV from sprite sheet (show first frame or idle frame 0)
@@ -1472,6 +1502,33 @@ impl Game for EditorApp {
                 uv_min,
                 uv_max,
             });
+
+            // Hover outline (thin, white, semi-transparent)
+            if hovered {
+                let hw = entity.width * entity.scale_x * 0.5 + 1.0;
+                let hh = entity.height * entity.scale_y * 0.5 + 1.0;
+                let thickness = 1.0 / self.camera_zoom;
+                let rot = entity.rotation;
+                let center = Vec2::new(entity.x, entity.y);
+                let hover_color = pack_color(255, 255, 255, 120);
+                let rotated = |local: Vec2| -> Vec2 {
+                    let (sin, cos) = rot.sin_cos();
+                    center + Vec2::new(local.x * cos - local.y * sin, local.x * sin + local.y * cos)
+                };
+                // Top/Bottom/Left/Right edges
+                for (pos, size) in [
+                    (rotated(Vec2::new(0.0, hh)), Vec2::new(hw * 2.0, thickness)),
+                    (rotated(Vec2::new(0.0, -hh)), Vec2::new(hw * 2.0, thickness)),
+                    (rotated(Vec2::new(-hw, 0.0)), Vec2::new(thickness, hh * 2.0)),
+                    (rotated(Vec2::new(hw, 0.0)), Vec2::new(thickness, hh * 2.0)),
+                ] {
+                    ctx.draw_sprite(Sprite {
+                        texture: tex, position: pos, size, rotation: rot,
+                        color: hover_color, layer: 89,
+                        uv_min: Vec2::ZERO, uv_max: Vec2::ONE,
+                    });
+                }
+            }
 
             // Selection outline + resize handles (rotated with entity)
             if selected {
