@@ -312,6 +312,7 @@ pub enum EditorMode {
     Entity,
     Tilemap,
     Particle,
+    SpriteAnim,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -741,6 +742,25 @@ impl Game for EditorApp {
 
         ctx.camera.position = self.camera_pos;
         ctx.camera.zoom = self.camera_zoom;
+
+        // In SpriteAnim mode, center camera on selected entity and zoom in
+        if self.editor_mode == EditorMode::SpriteAnim {
+            if let Some(id) = self.selected_id {
+                if let Some(entity) = self.scene.entities.iter().find(|e| e.id == id) {
+                    ctx.camera.position = Vec2::new(entity.x, entity.y);
+                    // Zoom to show entity nicely (fit ~3x the entity size)
+                    let ent_size = entity.width.max(entity.height) * entity.scale_x.max(entity.scale_y);
+                    if let Some(ref sheet) = entity.sprite_sheet {
+                        let frame_size = sheet.frame_width.max(sheet.frame_height) as f32;
+                        let vp = ctx.camera.viewport_size();
+                        ctx.camera.zoom = (vp.x.min(vp.y) / (frame_size * 4.0)).max(1.0);
+                    } else if ent_size > 0.0 {
+                        let vp = ctx.camera.viewport_size();
+                        ctx.camera.zoom = (vp.x.min(vp.y) / (ent_size * 4.0)).max(1.0);
+                    }
+                }
+            }
+        }
 
         // Keyboard shortcuts (Cmd on Mac = SuperLeft, Ctrl on PC = ControlLeft)
         let modifier = ctx.input.is_key_down(Key::SuperLeft)
@@ -2128,7 +2148,7 @@ impl Game for EditorApp {
         }
 
         // Hierarchy panel — tree view: Game > Scenes > Entities
-        if self.editor_mode != EditorMode::Particle {
+        if self.editor_mode != EditorMode::Particle && self.editor_mode != EditorMode::SpriteAnim {
         egui::SidePanel::left("hierarchy").default_width(200.0).show(&ctx, |ui| {
             egui::ScrollArea::vertical().show(ui, |ui| {
             // Project root
@@ -2276,6 +2296,184 @@ impl Game for EditorApp {
         });
         } // end hierarchy panel
 
+        // ── Sprite & Animation Editor (full-screen mode) ─────────────────
+        if self.editor_mode == EditorMode::SpriteAnim {
+            if let Some(id) = self.selected_id {
+                // Left panel — Import + Sprite Sheet config
+                egui::SidePanel::left("sprite_anim_left").min_width(280.0).default_width(300.0).show(&ctx, |ui| {
+                    egui::ScrollArea::vertical().show(ui, |ui| {
+                        if ui.button("← Back to Editor").clicked() {
+                            self.editor_mode = EditorMode::Entity;
+                        }
+                        ui.separator();
+
+                        if let Some(entity) = self.scene.entities.iter().find(|e| e.id == id) {
+                            ui.label(egui::RichText::new(format!("Entity: {}", entity.name)).strong().size(14.0));
+                        }
+                        ui.add_space(8.0);
+
+                        // Import buttons
+                        ui.label(egui::RichText::new("Import").strong().size(13.0));
+                        ui.separator();
+                        if let Some(entity) = self.scene.entities.iter_mut().find(|e| e.id == id) {
+                            if ui.button("🖼 Image (PNG/JPG) — static sprite").clicked() {
+                                if let Some(file) = rfd::FileDialog::new().set_title("Select Sprite").add_filter("Images", &["png", "jpg", "jpeg", "bmp"]).pick_file() {
+                                    entity.sprite_path = pdir.as_ref().and_then(|pd| file.strip_prefix(pd).ok().map(|p| p.to_string_lossy().to_string())).unwrap_or_else(|| file.to_string_lossy().to_string());
+                                    entity.sprite_sheet = None;
+                                    self.sprite_cache.clear();
+                                }
+                            }
+                            if ui.button("✨ Aseprite (.ase) — auto animations").clicked() {
+                                if let Some(file) = rfd::FileDialog::new().set_title("Import Aseprite").add_filter("Aseprite", &["aseprite", "ase"]).pick_file() {
+                                    if let Ok(ase) = toile_assets::aseprite::load_ase_file(&file) {
+                                        let (atlas_rgba, atlas_w, atlas_h, _) = toile_assets::aseprite::build_atlas(&ase);
+                                        let fc = ase.frames.len() as u32;
+                                        let stem = file.file_stem().unwrap_or_default().to_string_lossy().to_string();
+                                        let afn = format!("assets/{stem}_atlas.png");
+                                        let afull = pdir.as_ref().map(|d| d.join(&afn)).unwrap_or_else(|| PathBuf::from(&afn));
+                                        if let Some(p) = afull.parent() { let _ = std::fs::create_dir_all(p); }
+                                        if let Some(img) = image::RgbaImage::from_raw(atlas_w, atlas_h, atlas_rgba) { let _ = img.save(&afull); }
+                                        let guess_name = |s: &str| -> String {
+                                            let n = s.to_lowercase();
+                                            ["idle","run","walk","jump","die","dash","slide"].iter().find(|k| n.contains(**k)).map(|k| k.to_string()).unwrap_or_else(|| n.split('_').next().unwrap_or("anim").to_string())
+                                        };
+                                        if ase.tags.is_empty() {
+                                            let name = guess_name(&stem);
+                                            let avg = ase.frames.iter().map(|f| f.duration_ms as f32).sum::<f32>() / fc.max(1) as f32;
+                                            let a = toile_scene::AnimationData { name: name.clone(), frames: (0..fc).collect(), fps: (1000.0/avg.max(1.0)).round(), looping: true, sprite_file: Some(afn.clone()), strip_frames: Some(fc) };
+                                            if let Some(e) = entity.animations.iter_mut().find(|x| x.name == name) { *e = a; } else { entity.animations.push(a); }
+                                        } else {
+                                            for tag in &ase.tags {
+                                                let from = tag.from as u32; let to = tag.to.min(fc as u16 - 1) as u32;
+                                                let frames: Vec<u32> = (from..=to).collect();
+                                                let avg = ase.frames[from as usize..=to as usize].iter().map(|f| f.duration_ms as f32).sum::<f32>() / frames.len().max(1) as f32;
+                                                let name = tag.name.to_lowercase();
+                                                let a = toile_scene::AnimationData { name: name.clone(), frames, fps: (1000.0/avg.max(1.0)).round(), looping: tag.direction != 1, sprite_file: Some(afn.clone()), strip_frames: Some(fc) };
+                                                if let Some(e) = entity.animations.iter_mut().find(|x| x.name == name) { *e = a; } else { entity.animations.push(a); }
+                                            }
+                                        }
+                                        if entity.sprite_path.is_empty() { entity.sprite_path = afn; }
+                                        if entity.default_animation.is_none() { entity.default_animation = entity.animations.first().map(|a| a.name.clone()); }
+                                        self.sprite_cache.clear();
+                                        self.status_msg = format!("Imported '{stem}'");
+                                    }
+                                }
+                            }
+                            if ui.button("📜 Strip (PNG) — horizontal strip").clicked() {
+                                if let Some(file) = rfd::FileDialog::new().set_title("Import Strip").add_filter("PNG", &["png"]).pick_file() {
+                                    let rel = pdir.as_ref().and_then(|pd| file.strip_prefix(pd).ok().map(|p| p.to_string_lossy().to_string())).unwrap_or_else(|| file.to_string_lossy().to_string());
+                                    if let Ok((w, h)) = image::image_dimensions(&file) {
+                                        let fs = h; let nf = w / fs;
+                                        let stem = file.file_stem().unwrap_or_default().to_string_lossy().to_string().to_lowercase().replace("-sheet","").replace("_sheet","");
+                                        let name = ["idle","run","walk","jump","die","dash","slide"].iter().find(|k| stem.contains(**k)).map(|k| k.to_string()).unwrap_or(stem);
+                                        if !entity.animations.iter().any(|a| a.name == name) {
+                                            entity.animations.push(toile_scene::AnimationData { name, frames: (0..nf).collect(), fps: 10.0, looping: true, sprite_file: Some(rel), strip_frames: Some(nf) });
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Sprite Sheet config
+                            ui.add_space(12.0);
+                            ui.label(egui::RichText::new("Sprite Sheet Grid").strong().size(13.0));
+                            ui.separator();
+                            let has_sheet = entity.sprite_sheet.is_some();
+                            let mut en = has_sheet;
+                            if ui.checkbox(&mut en, "Enable grid mode").changed() {
+                                if en { entity.sprite_sheet = Some(auto_detect_sprite_sheet(&entity.sprite_path, &pdir)); }
+                                else { entity.sprite_sheet = None; }
+                            }
+                            if let Some(ref mut sheet) = entity.sprite_sheet {
+                                ui.horizontal(|ui| {
+                                    for (name, fw, fh, c, r) in &[("Mana Seed", 64u32, 64u32, 8u32, 8u32), ("RPG Maker", 48, 48, 3, 4), ("32×32", 32, 32, 0, 0), ("64×64", 64, 64, 0, 0)] {
+                                        if ui.small_button(*name).clicked() {
+                                            sheet.frame_width = *fw; sheet.frame_height = *fh;
+                                            if *c > 0 { sheet.columns = *c; sheet.rows = *r; }
+                                            else if let Some((iw, ih)) = get_image_dimensions(&entity.sprite_path, &pdir) { sheet.columns = (iw / *fw).max(1); sheet.rows = (ih / *fh).max(1); }
+                                        }
+                                    }
+                                });
+                                egui::Grid::new("sa_sheet").num_columns(4).show(ui, |ui| {
+                                    ui.label("Frame"); ui.add(egui::DragValue::new(&mut sheet.frame_width).prefix("W:"));
+                                    ui.add(egui::DragValue::new(&mut sheet.frame_height).prefix("H:"));
+                                    ui.label(format!("{}×{}", sheet.columns, sheet.rows));
+                                    ui.end_row();
+                                });
+                            }
+                        }
+                    });
+                });
+
+                // Right panel — Animation list
+                egui::SidePanel::right("sprite_anim_right").min_width(280.0).default_width(300.0).show(&ctx, |ui| {
+                    egui::ScrollArea::vertical().show(ui, |ui| {
+                        ui.label(egui::RichText::new("Animations").strong().size(14.0));
+                        ui.separator();
+
+                        if let Some(entity) = self.scene.entities.iter_mut().find(|e| e.id == id) {
+                            if entity.animations.is_empty() {
+                                ui.label(egui::RichText::new("No animations yet.\nUse Import on the left.").color(egui::Color32::from_gray(130)));
+                            }
+                            let mut remove_anim: Option<usize> = None;
+                            for (i, anim) in entity.animations.iter_mut().enumerate() {
+                                let is_default = entity.default_animation.as_deref() == Some(&anim.name);
+                                ui.horizontal(|ui| {
+                                    if ui.selectable_label(is_default, egui::RichText::new(&anim.name).strong().size(13.0)).on_hover_text("Click = set as default").clicked() {
+                                        entity.default_animation = Some(anim.name.clone());
+                                    }
+                                    if is_default { ui.label(egui::RichText::new("★").color(egui::Color32::YELLOW)); }
+                                    if ui.small_button("x").clicked() { remove_anim = Some(i); }
+                                });
+                                egui::Grid::new(format!("sa_anim_{i}")).num_columns(2).show(ui, |ui| {
+                                    ui.label("FPS"); ui.add(egui::DragValue::new(&mut anim.fps).range(1.0..=60.0).speed(0.5)); ui.end_row();
+                                    ui.label("Loop"); ui.checkbox(&mut anim.looping, ""); ui.end_row();
+                                    ui.label("Frames"); ui.label(format!("{}", anim.frames.len())); ui.end_row();
+                                });
+                                // Frame badges
+                                ui.horizontal_wrapped(|ui| {
+                                    let mut remove_f: Option<usize> = None;
+                                    for (fi, frame) in anim.frames.iter().enumerate() {
+                                        if ui.small_button(format!("{frame}")).clicked() { remove_f = Some(fi); }
+                                    }
+                                    if let Some(fi) = remove_f { anim.frames.remove(fi); }
+                                    if entity.sprite_sheet.is_some() {
+                                        if ui.small_button("+ pick").clicked() {
+                                            self.show_frame_picker = true;
+                                            self.frame_picker_anim = anim.name.clone();
+                                        }
+                                    }
+                                });
+                                if let Some(ref f) = anim.sprite_file {
+                                    let short = f.rsplit('/').next().unwrap_or(f);
+                                    ui.label(egui::RichText::new(format!("file: {short}")).size(9.0).color(egui::Color32::from_gray(120)));
+                                }
+                                ui.separator();
+                            }
+                            if let Some(idx) = remove_anim { entity.animations.remove(idx); }
+
+                            // Quick-add
+                            ui.horizontal(|ui| {
+                                ui.label("Add:");
+                                for (name, fps, l) in &[("idle", 4.0f32, true), ("walk", 7.0, true), ("run", 10.0, true), ("jump", 5.0, false)] {
+                                    if !entity.animations.iter().any(|a| a.name == *name) {
+                                        if ui.small_button(*name).clicked() {
+                                            entity.animations.push(toile_scene::AnimationData { name: name.to_string(), frames: vec![], fps: *fps, looping: *l, sprite_file: None, strip_frames: None });
+                                        }
+                                    }
+                                }
+                            });
+                        }
+                    });
+                });
+
+                // Central panel — sprite preview (zoomed entity)
+                // The normal draw() already renders the entity in the viewport
+            } else {
+                // No entity selected — go back
+                self.editor_mode = EditorMode::Entity;
+            }
+        }
+
         // Inspector panel — replaced by particle panel in Particle mode
         if self.editor_mode == EditorMode::Particle {
             egui::SidePanel::right("inspector").min_width(320.0).max_width(320.0).show(&ctx, |ui| {
@@ -2285,7 +2483,7 @@ impl Game for EditorApp {
             });
         }
 
-        if self.editor_mode != EditorMode::Particle {
+        if self.editor_mode != EditorMode::Particle && self.editor_mode != EditorMode::SpriteAnim {
         egui::SidePanel::right("inspector").min_width(280.0).default_width(300.0).show(&ctx, |ui| {
             egui::ScrollArea::vertical().show(ui, |ui| {
             ui.heading("Inspector");
@@ -2650,18 +2848,17 @@ impl Game for EditorApp {
                                 }
                                 ui.add_space(4.0);
                                 if ui.button("Edit Sprite & Animations...").clicked() {
-                                    self.show_sprite_editor = true;
+                                    self.editor_mode = EditorMode::SpriteAnim;
                                 }
                             });
                     } else {
                         ui.add_space(4.0);
                         if ui.button("Setup Sprite & Animations...").clicked() {
-                            self.show_sprite_editor = true;
+                            self.editor_mode = EditorMode::SpriteAnim;
                         }
                     }
 
-                    // ── Event Sheet ───────────────────────────────────────
-                    egui::CollapsingHeader::new(egui::RichText::new("Sprite Sheet").strong())
+                    egui::CollapsingHeader::new(egui::RichText::new("Event Sheet").strong())
                         .default_open(false)
                         .show(ui, |ui| {
                             let has_sheet = entity.sprite_sheet.is_some();

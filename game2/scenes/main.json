@@ -3,7 +3,7 @@
   "entities": [
     {
       "id": 1,
-      "name": "Entity_1",
+      "name": "Player",
       "x": -618.9726,
       "y": -265.99628,
       "rotation": 0.0,
