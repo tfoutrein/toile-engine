@@ -2705,52 +2705,74 @@ impl Game for EditorApp {
                                                 let _ = img.save(&atlas_full);
                                             }
 
-                                            // Configure entity
-                                            entity.sprite_path = atlas_filename;
-                                            entity.sprite_sheet = Some(toile_scene::SpriteSheetData {
-                                                frame_width: fw,
-                                                frame_height: fh,
-                                                columns: frame_count,
-                                                rows: 1,
-                                            });
+                                            // Set entity size from frame if first import
+                                            if entity.width <= 32.0 && entity.height <= 32.0 {
+                                                entity.width = fw as f32;
+                                                entity.height = fh as f32;
+                                            }
 
-                                            // Create animations from tags
-                                            entity.animations.clear();
+                                            let mut new_anims = Vec::new();
                                             if ase.tags.is_empty() {
-                                                // No tags — single "default" animation
-                                                entity.animations.push(toile_scene::AnimationData {
-                                                    name: "idle".to_string(),
+                                                // No tags — guess name from filename
+                                                let anim_name = stem.to_lowercase()
+                                                    .replace("g3stalt_", "").replace("_v", "_")
+                                                    .split('_').next().unwrap_or("anim").to_string();
+                                                let anim_name = if anim_name.contains("idle") { "idle".into() }
+                                                    else if anim_name.contains("run") { "run".into() }
+                                                    else if anim_name.contains("walk") || anim_name.contains("flow") { "walk".into() }
+                                                    else if anim_name.contains("jump") { "jump".into() }
+                                                    else if anim_name.contains("die") || anim_name.contains("death") { "die".into() }
+                                                    else if anim_name.contains("dash") { "dash".into() }
+                                                    else if anim_name.contains("slide") { "slide".into() }
+                                                    else { anim_name };
+
+                                                let avg_dur = ase.frames.iter().map(|f| f.duration_ms as f32).sum::<f32>() / frame_count.max(1) as f32;
+                                                new_anims.push(toile_scene::AnimationData {
+                                                    name: anim_name,
                                                     frames: (0..frame_count).collect(),
-                                                    fps: if frame_count > 0 { 1000.0 / ase.frames[0].duration_ms.max(1) as f32 } else { 10.0 },
+                                                    fps: (1000.0 / avg_dur.max(1.0)).round(),
                                                     looping: true,
-                                                    sprite_file: None,
-                                                    strip_frames: None,
+                                                    sprite_file: Some(atlas_filename.clone()),
+                                                    strip_frames: Some(frame_count),
                                                 });
                                             } else {
                                                 for tag in &ase.tags {
                                                     let from = tag.from as u32;
                                                     let to = tag.to as u32;
                                                     let frames: Vec<u32> = (from..=to).collect();
-                                                    let avg_dur = ase.frames[from as usize..=to as usize].iter()
-                                                        .map(|f| f.duration_ms as f32).sum::<f32>() / frames.len() as f32;
-                                                    let fps = (1000.0 / avg_dur.max(1.0)).round();
-                                                    entity.animations.push(toile_scene::AnimationData {
+                                                    let avg_dur = ase.frames[from as usize..=to.min(frame_count - 1) as usize].iter()
+                                                        .map(|f| f.duration_ms as f32).sum::<f32>() / frames.len().max(1) as f32;
+                                                    new_anims.push(toile_scene::AnimationData {
                                                         name: tag.name.to_lowercase(),
                                                         frames,
-                                                        fps,
-                                                        looping: tag.direction != 1, // reverse = no loop
-                                                        sprite_file: None,
-                                                        strip_frames: None,
+                                                        fps: (1000.0 / avg_dur.max(1.0)).round(),
+                                                        looping: tag.direction != 1,
+                                                        sprite_file: Some(atlas_filename.clone()),
+                                                        strip_frames: Some(frame_count),
                                                     });
                                                 }
+                                            }
+
+                                            // Add animations (replace if same name, otherwise append)
+                                            let mut added = 0;
+                                            for new_anim in new_anims {
+                                                if let Some(existing) = entity.animations.iter_mut().find(|a| a.name == new_anim.name) {
+                                                    *existing = new_anim;
+                                                } else {
+                                                    entity.animations.push(new_anim);
+                                                }
+                                                added += 1;
                                             }
 
                                             if entity.default_animation.is_none() {
                                                 entity.default_animation = entity.animations.first().map(|a| a.name.clone());
                                             }
-                                            // Clear sprite cache to force reload
+                                            // Set sprite_path to first imported atlas if empty
+                                            if entity.sprite_path.is_empty() {
+                                                entity.sprite_path = atlas_filename;
+                                            }
                                             self.sprite_cache.clear();
-                                            self.status_msg = format!("Imported {} — {} frames, {} animations", stem, frame_count, entity.animations.len());
+                                            self.status_msg = format!("Imported '{stem}' — {frame_count} frames, {added} animation(s)");
                                         }
                                         Err(e) => {
                                             self.status_msg = format!("Aseprite import failed: {e}");
