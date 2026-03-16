@@ -254,6 +254,83 @@
         "cast_shadow": false
       },
       "visible": true
+    },
+    {
+      "id": 7,
+      "name": "Entity_7",
+      "x": -341.04016,
+      "y": -116.15505,
+      "rotation": 0.0,
+      "scale_x": 3.0,
+      "scale_y": 3.0,
+      "layer": 0,
+      "sprite_path": "assets/Stretch_V4_atlas.png",
+      "width": 13.0,
+      "height": 30.49844,
+      "behaviors": [],
+      "tags": [
+        "Enemy"
+      ],
+      "variables": {},
+      "collider": null,
+      "event_sheet": null,
+      "particle_emitter": null,
+      "sprite_sheet": {
+        "frame_width": 32,
+        "frame_height": 32,
+        "columns": 25,
+        "rows": 1
+      },
+      "animations": [
+        {
+          "name": "stretch",
+          "frames": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15,
+            16,
+            17,
+            18,
+            19
+          ],
+          "fps": 10.0,
+          "looping": true,
+          "sprite_file": "assets/Stretch_V4_atlas.png",
+          "strip_frames": 20
+        },
+        {
+          "name": "walk",
+          "frames": [],
+          "fps": 7.0,
+          "looping": true,
+          "sprite_file": null,
+          "strip_frames": null
+        },
+        {
+          "name": "run",
+          "frames": [],
+          "fps": 10.0,
+          "looping": true,
+          "sprite_file": null,
+          "strip_frames": null
+        }
+      ],
+      "default_animation": "stretch",
+      "light": null,
+      "visible": true
     }
   ],
   "tilemap": null,
