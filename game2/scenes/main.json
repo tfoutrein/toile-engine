@@ -100,7 +100,7 @@
     {
       "id": 2,
       "name": "sol",
-      "x": -5.740448,
+      "x": -5.7404175,
       "y": -300.655,
       "rotation": 0.0,
       "scale_x": 1.0,
@@ -129,13 +129,13 @@
       "animations": [],
       "default_animation": null,
       "light": null,
-      "visible": true
+      "visible": false
     },
     {
       "id": 3,
       "name": "Entity_3",
-      "x": -458.11636,
-      "y": -211.38438,
+      "x": -366.2967,
+      "y": -183.56567,
       "rotation": 0.0,
       "scale_x": 1.0,
       "scale_y": 1.0,

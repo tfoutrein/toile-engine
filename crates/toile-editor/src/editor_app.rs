@@ -1413,20 +1413,23 @@ impl Game for EditorApp {
                 tex
             };
 
+            // Alpha: invisible entities shown as semi-transparent in editor
+            let alpha: u8 = if !entity.visible { 60 } else { 255 };
+
             let color = if has_sprite {
-                if selected { pack_color(255, 255, 200, 255) } else { COLOR_WHITE }
+                if selected { pack_color(255, 255, 200, alpha) } else { pack_color(255, 255, 255, alpha) }
             } else if selected {
-                pack_color(255, 220, 80, 255)
+                pack_color(255, 220, 80, alpha)
             } else if is_player_ent {
-                pack_color(80, 220, 120, 255)
+                pack_color(80, 220, 120, alpha)
             } else if is_solid {
-                pack_color(160, 160, 180, 255)
+                pack_color(160, 160, 180, alpha)
             } else if is_coin {
-                pack_color(255, 220, 50, 200)
+                pack_color(255, 220, 50, alpha.min(200))
             } else if is_enemy {
-                pack_color(220, 80, 80, 255)
+                pack_color(220, 80, 80, alpha)
             } else {
-                pack_color(100, 150, 220, 255)
+                pack_color(100, 150, 220, alpha)
             };
 
             // Compute UV from sprite sheet (show first frame or idle frame 0)
