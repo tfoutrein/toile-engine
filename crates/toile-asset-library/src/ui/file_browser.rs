@@ -147,10 +147,15 @@ fn show_directory_tree(
                 );
                 app.readme_content = Some((name.clone(), info));
 
-                // Select as asset if it exists in the library
-                let lower = name.to_lowercase();
-                if let Some(asset) = app.library.assets.iter().find(|a| a.path.to_lowercase().ends_with(&lower)) {
+                // Select as asset if it exists in the library — match by full relative path within the pack
+                let pack_id = pack_root.file_name()
+                    .map(|n| n.to_string_lossy().replace(' ', "_").to_lowercase())
+                    .unwrap_or_default();
+                if let Some(asset) = app.library.assets.iter().find(|a| {
+                    a.pack_id == pack_id && a.path == rel
+                }) {
                     app.selected_asset = Some(asset.id.clone());
+                    app.preview_loaded_path.clear(); // force preview reload
                 }
             }
         }
