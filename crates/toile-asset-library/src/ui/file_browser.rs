@@ -76,6 +76,16 @@ pub fn show_file_browser(
     }
 }
 
+/// Check if a directory contains the highlighted file (for auto-expand).
+fn dir_contains_highlight(dir: &Path, pack_root: &Path, highlight: &Option<String>) -> bool {
+    if let Some(hl) = highlight {
+        let full_hl = pack_root.join(hl);
+        full_hl.starts_with(dir)
+    } else {
+        false
+    }
+}
+
 /// Recursively render a directory tree.
 fn show_directory_tree(
     ui: &mut egui::Ui,
@@ -109,9 +119,13 @@ fn show_directory_tree(
     // Directories
     for dir_name in &dirs {
         let subdir = dir.join(dir_name);
+        let should_open = dir_contains_highlight(&subdir, pack_root, &app.highlight_file);
         let dir_id = ui.make_persistent_id(subdir.to_string_lossy().as_ref());
-        egui::collapsing_header::CollapsingState::load_with_default_open(ui.ctx(), dir_id, false)
-            .show_header(ui, |ui| {
+        let mut state = egui::collapsing_header::CollapsingState::load_with_default_open(ui.ctx(), dir_id, false);
+        if should_open {
+            state.set_open(true);
+        }
+        state.show_header(ui, |ui| {
                 ui.label(format!("📁 {dir_name}"));
             })
             .body(|ui| {
@@ -123,13 +137,26 @@ fn show_directory_tree(
     for (name, path) in &files {
         let icon = file_icon(&name);
         let is_readme = is_text_file(&name);
-        let label = if is_readme {
+        let rel = path.strip_prefix(pack_root)
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_else(|_| name.clone());
+        let is_highlighted = app.highlight_file.as_deref() == Some(&rel);
+
+        let label = if is_highlighted {
+            egui::RichText::new(format!("{icon} {name}")).strong().color(egui::Color32::YELLOW)
+        } else if is_readme {
             egui::RichText::new(format!("{icon} {name}")).color(egui::Color32::from_rgb(100, 200, 255))
         } else {
             egui::RichText::new(format!("{icon} {name}")).size(11.0)
         };
 
-        if ui.selectable_label(false, label).clicked() {
+        let response = ui.selectable_label(is_highlighted, label);
+        // Scroll to highlighted file
+        if is_highlighted {
+            response.scroll_to_me(Some(egui::Align::Center));
+            // Clear highlight after first display to avoid sticky state
+        }
+        if response.clicked() {
             if is_text_file(&name) {
                 // Load and display text file content
                 if let Ok(content) = std::fs::read_to_string(path) {

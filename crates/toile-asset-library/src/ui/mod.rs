@@ -155,6 +155,7 @@ pub struct AssetBrowserApp {
     import_result: Option<std::sync::mpsc::Receiver<(String, Result<usize, String>)>>,
     pub view_mode: ViewMode,
     pub readme_content: Option<(String, String)>, // (filename, content)
+    pub highlight_file: Option<String>, // relative path to highlight in file tree
     surface_format: Option<wgpu::TextureFormat>,
     preview_loaded_path: String,
     initialized: bool,
@@ -179,6 +180,7 @@ impl AssetBrowserApp {
             import_result: None,
             view_mode: ViewMode::Assets,
             readme_content: None,
+            highlight_file: None,
             surface_format: None,
             preview_loaded_path: String::new(),
             initialized: false,

@@ -46,9 +46,8 @@ pub fn show_detail_panel(
             let asset_pack = asset.pack_id.clone();
             if ui.small_button("📂 Go to file").clicked() {
                 app.view_mode = super::ViewMode::Files;
-                // Set filter to this pack
                 app.filter_pack = Some(asset_pack);
-                // Show file info in the readme panel
+                app.highlight_file = Some(asset_path.clone());
                 if let Some(abs) = app.library.absolute_path(&asset) {
                     let size = std::fs::metadata(&abs).map(|m| m.len()).unwrap_or(0);
                     let info = format!(
