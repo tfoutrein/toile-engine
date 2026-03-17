@@ -129,20 +129,41 @@ pub fn show_detail_panel(
     match &asset.metadata {
         AssetMetadata::Sprite(sm) => {
             ui.heading("Sprite Info");
+
+            // Editable grid config
+            let mut cols = sm.columns;
+            let mut rows = sm.rows;
+            let mut changed = false;
+
             egui::Grid::new("sprite_meta")
                 .num_columns(2)
                 .spacing([8.0, 4.0])
                 .show(ui, |ui| {
-                    ui.label("Frame size:");
-                    ui.label(format!("{}x{}", sm.frame_width, sm.frame_height));
+                    ui.label("Columns:");
+                    if ui.add(egui::DragValue::new(&mut cols).range(1..=100).speed(0.1)).changed() {
+                        changed = true;
+                    }
                     ui.end_row();
 
-                    ui.label("Frame count:");
-                    ui.label(format!("{}", sm.frame_count));
+                    ui.label("Rows:");
+                    if ui.add(egui::DragValue::new(&mut rows).range(1..=100).speed(0.1)).changed() {
+                        changed = true;
+                    }
                     ui.end_row();
 
-                    ui.label("Grid:");
-                    ui.label(format!("{} cols x {} rows", sm.columns, sm.rows));
+                    // Computed frame size
+                    if let Some(abs) = app.library.absolute_path(&asset) {
+                        if let Some((iw, ih)) = crate::thumbnail::image_dimensions(&abs) {
+                            let fw = iw / cols.max(1);
+                            let fh = ih / rows.max(1);
+                            ui.label("Frame size:");
+                            ui.label(format!("{}×{}", fw, fh));
+                            ui.end_row();
+                        }
+                    }
+
+                    ui.label("Frames:");
+                    ui.label(format!("{}", cols * rows));
                     ui.end_row();
 
                     if !sm.source_format.is_empty() {
@@ -151,6 +172,46 @@ pub fn show_detail_panel(
                         ui.end_row();
                     }
                 });
+
+            // Apply changes — collect data first, then mutate
+            if changed {
+                let img_dims = app.library.absolute_path(&asset)
+                    .and_then(|abs| crate::thumbnail::image_dimensions(&abs));
+                if let Some(a) = app.library.assets.iter_mut().find(|a| a.id == selected_id) {
+                    if let AssetMetadata::Sprite(ref mut m) = a.metadata {
+                        m.columns = cols;
+                        m.rows = rows;
+                        m.frame_count = cols * rows;
+                        if let Some((iw, ih)) = img_dims {
+                            m.frame_width = iw / cols.max(1);
+                            m.frame_height = ih / rows.max(1);
+                        }
+                    }
+                }
+            }
+
+            // Animation preview — cycle through frames
+            ui.add_space(8.0);
+            ui.label(egui::RichText::new("Animation Preview").strong());
+            if let Some(ref preview_tex) = app.preview_texture {
+                let total_frames = cols * rows;
+                let time = ui.input(|i| i.time);
+                let fps = 8.0;
+                let frame_idx = ((time * fps as f64) as u32) % total_frames.max(1);
+                let col = frame_idx % cols;
+                let row = frame_idx / cols;
+                let u_step = 1.0 / cols as f32;
+                let v_step = 1.0 / rows as f32;
+                let uv_min = egui::pos2(col as f32 * u_step, row as f32 * v_step);
+                let uv_max = egui::pos2((col + 1) as f32 * u_step, (row + 1) as f32 * v_step);
+
+                let preview_size = 96.0;
+                let (rect, _) = ui.allocate_exact_size(egui::vec2(preview_size, preview_size), egui::Sense::hover());
+                ui.painter().image(preview_tex.id(), rect, egui::Rect::from_min_max(uv_min, uv_max), egui::Color32::WHITE);
+                ui.label(egui::RichText::new(format!("Frame {}/{}", frame_idx + 1, total_frames)).size(10.0).color(egui::Color32::from_gray(150)));
+                // Request continuous repaint for animation
+                ctx.request_repaint();
+            }
 
             if !sm.animations.is_empty() {
                 ui.add_space(4.0);

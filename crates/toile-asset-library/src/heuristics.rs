@@ -46,8 +46,14 @@ fn parse_wxh(s: &str) -> Option<(u32, u32)> {
 
 /// Auto-detect spritesheet grid from image dimensions.
 /// Returns (frame_width, frame_height, columns, rows).
+///
+/// Scoring prefers:
+/// 1. Exact division (must divide evenly)
+/// 2. Reasonable frame sizes (16-128px preferred over tiny 8px)
+/// 3. Square frames
+/// 4. Moderate frame counts (4-64 frames ideal, not 900+)
 pub fn detect_sprite_grid(img_width: u32, img_height: u32) -> (u32, u32, u32, u32) {
-    let mut best = (32u32, 32u32, 1u32, 1u32);
+    let mut best = (img_width, img_height, 1u32, 1u32);
     let mut best_score = 0i32;
 
     for &fw in COMMON_SIZES {
@@ -57,10 +63,37 @@ pub fn detect_sprite_grid(img_width: u32, img_height: u32) -> (u32, u32, u32, u3
             let rows = img_height / fh;
             if cols == 0 || rows == 0 { continue; }
 
-            let exact = if img_width % fw == 0 && img_height % fh == 0 { 1000 } else { 0 };
-            let frames = (cols * rows).min(200) as i32;
-            let square = if fw == fh { 100 } else { 0 };
-            let score = exact + frames + square;
+            // Must divide evenly
+            if img_width % fw != 0 || img_height % fh != 0 { continue; }
+
+            let frames = cols * rows;
+
+            // Prefer reasonable frame sizes (penalize tiny frames like 8×8)
+            let size_score = match fw.min(fh) {
+                0..=8 => 10,      // very small — unlikely for characters
+                16 => 200,        // common pixel art
+                24 => 250,
+                32 => 300,        // most common
+                48 => 280,
+                64 => 260,
+                96 => 200,
+                128 => 150,
+                _ => 100,
+            };
+
+            // Prefer reasonable frame counts (4-64 is typical)
+            let count_score = match frames {
+                1 => 50,
+                2..=4 => 150,
+                5..=16 => 200,
+                17..=64 => 180,
+                65..=128 => 100,
+                _ => 20,          // 200+ frames is suspicious
+            };
+
+            let square = if fw == fh { 80 } else { 0 };
+
+            let score = size_score + count_score + square;
 
             if score > best_score {
                 best_score = score;
