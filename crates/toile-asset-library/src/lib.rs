@@ -19,6 +19,7 @@ pub mod heuristics;
 pub mod manifest;
 pub mod thumbnail;
 pub mod library;
+pub mod registry;
 pub mod importers;
 pub mod ui;
 

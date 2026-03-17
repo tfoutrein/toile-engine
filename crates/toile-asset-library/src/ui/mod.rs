@@ -132,29 +132,53 @@ impl EguiOverlay {
 /// The standalone asset browser application implementing the Game trait.
 pub struct AssetBrowserApp {
     pub library: ToileAssetLibrary,
+    pub registry: crate::registry::PackRegistry,
     pub filter_type: Option<AssetType>,
     pub search_text: String,
     pub selected_asset: Option<String>,
     pub thumbnail_cache: HashMap<String, egui::TextureHandle>,
     pub preview_texture: Option<egui::TextureHandle>,
     pub overlay: Option<EguiOverlay>,
+    pub status_msg: String,
     surface_format: Option<wgpu::TextureFormat>,
-    /// Tracks which preview image path is currently loaded (to avoid reloading).
     preview_loaded_path: String,
+    initialized: bool,
 }
 
 impl AssetBrowserApp {
     pub fn new() -> Self {
         Self {
             library: ToileAssetLibrary::new(),
+            registry: crate::registry::load_registry(),
             filter_type: None,
             search_text: String::new(),
             selected_asset: None,
             thumbnail_cache: HashMap::new(),
             preview_texture: None,
             overlay: None,
+            status_msg: String::new(),
             surface_format: None,
             preview_loaded_path: String::new(),
+            initialized: false,
+        }
+    }
+
+    /// Reload all registered packs from their manifests.
+    fn reload_registered_packs(&mut self) {
+        let paths: Vec<String> = self.registry.packs.iter().map(|p| p.path.clone()).collect();
+        for path_str in &paths {
+            let path = std::path::Path::new(path_str);
+            if path.is_dir() {
+                match self.library.import_pack(path) {
+                    Ok(count) => log::info!("Reloaded {} assets from '{}'", count, path_str),
+                    Err(e) => log::warn!("Failed to reload '{}': {e}", path_str),
+                }
+            } else {
+                log::warn!("Pack directory not found: '{}'", path_str);
+            }
+        }
+        if !paths.is_empty() {
+            self.status_msg = format!("Loaded {} pack(s), {} assets total", paths.len(), self.library.count());
         }
     }
 
@@ -166,13 +190,36 @@ impl AssetBrowserApp {
         {
             match self.library.import_pack(&path) {
                 Ok(count) => {
-                    log::info!("Imported {} assets from '{}'", count, path.display());
+                    let name = path.file_name()
+                        .map(|n| n.to_string_lossy().to_string())
+                        .unwrap_or_else(|| "pack".into());
+                    crate::registry::register_pack(&mut self.registry, &name, &path);
+                    self.status_msg = format!("Imported '{}' — {} assets", name, count);
+                    log::info!("{}", self.status_msg);
                 }
                 Err(e) => {
-                    log::error!("Import failed: {e}");
+                    self.status_msg = format!("Import failed: {e}");
+                    log::error!("{}", self.status_msg);
                 }
             }
         }
+    }
+
+    /// Remove a pack from the library and registry.
+    pub fn remove_pack(&mut self, pack_path: &str) {
+        let pack_id = pack_path.replace(' ', "_").to_lowercase();
+        // Remove from file name match
+        if let Some(id) = self.library.packs.keys()
+            .find(|k| pack_path.to_lowercase().contains(&k.to_lowercase()))
+            .cloned()
+        {
+            self.library.assets.retain(|a| a.pack_id != id);
+            self.library.packs.remove(&id);
+        }
+        crate::registry::unregister_pack(&mut self.registry, pack_path);
+        self.thumbnail_cache.clear();
+        self.selected_asset = None;
+        self.status_msg = "Pack removed".into();
     }
 
     /// Get filtered assets based on current search text and type filter.
@@ -329,6 +376,12 @@ impl Game for AssetBrowserApp {
         }
         let ctx = self.overlay.as_ref().unwrap().ctx().clone();
 
+        // Load registered packs on first frame
+        if !self.initialized {
+            self.reload_registered_packs();
+            self.initialized = true;
+        }
+
         // Main UI layout
         self.show_ui(&ctx);
 
@@ -363,9 +416,9 @@ impl AssetBrowserApp {
                     filtered_count,
                     self.library.packs.len(),
                 ));
-                if let Some(ref sel) = self.selected_asset {
+                if !self.status_msg.is_empty() {
                     ui.separator();
-                    ui.label(format!("Selected: {}", sel));
+                    ui.label(egui::RichText::new(&self.status_msg).color(egui::Color32::YELLOW));
                 }
             });
         });
@@ -380,6 +433,41 @@ impl AssetBrowserApp {
                     detail_panel::show_detail_panel(self, ui, ctx);
                 });
         }
+
+        // Left panel: imported packs list
+        egui::SidePanel::left("packs_panel").default_width(200.0).show(ctx, |ui| {
+            ui.heading("Packs");
+            ui.separator();
+
+            if ui.button("📁 Import Pack...").clicked() {
+                self.import_pack_dialog();
+            }
+            ui.add_space(8.0);
+
+            if self.registry.packs.is_empty() {
+                ui.label(egui::RichText::new("No packs imported.\nClick Import to add one.").color(egui::Color32::from_gray(130)));
+            } else {
+                let mut remove_path: Option<String> = None;
+                for pack in &self.registry.packs {
+                    ui.horizontal(|ui| {
+                        ui.label(egui::RichText::new(&pack.name).strong());
+                        if ui.small_button("x").on_hover_text("Remove pack").clicked() {
+                            remove_path = Some(pack.path.clone());
+                        }
+                    });
+                    let short = if pack.path.len() > 30 {
+                        format!("...{}", &pack.path[pack.path.len()-28..])
+                    } else {
+                        pack.path.clone()
+                    };
+                    ui.label(egui::RichText::new(short).size(9.0).color(egui::Color32::from_gray(120)));
+                    ui.separator();
+                }
+                if let Some(path) = remove_path {
+                    self.remove_pack(&path);
+                }
+            }
+        });
 
         // Central panel: browser
         egui::CentralPanel::default().show(ctx, |ui| {
