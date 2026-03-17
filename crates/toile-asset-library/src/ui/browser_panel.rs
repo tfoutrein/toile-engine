@@ -1,4 +1,4 @@
-//! Browser panel — top bar with import/search/filters + scrollable thumbnail grid.
+//! Browser panel — top bar with import/search/filters + virtualized thumbnail grid.
 
 use crate::types::AssetType;
 use super::AssetBrowserApp;
@@ -17,7 +17,7 @@ const FILTER_TYPES: &[(AssetType, &str)] = &[
     (AssetType::Skeleton, "Skel"),
 ];
 
-/// Render the main browser panel: toolbar + thumbnail grid.
+/// Render the main browser panel: toolbar + virtualized thumbnail grid.
 pub fn show_browser_panel(
     app: &mut AssetBrowserApp,
     ui: &mut egui::Ui,
@@ -26,7 +26,6 @@ pub fn show_browser_panel(
 ) {
     // -- Top bar --
     ui.horizontal_wrapped(|ui| {
-        // View mode toggle
         let is_assets = app.view_mode == super::ViewMode::Assets;
         let is_files = app.view_mode == super::ViewMode::Files;
         if ui.selectable_label(is_assets, "🖼 Assets").clicked() {
@@ -37,7 +36,6 @@ pub fn show_browser_panel(
         }
         ui.separator();
 
-        // Search field
         ui.label("\u{1f50d}");
         ui.add(
             egui::TextEdit::singleline(&mut app.search_text)
@@ -47,7 +45,6 @@ pub fn show_browser_panel(
 
         ui.separator();
 
-        // Type filter buttons
         let all_selected = app.filter_type.is_none();
         if ui.selectable_label(all_selected, "All").clicked() {
             app.filter_type = None;
@@ -83,134 +80,116 @@ pub fn show_browser_panel(
         return;
     }
 
-    // -- Thumbnail grid --
+    // -- Virtualized thumbnail grid --
     let thumb_size = 128.0_f32;
     let cell_width = thumb_size + 8.0;
-    let _cell_height = thumb_size + 24.0; // extra space for name label
+    let cell_height = thumb_size + 28.0;
 
+    let available_width = ui.available_width();
+    let columns = ((available_width / cell_width) as usize).max(1);
+    let total_rows = (filtered_ids.len() + columns - 1) / columns;
+
+    // Pre-collect asset info into a Vec for O(1) access
+    // (built once per frame, avoids repeated O(n) lookups)
+    let asset_infos: Vec<(String, String, AssetType)> = filtered_ids
+        .iter()
+        .filter_map(|id| {
+            app.library
+                .assets
+                .iter()
+                .find(|a| a.id == *id)
+                .map(|a| (a.id.clone(), a.name.clone(), a.asset_type))
+        })
+        .collect();
+
+    // Use egui ScrollArea with known row height for virtual scrolling
     egui::ScrollArea::vertical()
         .auto_shrink([false, false])
-        .show(ui, |ui| {
-            let available_width = ui.available_width();
-            let columns = ((available_width / cell_width) as usize).max(1);
-
-            // Collect asset info for all filtered IDs
-            let asset_infos: Vec<(String, String, AssetType)> = filtered_ids
-                .iter()
-                .filter_map(|id| {
-                    app.library
-                        .assets
-                        .iter()
-                        .find(|a| a.id == *id)
-                        .map(|a| (a.id.clone(), a.name.clone(), a.asset_type))
-                })
-                .collect();
-
-            // Ensure thumbnails are loaded for visible assets
-            for (id, _, _) in &asset_infos {
-                app.ensure_thumbnail(id, ctx);
-            }
-
-            // Render grid rows
-            for row_start in (0..asset_infos.len()).step_by(columns) {
+        .show_rows(ui, cell_height, total_rows, |ui, visible_rows| {
+            for row_idx in visible_rows {
+                let row_start = row_idx * columns;
                 let row_end = (row_start + columns).min(asset_infos.len());
+                if row_start >= asset_infos.len() { break; }
                 let row = &asset_infos[row_start..row_end];
+
+                // Lazy-load thumbnails only for visible rows
+                for (id, _, _) in row {
+                    app.ensure_thumbnail(id, ctx);
+                }
 
                 ui.horizontal(|ui| {
                     for (asset_id, name, asset_type) in row {
-                        let is_selected =
-                            app.selected_asset.as_deref() == Some(asset_id.as_str());
+                        let is_selected = app.selected_asset.as_deref() == Some(asset_id.as_str());
 
-                        let response = ui
-                            .vertical(|ui| {
-                                // Thumbnail area
-                                let (rect, response) = ui.allocate_exact_size(
-                                    egui::vec2(thumb_size, thumb_size),
-                                    egui::Sense::click(),
+                        let response = ui.vertical(|ui| {
+                            let (rect, response) = ui.allocate_exact_size(
+                                egui::vec2(thumb_size, thumb_size),
+                                egui::Sense::click(),
+                            );
+
+                            let bg_color = if is_selected {
+                                egui::Color32::from_rgba_unmultiplied(80, 80, 20, 80)
+                            } else if response.hovered() {
+                                egui::Color32::from_rgba_unmultiplied(60, 60, 80, 60)
+                            } else {
+                                egui::Color32::from_rgba_unmultiplied(40, 40, 50, 40)
+                            };
+                            ui.painter().rect_filled(rect, 4.0, bg_color);
+
+                            if is_selected {
+                                ui.painter().rect_stroke(
+                                    rect, 4.0,
+                                    egui::Stroke::new(2.0, egui::Color32::YELLOW),
+                                    egui::StrokeKind::Outside,
                                 );
+                            }
 
-                                // Background fill
-                                let bg_color = if is_selected {
-                                    egui::Color32::from_rgba_unmultiplied(80, 80, 20, 80)
-                                } else if response.hovered() {
-                                    egui::Color32::from_rgba_unmultiplied(60, 60, 80, 60)
-                                } else {
-                                    egui::Color32::from_rgba_unmultiplied(40, 40, 50, 40)
-                                };
-                                ui.painter().rect_filled(rect, 4.0, bg_color);
-
-                                // Selection border
-                                if is_selected {
-                                    ui.painter().rect_stroke(
-                                        rect,
-                                        4.0,
-                                        egui::Stroke::new(2.0, egui::Color32::YELLOW),
-                                        egui::StrokeKind::Outside,
-                                    );
-                                }
-
-                                // Draw thumbnail image or placeholder
-                                if let Some(tex) = app.thumbnail_cache.get(asset_id) {
-                                    let tex_size = tex.size_vec2();
-                                    let scale =
-                                        (thumb_size / tex_size.x.max(tex_size.y)).min(1.0);
-                                    let img_size = tex_size * scale;
-                                    let img_rect = egui::Rect::from_center_size(
-                                        rect.center(),
-                                        img_size,
-                                    );
-                                    ui.painter().image(
-                                        tex.id(),
-                                        img_rect,
-                                        egui::Rect::from_min_max(
-                                            egui::pos2(0.0, 0.0),
-                                            egui::pos2(1.0, 1.0),
-                                        ),
-                                        egui::Color32::WHITE,
-                                    );
-                                } else {
-                                    // Placeholder icon
-                                    ui.painter().text(
-                                        rect.center(),
-                                        egui::Align2::CENTER_CENTER,
-                                        asset_type.icon(),
-                                        egui::FontId::proportional(40.0),
-                                        egui::Color32::from_gray(120),
-                                    );
-                                }
-
-                                // Type badge in top-right
-                                let badge_pos =
-                                    egui::pos2(rect.max.x - 4.0, rect.min.y + 2.0);
+                            if let Some(tex) = app.thumbnail_cache.get(asset_id) {
+                                let tex_size = tex.size_vec2();
+                                let scale = (thumb_size / tex_size.x.max(tex_size.y)).min(1.0);
+                                let img_size = tex_size * scale;
+                                let img_rect = egui::Rect::from_center_size(rect.center(), img_size);
+                                ui.painter().image(
+                                    tex.id(), img_rect,
+                                    egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+                                    egui::Color32::WHITE,
+                                );
+                            } else {
                                 ui.painter().text(
-                                    badge_pos,
-                                    egui::Align2::RIGHT_TOP,
+                                    rect.center(), egui::Align2::CENTER_CENTER,
                                     asset_type.icon(),
-                                    egui::FontId::proportional(14.0),
-                                    egui::Color32::from_gray(180),
+                                    egui::FontId::proportional(40.0),
+                                    egui::Color32::from_gray(120),
                                 );
+                            }
 
-                                // Name label (truncated to cell width)
-                                let display_name = if name.len() > 16 {
-                                    format!("{}...", &name[..14])
-                                } else {
-                                    name.clone()
-                                };
-                                ui.add_sized(
-                                    [thumb_size, 18.0],
-                                    egui::Label::new(
-                                        egui::RichText::new(display_name)
-                                            .small()
-                                            .color(egui::Color32::from_gray(200)),
-                                    )
-                                    .truncate(),
-                                );
+                            // Type badge
+                            let badge_pos = egui::pos2(rect.max.x - 4.0, rect.min.y + 2.0);
+                            ui.painter().text(
+                                badge_pos, egui::Align2::RIGHT_TOP,
+                                asset_type.icon(),
+                                egui::FontId::proportional(14.0),
+                                egui::Color32::from_gray(180),
+                            );
 
-                                response
-                            })
-                            .inner;
+                            // Name label
+                            let display_name = if name.len() > 16 {
+                                format!("{}...", &name[..14])
+                            } else {
+                                name.clone()
+                            };
+                            ui.add_sized(
+                                [thumb_size, 18.0],
+                                egui::Label::new(
+                                    egui::RichText::new(display_name)
+                                        .small()
+                                        .color(egui::Color32::from_gray(200)),
+                                ).truncate(),
+                            );
 
-                        // Handle selection
+                            response
+                        }).inner;
+
                         if response.clicked() {
                             app.selected_asset = Some(asset_id.clone());
                             app.preview_loaded_path.clear();
