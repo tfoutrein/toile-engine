@@ -12,7 +12,7 @@ pub fn show_detail_panel(
     let selected_id = match &app.selected_asset {
         Some(id) => id.clone(),
         None => {
-            ui.label("No asset selected.");
+            ui.label("No asset selected");
             return;
         }
     };
@@ -33,7 +33,7 @@ pub fn show_detail_panel(
         }
     };
 
-    // Close button
+    // Header: name + Go to file + close
     ui.horizontal(|ui| {
         ui.heading(format!("{} {}", asset.asset_type.icon(), asset.name));
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -41,6 +41,22 @@ pub fn show_detail_panel(
                 app.selected_asset = None;
                 app.preview_texture = None;
                 app.preview_loaded_path.clear();
+            }
+            let asset_path = asset.path.clone();
+            let asset_pack = asset.pack_id.clone();
+            if ui.small_button("📂 Go to file").clicked() {
+                app.view_mode = super::ViewMode::Files;
+                // Set filter to this pack
+                app.filter_pack = Some(asset_pack);
+                // Show file info in the readme panel
+                if let Some(abs) = app.library.absolute_path(&asset) {
+                    let size = std::fs::metadata(&abs).map(|m| m.len()).unwrap_or(0);
+                    let info = format!(
+                        "File: {}\nPath: {}\nSize: {}",
+                        asset.name, asset_path, format_size(size)
+                    );
+                    app.readme_content = Some((asset.name.clone(), info));
+                }
             }
         });
     });
@@ -423,4 +439,10 @@ pub fn show_detail_panel(
             ui.monospace(abs_path.to_string_lossy().to_string());
         });
     }
+}
+
+fn format_size(bytes: u64) -> String {
+    if bytes < 1024 { format!("{bytes} B") }
+    else if bytes < 1024 * 1024 { format!("{:.1} KB", bytes as f64 / 1024.0) }
+    else { format!("{:.1} MB", bytes as f64 / (1024.0 * 1024.0)) }
 }
