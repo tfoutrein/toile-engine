@@ -26,13 +26,6 @@ pub fn show_browser_panel(
 ) {
     // -- Top bar --
     ui.horizontal_wrapped(|ui| {
-        // Import button
-        if ui.button("\u{1f4c2} Import Pack...").clicked() {
-            app.import_pack_dialog();
-        }
-
-        ui.separator();
-
         // Search field
         ui.label("\u{1f50d}");
         ui.add(
