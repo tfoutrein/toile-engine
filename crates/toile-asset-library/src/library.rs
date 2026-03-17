@@ -50,14 +50,89 @@ impl ToileAssetLibrary {
         let scanned = scanner::scan_directory(pack_dir);
         log::info!("Scanned {} files in '{}'", scanned.len(), pack_name);
 
+        // Detect spritesheet.txt descriptors and build atlas-based assets
+        let descriptor_paths = crate::importers::spritesheet_txt::find_spritesheet_descriptors(&scanned);
+        let mut atlas_sprite_paths: std::collections::HashSet<String> = std::collections::HashSet::new();
+
         // Classify and build assets
         let mut new_assets = Vec::new();
         let thumb_dir = pack_dir.join(".toile").join("thumbs");
 
+        // Process spritesheet.txt + spritesheet.png pairs
+        for desc_path in &descriptor_paths {
+            let full_desc = pack_dir.join(desc_path);
+            if let Ok(content) = std::fs::read_to_string(&full_desc) {
+                let frames = crate::importers::spritesheet_txt::parse_spritesheet_txt(&content);
+                let anims = crate::importers::spritesheet_txt::group_into_animations(&frames);
+
+                // The atlas PNG is next to the txt
+                let desc_dir = Path::new(desc_path).parent().unwrap_or(Path::new(""));
+                let atlas_path = format!("{}/spritesheet.png", desc_dir.to_string_lossy());
+
+                // Mark all individual frame PNGs so we skip them in the main loop
+                for frame in &frames {
+                    atlas_sprite_paths.insert(frame.path.clone());
+                }
+
+                // Create one asset per animation group
+                for anim in &anims {
+                    let anim_id = format!("{}_{}", pack_id, anim.name.replace(' ', "_").to_lowercase());
+                    let anim_defs = vec![crate::types::AnimationDef {
+                        name: anim.name.clone(),
+                        frames: (0..anim.frames.len() as u32).collect(),
+                        fps: 10.0,
+                        looping: true,
+                    }];
+
+                    // Generate thumbnail from first frame in the atlas
+                    let thumb_path_opt = if let Some(first) = anim.frames.first() {
+                        let atlas_full = pack_dir.join(&atlas_path);
+                        let thumb_name = format!("{}.png", anim.name.replace('/', "_").replace(' ', "_"));
+                        let thumb_full = thumb_dir.join(&thumb_name);
+                        if atlas_full.exists() {
+                            if let Ok(img) = image::open(&atlas_full) {
+                                let cropped = img.crop_imm(first.x, first.y, first.width, first.height);
+                                let thumb = cropped.thumbnail(128, 128);
+                                let _ = std::fs::create_dir_all(&thumb_dir);
+                                let _ = thumb.save(&thumb_full);
+                                Some(format!(".toile/thumbs/{thumb_name}"))
+                            } else { None }
+                        } else { None }
+                    } else { None };
+
+                    new_assets.push(ToileAsset {
+                        id: anim_id,
+                        pack_id: pack_id.clone(),
+                        asset_type: AssetType::Sprite,
+                        subtype: "atlas_animation".into(),
+                        name: anim.name.clone(),
+                        path: atlas_path.clone(),
+                        thumbnail_path: thumb_path_opt,
+                        metadata: AssetMetadata::Sprite(SpriteMetadata {
+                            frame_width: anim.frame_width,
+                            frame_height: anim.frame_height,
+                            frame_count: anim.frames.len() as u32,
+                            columns: anim.frames.len() as u32,
+                            rows: 1,
+                            animations: anim_defs,
+                            source_format: "atlas_txt".into(),
+                        }),
+                        tags: classifier::tags_from_path(&anim.name),
+                        related_assets: vec![],
+                    });
+                }
+            }
+        }
+
         for file in &scanned {
+            // Skip individual frames that belong to atlas-based spritesheets
+            if atlas_sprite_paths.contains(&file.path) { continue; }
+            // Skip spritesheet.txt descriptors themselves
+            if file.path.to_lowercase().ends_with("spritesheet.txt") { continue; }
+
             let asset_type = classifier::classify(file);
             if asset_type == AssetType::Unknown || asset_type == AssetType::Data {
-                continue; // Skip unknown and data files
+                continue;
             }
 
             let name = Path::new(&file.path)
