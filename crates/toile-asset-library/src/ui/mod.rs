@@ -464,7 +464,12 @@ impl AssetBrowserApp {
 
             if abs_path.exists() {
                 if let Ok(img) = image::open(&abs_path) {
-                    // Load at full resolution — egui handles display sizing
+                    // Resize only if exceeds egui max texture size (2048)
+                    let img = if img.width() > 2048 || img.height() > 2048 {
+                        img.resize(2048, 2048, image::imageops::FilterType::Nearest)
+                    } else {
+                        img
+                    };
                     let rgba = img.to_rgba8();
                     let size = [rgba.width() as usize, rgba.height() as usize];
                     let pixels = rgba.into_raw();
