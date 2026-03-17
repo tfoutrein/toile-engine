@@ -147,6 +147,16 @@ impl ToileAssetLibrary {
             if atlas_sprite_paths.contains(&file.path) { continue; }
             // Skip spritesheet.txt descriptors themselves
             if file.path.to_lowercase().ends_with("spritesheet.txt") { continue; }
+            // Skip individual frame PNGs (frameXXXX.png) in packs that have atlas descriptors
+            if has_atlas && file.extension == "png" {
+                let filename = std::path::Path::new(&file.path)
+                    .file_name()
+                    .map(|n| n.to_string_lossy().to_lowercase())
+                    .unwrap_or_default();
+                if filename.starts_with("frame") && filename.len() <= 15 {
+                    continue; // e.g. frame0000.png, frame0042.png
+                }
+            }
 
             let asset_type = classifier::classify(file);
             if asset_type == AssetType::Unknown || asset_type == AssetType::Data {
