@@ -27,7 +27,17 @@ impl ToileAssetLibrary {
     }
 
     /// Import a pack from a directory. Scans, classifies, generates manifest.
+    /// Import a pack from a directory.
     pub fn import_pack(&mut self, pack_dir: &Path) -> Result<usize, String> {
+        self.import_pack_with_progress(pack_dir, None)
+    }
+
+    /// Import with optional progress callback: (current, total).
+    pub fn import_pack_with_progress(
+        &mut self,
+        pack_dir: &Path,
+        progress: Option<&dyn Fn(u32, u32)>,
+    ) -> Result<usize, String> {
         let pack_name = pack_dir.file_name()
             .map(|n| n.to_string_lossy().to_string())
             .unwrap_or_else(|| "unnamed".into());
@@ -128,19 +138,15 @@ impl ToileAssetLibrary {
         // (it contains individual frames that duplicate the atlas content)
         let has_atlas = !descriptor_paths.is_empty();
 
-        for file in &scanned {
-            // Skip individual frames that belong to atlas-based spritesheets
+        let total_files = scanned.len() as u32;
+        for (file_idx, file) in scanned.iter().enumerate() {
+            if let Some(cb) = &progress {
+                cb(file_idx as u32, total_files);
+            }
+            // Skip individual frames that are referenced in a spritesheet.txt descriptor
             if atlas_sprite_paths.contains(&file.path) { continue; }
             // Skip spritesheet.txt descriptors themselves
             if file.path.to_lowercase().ends_with("spritesheet.txt") { continue; }
-            // If pack has atlas descriptors, skip individual frame PNGs in PNG/ folders
-            // (they're duplicates of the atlas content)
-            if has_atlas {
-                let lower = file.path.to_lowercase();
-                if lower.contains("/png/") && lower.ends_with(".png") && lower.contains("frame") {
-                    continue;
-                }
-            }
 
             let asset_type = classifier::classify(file);
             if asset_type == AssetType::Unknown || asset_type == AssetType::Data {

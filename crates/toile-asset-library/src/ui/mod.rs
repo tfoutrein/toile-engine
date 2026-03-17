@@ -150,6 +150,8 @@ pub struct AssetBrowserApp {
     pub overlay: Option<EguiOverlay>,
     pub status_msg: String,
     pub importing: bool,
+    pub import_progress: std::sync::Arc<std::sync::atomic::AtomicU32>, // 0-1000 (permille)
+    pub import_total: std::sync::Arc<std::sync::atomic::AtomicU32>,
     import_result: Option<std::sync::mpsc::Receiver<(String, Result<usize, String>)>>,
     pub view_mode: ViewMode,
     pub readme_content: Option<(String, String)>, // (filename, content)
@@ -172,6 +174,8 @@ impl AssetBrowserApp {
             overlay: None,
             status_msg: String::new(),
             importing: false,
+            import_progress: std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0)),
+            import_total: std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0)),
             import_result: None,
             view_mode: ViewMode::Assets,
             readme_content: None,
@@ -251,12 +255,21 @@ impl AssetBrowserApp {
         let path_owned = path.to_path_buf();
         let (tx, rx) = std::sync::mpsc::channel();
         self.importing = true;
+        self.import_progress.store(0, std::sync::atomic::Ordering::Relaxed);
+        self.import_total.store(1, std::sync::atomic::Ordering::Relaxed);
         self.status_msg = format!("Importing '{}'...", path.file_name().unwrap_or_default().to_string_lossy());
         self.import_result = Some(rx);
 
+        let progress_current = self.import_progress.clone();
+        let progress_total = self.import_total.clone();
+
         std::thread::spawn(move || {
             let mut lib = crate::ToileAssetLibrary::new();
-            let result = lib.import_pack(&path_owned);
+            let progress_cb = |current: u32, total: u32| {
+                progress_current.store(current, std::sync::atomic::Ordering::Relaxed);
+                progress_total.store(total.max(1), std::sync::atomic::Ordering::Relaxed);
+            };
+            let result = lib.import_pack_with_progress(&path_owned, Some(&progress_cb));
             let name = path_owned.file_name()
                 .map(|n| n.to_string_lossy().to_string())
                 .unwrap_or_else(|| "pack".into());
@@ -526,7 +539,12 @@ impl AssetBrowserApp {
                 ));
                 if self.importing {
                     ui.separator();
-                    ui.spinner();
+                    let current = self.import_progress.load(std::sync::atomic::Ordering::Relaxed);
+                    let total = self.import_total.load(std::sync::atomic::Ordering::Relaxed).max(1);
+                    let pct = current as f32 / total as f32;
+                    ui.add(egui::ProgressBar::new(pct)
+                        .desired_width(200.0)
+                        .text(format!("{}/{} files ({:.0}%)", current, total, pct * 100.0)));
                     ui.label(egui::RichText::new(&self.status_msg).color(egui::Color32::from_rgb(100, 200, 255)));
                 } else if !self.status_msg.is_empty() {
                     ui.separator();
