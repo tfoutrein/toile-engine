@@ -134,6 +134,7 @@ pub struct AssetBrowserApp {
     pub library: ToileAssetLibrary,
     pub registry: crate::registry::PackRegistry,
     pub filter_type: Option<AssetType>,
+    pub filter_pack: Option<String>, // selected pack ID to filter by
     pub search_text: String,
     pub selected_asset: Option<String>,
     pub thumbnail_cache: HashMap<String, egui::TextureHandle>,
@@ -151,6 +152,7 @@ impl AssetBrowserApp {
             library: ToileAssetLibrary::new(),
             registry: crate::registry::load_registry(),
             filter_type: None,
+            filter_pack: None,
             search_text: String::new(),
             selected_asset: None,
             thumbnail_cache: HashMap::new(),
@@ -228,6 +230,12 @@ impl AssetBrowserApp {
             .assets
             .iter()
             .filter(|a| {
+                // Pack filter
+                if let Some(ref fp) = self.filter_pack {
+                    if a.pack_id != *fp {
+                        return false;
+                    }
+                }
                 // Type filter
                 if let Some(ft) = self.filter_type {
                     if a.asset_type != ft {
@@ -447,24 +455,38 @@ impl AssetBrowserApp {
             if self.registry.packs.is_empty() {
                 ui.label(egui::RichText::new("No packs imported.\nClick Import to add one.").color(egui::Color32::from_gray(130)));
             } else {
+                // "All packs" button
+                let all_selected = self.filter_pack.is_none();
+                if ui.selectable_label(all_selected, egui::RichText::new("📦 All Packs").strong()).clicked() {
+                    self.filter_pack = None;
+                }
+                ui.separator();
+
                 let mut remove_path: Option<String> = None;
                 for pack in &self.registry.packs {
+                    let pack_id = pack.name.replace(' ', "_").to_lowercase();
+                    let is_selected = self.filter_pack.as_deref() == Some(&pack_id);
+                    // Count assets in this pack
+                    let count = self.library.assets.iter().filter(|a| a.pack_id == pack_id).count();
+
                     ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new(&pack.name).strong());
+                        let label = egui::RichText::new(format!("📁 {} ({})", pack.name, count));
+                        let label = if is_selected { label.strong().color(egui::Color32::YELLOW) } else { label };
+                        if ui.selectable_label(is_selected, label).clicked() {
+                            if is_selected {
+                                self.filter_pack = None; // toggle off
+                            } else {
+                                self.filter_pack = Some(pack_id);
+                            }
+                        }
                         if ui.small_button("x").on_hover_text("Remove pack").clicked() {
                             remove_path = Some(pack.path.clone());
                         }
                     });
-                    let short = if pack.path.len() > 30 {
-                        format!("...{}", &pack.path[pack.path.len()-28..])
-                    } else {
-                        pack.path.clone()
-                    };
-                    ui.label(egui::RichText::new(short).size(9.0).color(egui::Color32::from_gray(120)));
-                    ui.separator();
                 }
                 if let Some(path) = remove_path {
                     self.remove_pack(&path);
+                    self.filter_pack = None;
                 }
             }
         });
