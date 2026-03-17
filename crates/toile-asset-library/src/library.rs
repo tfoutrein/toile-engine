@@ -124,11 +124,23 @@ impl ToileAssetLibrary {
             }
         }
 
+        // If we found atlas descriptors, also skip the entire PNG/ folder
+        // (it contains individual frames that duplicate the atlas content)
+        let has_atlas = !descriptor_paths.is_empty();
+
         for file in &scanned {
             // Skip individual frames that belong to atlas-based spritesheets
             if atlas_sprite_paths.contains(&file.path) { continue; }
             // Skip spritesheet.txt descriptors themselves
             if file.path.to_lowercase().ends_with("spritesheet.txt") { continue; }
+            // If pack has atlas descriptors, skip individual frame PNGs in PNG/ folders
+            // (they're duplicates of the atlas content)
+            if has_atlas {
+                let lower = file.path.to_lowercase();
+                if lower.contains("/png/") && lower.ends_with(".png") && lower.contains("frame") {
+                    continue;
+                }
+            }
 
             let asset_type = classifier::classify(file);
             if asset_type == AssetType::Unknown || asset_type == AssetType::Data {

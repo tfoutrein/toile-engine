@@ -149,6 +149,8 @@ pub struct AssetBrowserApp {
     pub preview_texture: Option<egui::TextureHandle>,
     pub overlay: Option<EguiOverlay>,
     pub status_msg: String,
+    pub importing: bool,
+    import_result: Option<std::sync::mpsc::Receiver<(String, Result<usize, String>)>>,
     pub view_mode: ViewMode,
     pub readme_content: Option<(String, String)>, // (filename, content)
     surface_format: Option<wgpu::TextureFormat>,
@@ -169,6 +171,8 @@ impl AssetBrowserApp {
             preview_texture: None,
             overlay: None,
             status_msg: String::new(),
+            importing: false,
+            import_result: None,
             view_mode: ViewMode::Assets,
             readme_content: None,
             surface_format: None,
@@ -242,20 +246,53 @@ impl AssetBrowserApp {
         }
     }
 
-    /// Import a directory as a pack.
+    /// Import a directory as a pack (in a background thread).
     fn import_directory(&mut self, path: &std::path::Path) {
-        match self.library.import_pack(path) {
-            Ok(count) => {
-                let name = path.file_name()
-                    .map(|n| n.to_string_lossy().to_string())
-                    .unwrap_or_else(|| "pack".into());
-                crate::registry::register_pack(&mut self.registry, &name, path);
-                self.status_msg = format!("Imported '{}' — {} assets", name, count);
-                log::info!("{}", self.status_msg);
-            }
-            Err(e) => {
-                self.status_msg = format!("Import failed: {e}");
-                log::error!("{}", self.status_msg);
+        let path_owned = path.to_path_buf();
+        let (tx, rx) = std::sync::mpsc::channel();
+        self.importing = true;
+        self.status_msg = format!("Importing '{}'...", path.file_name().unwrap_or_default().to_string_lossy());
+        self.import_result = Some(rx);
+
+        std::thread::spawn(move || {
+            let mut lib = crate::ToileAssetLibrary::new();
+            let result = lib.import_pack(&path_owned);
+            let name = path_owned.file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_else(|| "pack".into());
+            let _ = tx.send((name, result));
+        });
+
+        // Register immediately (manifest will be ready when thread finishes)
+        let name = path.file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_else(|| "pack".into());
+        crate::registry::register_pack(&mut self.registry, &name, path);
+    }
+
+    /// Check if background import finished and load results.
+    fn check_import_result(&mut self) {
+        if let Some(ref rx) = self.import_result {
+            if let Ok((name, result)) = rx.try_recv() {
+                match result {
+                    Ok(count) => {
+                        // Reload from manifest
+                        let paths: Vec<String> = self.registry.packs.iter().map(|p| p.path.clone()).collect();
+                        for p in &paths {
+                            let path = std::path::Path::new(p);
+                            if path.is_dir() {
+                                let _ = self.library.import_pack(path);
+                            }
+                        }
+                        self.status_msg = format!("Imported '{}' — {} assets", name, count);
+                    }
+                    Err(e) => {
+                        self.status_msg = format!("Import '{}' failed: {e}", name);
+                    }
+                }
+                self.importing = false;
+                self.import_result = None;
+                self.thumbnail_cache.clear();
             }
         }
     }
@@ -468,6 +505,12 @@ impl Game for AssetBrowserApp {
 impl AssetBrowserApp {
     /// Render the complete asset browser UI.
     fn show_ui(&mut self, ctx: &egui::Context) {
+        // Check for background import completion
+        self.check_import_result();
+        if self.importing {
+            ctx.request_repaint(); // keep checking
+        }
+
         let total = self.library.count();
         let filtered_ids = self.filtered_asset_ids();
         let filtered_count = filtered_ids.len();
@@ -481,7 +524,11 @@ impl AssetBrowserApp {
                     filtered_count,
                     self.library.packs.len(),
                 ));
-                if !self.status_msg.is_empty() {
+                if self.importing {
+                    ui.separator();
+                    ui.spinner();
+                    ui.label(egui::RichText::new(&self.status_msg).color(egui::Color32::from_rgb(100, 200, 255)));
+                } else if !self.status_msg.is_empty() {
                     ui.separator();
                     ui.label(egui::RichText::new(&self.status_msg).color(egui::Color32::YELLOW));
                 }
