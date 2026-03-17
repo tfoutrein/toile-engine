@@ -158,6 +158,7 @@ pub struct AssetBrowserApp {
     pub highlight_file: Option<String>, // relative path to highlight in file tree
     surface_format: Option<wgpu::TextureFormat>,
     preview_loaded_path: String,
+    tex_counter: u64,
     initialized: bool,
 }
 
@@ -183,6 +184,7 @@ impl AssetBrowserApp {
             highlight_file: None,
             surface_format: None,
             preview_loaded_path: String::new(),
+            tex_counter: 0,
             initialized: false,
         }
     }
@@ -465,8 +467,9 @@ impl AssetBrowserApp {
                     let size = [rgba.width() as usize, rgba.height() as usize];
                     let pixels = rgba.into_raw();
                     let color_image = egui::ColorImage::from_rgba_unmultiplied(size, &pixels);
+                    self.tex_counter += 1;
                     let tex = ctx.load_texture(
-                        format!("preview_{}", asset_id),
+                        format!("preview_{}", self.tex_counter),
                         color_image,
                         egui::TextureOptions::LINEAR,
                     );

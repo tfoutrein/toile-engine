@@ -231,8 +231,9 @@ fn show_directory_tree(
                             let sz = [rgba.width() as usize, rgba.height() as usize];
                             let pixels = rgba.into_raw();
                             let color_image = egui::ColorImage::from_rgba_unmultiplied(sz, &pixels);
+                            app.tex_counter += 1;
                             let tex = ui.ctx().load_texture(
-                                "file_preview",
+                                format!("file_preview_{}", app.tex_counter),
                                 color_image,
                                 egui::TextureOptions::NEAREST,
                             );
