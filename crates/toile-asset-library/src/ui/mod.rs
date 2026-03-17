@@ -420,7 +420,7 @@ impl AssetBrowserApp {
                     let tex = ctx.load_texture(
                         format!("thumb_{}", asset_id),
                         color_image,
-                        egui::TextureOptions::LINEAR,
+                        egui::TextureOptions::NEAREST,
                     );
                     self.thumbnail_cache.insert(asset_id.to_string(), tex);
                     return;
@@ -440,7 +440,7 @@ impl AssetBrowserApp {
                     let tex = ctx.load_texture(
                         format!("thumb_{}", asset_id),
                         color_image,
-                        egui::TextureOptions::LINEAR,
+                        egui::TextureOptions::NEAREST,
                     );
                     self.thumbnail_cache.insert(asset_id.to_string(), tex);
                 }
@@ -474,7 +474,7 @@ impl AssetBrowserApp {
                     let tex = ctx.load_texture(
                         format!("preview_{}", self.tex_counter),
                         color_image,
-                        egui::TextureOptions::LINEAR,
+                        egui::TextureOptions::NEAREST,
                     );
                     // Keep old texture alive one more frame
                     self.prev_preview_texture = self.preview_texture.take();
