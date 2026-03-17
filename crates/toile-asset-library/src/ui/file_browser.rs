@@ -223,27 +223,29 @@ fn show_directory_tree(
                 // If it's an image, load a preview directly
                 let lower = name.to_lowercase();
                 if lower.ends_with(".png") || lower.ends_with(".jpg") || lower.ends_with(".jpeg") || lower.ends_with(".bmp") {
-                    if let Ok(img) = image::open(path) {
-                        let preview = img.thumbnail(512, 512);
-                        let rgba = preview.to_rgba8();
-                        let sz = [rgba.width() as usize, rgba.height() as usize];
-                        let pixels = rgba.into_raw();
-                        let color_image = egui::ColorImage::from_rgba_unmultiplied(sz, &pixels);
-                        let tex = ui.ctx().load_texture(
-                            format!("file_preview_{}", name),
-                            color_image,
-                            egui::TextureOptions::NEAREST,
-                        );
-                        app.preview_texture = Some(tex);
-                        app.preview_loaded_path = path.to_string_lossy().to_string();
-                        // Show image info in readme panel instead of just path
-                        if let Some((w, h)) = crate::thumbnail::image_dimensions(path) {
-                            let info = format!(
-                                "File: {}\nPath: {}\nSize: {}\nDimensions: {}×{} px",
-                                name, rel, format_size(size), w, h
+                    let path_str = path.to_string_lossy().to_string();
+                    if app.preview_loaded_path != path_str {
+                        if let Ok(img) = image::open(path) {
+                            let preview = img.thumbnail(512, 512);
+                            let rgba = preview.to_rgba8();
+                            let sz = [rgba.width() as usize, rgba.height() as usize];
+                            let pixels = rgba.into_raw();
+                            let color_image = egui::ColorImage::from_rgba_unmultiplied(sz, &pixels);
+                            let tex = ui.ctx().load_texture(
+                                "file_preview",
+                                color_image,
+                                egui::TextureOptions::NEAREST,
                             );
-                            app.readme_content = Some((name.clone(), info));
+                            app.preview_texture = Some(tex);
+                            app.preview_loaded_path = path_str;
                         }
+                    }
+                    if let Some((w, h)) = crate::thumbnail::image_dimensions(path) {
+                        let info = format!(
+                            "File: {}\nPath: {}\nSize: {}\nDimensions: {}×{} px",
+                            name, rel, format_size(size), w, h
+                        );
+                        app.readme_content = Some((name.clone(), info));
                     }
                 }
 
