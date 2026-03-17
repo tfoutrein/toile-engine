@@ -185,9 +185,11 @@ fn file_icon(name: &str) -> &'static str {
 fn is_text_file(name: &str) -> bool {
     let lower = name.to_lowercase();
     lower.ends_with(".txt") || lower.ends_with(".md") || lower.ends_with(".readme")
+        || lower.ends_with(".json") || lower.ends_with(".xml") || lower.ends_with(".toml")
+        || lower.ends_with(".yaml") || lower.ends_with(".yml") || lower.ends_with(".csv")
+        || lower.ends_with(".tsx") || lower.ends_with(".tsj") || lower.ends_with(".tmj")
+        || lower.ends_with(".fnt") || lower.ends_with(".plist")
         || lower == "readme" || lower == "license" || lower == "credits"
-        || lower == "readme.txt" || lower == "license.txt" || lower == "credits.txt"
-        || lower == "readme.md" || lower == "license.md"
         || lower.contains("readme") || lower.contains("license") || lower.contains("credits")
 }
 
