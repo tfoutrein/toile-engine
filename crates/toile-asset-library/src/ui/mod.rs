@@ -184,25 +184,66 @@ impl AssetBrowserApp {
         }
     }
 
-    /// Import a pack via native file dialog.
+    /// Import a pack via native file dialog (folder or ZIP).
     fn import_pack_dialog(&mut self) {
+        // Show a dialog that accepts both folders and ZIP files
+        // Try folder first, then file
+        let result = rfd::FileDialog::new()
+            .set_title("Select Asset Pack (Folder or ZIP)")
+            .add_filter("ZIP Archive", &["zip"])
+            .pick_file();
+
+        if let Some(file_path) = result {
+            if file_path.extension().is_some_and(|e| e.eq_ignore_ascii_case("zip")) {
+                // Extract ZIP next to itself
+                let stem = file_path.file_stem()
+                    .map(|s| s.to_string_lossy().to_string())
+                    .unwrap_or_else(|| "pack".into());
+                let extract_dir = file_path.parent()
+                    .unwrap_or(std::path::Path::new("."))
+                    .join(&stem);
+
+                if !extract_dir.exists() {
+                    self.status_msg = format!("Extracting '{}'...", stem);
+                    if let Err(e) = crate::scanner::extract_zip(&file_path, &extract_dir) {
+                        self.status_msg = format!("ZIP extraction failed: {e}");
+                        return;
+                    }
+                }
+
+                self.import_directory(&extract_dir);
+            } else {
+                // Not a ZIP — treat as a file in a pack directory
+                if let Some(parent) = file_path.parent() {
+                    self.import_directory(parent);
+                }
+            }
+            return;
+        }
+
+        // If no file selected, try folder picker
         if let Some(path) = rfd::FileDialog::new()
             .set_title("Select Asset Pack Folder")
             .pick_folder()
         {
-            match self.library.import_pack(&path) {
-                Ok(count) => {
-                    let name = path.file_name()
-                        .map(|n| n.to_string_lossy().to_string())
-                        .unwrap_or_else(|| "pack".into());
-                    crate::registry::register_pack(&mut self.registry, &name, &path);
-                    self.status_msg = format!("Imported '{}' — {} assets", name, count);
-                    log::info!("{}", self.status_msg);
-                }
-                Err(e) => {
-                    self.status_msg = format!("Import failed: {e}");
-                    log::error!("{}", self.status_msg);
-                }
+            self.import_directory(&path);
+        }
+    }
+
+    /// Import a directory as a pack.
+    fn import_directory(&mut self, path: &std::path::Path) {
+        match self.library.import_pack(path) {
+            Ok(count) => {
+                let name = path.file_name()
+                    .map(|n| n.to_string_lossy().to_string())
+                    .unwrap_or_else(|| "pack".into());
+                crate::registry::register_pack(&mut self.registry, &name, path);
+                self.status_msg = format!("Imported '{}' — {} assets", name, count);
+                log::info!("{}", self.status_msg);
+            }
+            Err(e) => {
+                self.status_msg = format!("Import failed: {e}");
+                log::error!("{}", self.status_msg);
             }
         }
     }
@@ -447,9 +488,19 @@ impl AssetBrowserApp {
             ui.heading("Packs");
             ui.separator();
 
-            if ui.button("📁 Import Pack...").clicked() {
-                self.import_pack_dialog();
-            }
+            ui.horizontal(|ui| {
+                if ui.button("📁 Folder").on_hover_text("Import from a folder").clicked() {
+                    if let Some(path) = rfd::FileDialog::new()
+                        .set_title("Select Asset Pack Folder")
+                        .pick_folder()
+                    {
+                        self.import_directory(&path);
+                    }
+                }
+                if ui.button("📦 ZIP").on_hover_text("Import from a ZIP archive").clicked() {
+                    self.import_pack_dialog();
+                }
+            });
             ui.add_space(8.0);
 
             if self.registry.packs.is_empty() {
