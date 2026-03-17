@@ -157,8 +157,46 @@ fn show_directory_tree(
             // Clear highlight after first display to avoid sticky state
         }
         if response.clicked() {
-            if is_text_file(&name) {
-                // Load and display text file content
+            app.highlight_file = Some(rel.clone());
+            if is_aseprite_file(&name) {
+                // Parse .aseprite and show structured info
+                match toile_assets::aseprite::load_ase_file(path) {
+                    Ok(ase) => {
+                        let mut info = format!(
+                            "Aseprite File: {}\n\nSize: {}×{} px\nFrames: {}\nColor depth: {} bits\nLayers: {}\n",
+                            name, ase.width, ase.height, ase.frames.len(), ase.color_depth, ase.layers.len()
+                        );
+                        info.push_str("\n── Layers ──\n");
+                        for (i, layer) in ase.layers.iter().enumerate() {
+                            let vis = if layer.visible { "👁" } else { "  " };
+                            info.push_str(&format!("  {} {} {} (opacity: {})\n", vis, i, layer.name, layer.opacity));
+                        }
+                        if !ase.tags.is_empty() {
+                            info.push_str("\n── Tags (Animations) ──\n");
+                            for tag in &ase.tags {
+                                let dir = match tag.direction {
+                                    0 => "→",
+                                    1 => "←",
+                                    2 => "↔",
+                                    _ => "?",
+                                };
+                                info.push_str(&format!("  {} \"{}\" frames {}-{}\n", dir, tag.name, tag.from, tag.to));
+                            }
+                        }
+                        info.push_str("\n── Frame Durations ──\n");
+                        for (i, frame) in ase.frames.iter().enumerate() {
+                            info.push_str(&format!("  Frame {}: {}ms\n", i, frame.duration_ms));
+                        }
+                        if !ase.palette.is_empty() {
+                            info.push_str(&format!("\nPalette: {} colors\n", ase.palette.len()));
+                        }
+                        app.readme_content = Some((name.clone(), info));
+                    }
+                    Err(e) => {
+                        app.readme_content = Some((name.clone(), format!("Cannot parse .aseprite: {e}")));
+                    }
+                }
+            } else if is_text_file(&name) {
                 if let Ok(content) = std::fs::read_to_string(path) {
                     app.readme_content = Some((name.clone(), content));
                 }
@@ -223,6 +261,11 @@ fn is_text_file(name: &str) -> bool {
         || lower.ends_with(".fnt") || lower.ends_with(".plist")
         || lower == "readme" || lower == "license" || lower == "credits"
         || lower.contains("readme") || lower.contains("license") || lower.contains("credits")
+}
+
+fn is_aseprite_file(name: &str) -> bool {
+    let lower = name.to_lowercase();
+    lower.ends_with(".aseprite") || lower.ends_with(".ase")
 }
 
 fn format_size(bytes: u64) -> String {

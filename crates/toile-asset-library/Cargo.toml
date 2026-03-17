@@ -23,6 +23,7 @@ toile-app = { workspace = true }
 toile-graphics = { workspace = true }
 toile-platform = { workspace = true }
 toile-core = { workspace = true }
+toile-assets = { workspace = true }
 wgpu = { workspace = true }
 winit = { workspace = true }
 egui-wgpu = { workspace = true }
