@@ -18,6 +18,7 @@ members = [
     "crates/toile-events",
     "crates/toile-behaviors",
     "crates/toile-runner",
+    "crates/toile-asset-library",
 ]
 
 [workspace.package]
@@ -112,3 +113,9 @@ toml_dep = { package = "toml", version = "0.8" }
 
 # Native file dialogs
 rfd = "0.15"
+
+# Directory walking + ZIP
+walkdir = "2"
+zip = "2"
+
+toile-asset-library = { path = "crates/toile-asset-library" }

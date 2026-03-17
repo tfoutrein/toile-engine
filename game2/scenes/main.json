@@ -257,7 +257,7 @@
     },
     {
       "id": 7,
-      "name": "Entity_7",
+      "name": "Enemy1",
       "x": -341.04016,
       "y": -116.15505,
       "rotation": 0.0,
@@ -267,7 +267,14 @@
       "sprite_path": "assets/Stretch_V4_atlas.png",
       "width": 13.0,
       "height": 30.49844,
-      "behaviors": [],
+      "behaviors": [
+        {
+          "type": "Sine",
+          "property": "Y",
+          "magnitude": 20.0,
+          "period": 2.0
+        }
+      ],
       "tags": [
         "Enemy"
       ],
@@ -329,7 +336,17 @@
         }
       ],
       "default_animation": "stretch",
-      "light": null,
+      "light": {
+        "radius": 261.0,
+        "falloff": 2.0,
+        "color": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "intensity": 1.0,
+        "cast_shadow": true
+      },
       "visible": true
     }
   ],
