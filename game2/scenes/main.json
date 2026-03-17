@@ -348,6 +348,35 @@
         "cast_shadow": true
       },
       "visible": true
+    },
+    {
+      "id": 8,
+      "name": "On (38x38)",
+      "x": -423.69922,
+      "y": -233.13284,
+      "rotation": 0.0,
+      "scale_x": 1.0,
+      "scale_y": 1.0,
+      "layer": 0,
+      "sprite_path": "/Users/tfoutrein2/DEV/PERSO/2d-engine/test-packs/Pixel Adventure 1/Free/Traps/Saw/On (38x38).png",
+      "width": 38.0,
+      "height": 38.0,
+      "behaviors": [],
+      "tags": [],
+      "variables": {},
+      "collider": null,
+      "event_sheet": null,
+      "particle_emitter": null,
+      "sprite_sheet": {
+        "frame_width": 38,
+        "frame_height": 38,
+        "columns": 8,
+        "rows": 1
+      },
+      "animations": [],
+      "default_animation": null,
+      "light": null,
+      "visible": true
     }
   ],
   "tilemap": null,

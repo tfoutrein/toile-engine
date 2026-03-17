@@ -639,6 +639,20 @@ impl Game for GameRunner {
         for ent in &mut self.entities {
             if !ent.alive || ent.data.animations.is_empty() { continue; }
 
+            // For non-player entities: play default animation if no current animation
+            if !is_player(&ent.data) {
+                if ent.current_anim.is_none() {
+                    if let Some(ref default) = ent.data.default_animation {
+                        ent.current_anim = Some(default.clone());
+                        ent.anim_frame = 0.0;
+                    } else if let Some(first) = ent.data.animations.first() {
+                        // No default set — play first animation
+                        ent.current_anim = Some(first.name.clone());
+                        ent.anim_frame = 0.0;
+                    }
+                }
+            }
+
             // Auto-select animation for player entities based on state
             if is_player(&ent.data) {
                 let vx = ent.es.velocity.x;
