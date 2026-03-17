@@ -152,9 +152,13 @@ impl ToileAssetLibrary {
                 let thumb_full = thumb_dir.join(&thumb_name);
                 let source = pack_dir.join(&file.path);
 
-                // Generate thumbnail based on metadata
+                // Generate thumbnail: only crop first frame if it's actually a multi-frame sheet
                 let result = if let AssetMetadata::Sprite(ref sm) = metadata {
-                    thumbnail::generate_spritesheet_thumbnail(&source, &thumb_full, sm.frame_width, sm.frame_height)
+                    if sm.frame_count > 1 && sm.columns > 1 {
+                        thumbnail::generate_spritesheet_thumbnail(&source, &thumb_full, sm.frame_width, sm.frame_height)
+                    } else {
+                        thumbnail::generate_thumbnail(&source, &thumb_full)
+                    }
                 } else {
                     thumbnail::generate_thumbnail(&source, &thumb_full)
                 };
@@ -260,18 +264,26 @@ fn build_metadata(pack_dir: &Path, file: &ScannedFile, asset_type: AssetType) ->
             let source = pack_dir.join(&file.path);
             if let Some((w, h)) = thumbnail::image_dimensions(&source) {
                 // Try filename heuristic first
-                let (fw, fh) = heuristics::frame_size_from_filename(&file.path)
-                    .unwrap_or_else(|| {
-                        if heuristics::is_horizontal_strip(w, h) {
-                            (h, h) // Square frames, height = frame size
-                        } else {
-                            let (fw, fh, _, _) = heuristics::detect_sprite_grid(w, h);
-                            (fw, fh)
-                        }
-                    });
-
-                let cols = if fw > 0 { w / fw } else { 1 };
-                let rows = if fh > 0 { h / fh } else { 1 };
+                let from_name = heuristics::frame_size_from_filename(&file.path);
+                let (fw, fh, cols, rows) = if let Some((fw, fh)) = from_name {
+                    let c = if fw > 0 { w / fw } else { 1 };
+                    let r = if fh > 0 { h / fh } else { 1 };
+                    (fw, fh, c, r)
+                } else if heuristics::is_horizontal_strip(w, h) {
+                    // Horizontal strip: height = frame size
+                    let fw = h;
+                    let fh = h;
+                    let c = w / fw.max(1);
+                    (fw, fh, c, 1)
+                } else {
+                    let (fw, fh, c, r) = heuristics::detect_sprite_grid(w, h);
+                    // If grid detection returns 1×1 or the image is small, treat as single sprite
+                    if c <= 1 && r <= 1 {
+                        (w, h, 1, 1)
+                    } else {
+                        (fw, fh, c, r)
+                    }
+                };
 
                 AssetMetadata::Sprite(SpriteMetadata {
                     frame_width: fw,
