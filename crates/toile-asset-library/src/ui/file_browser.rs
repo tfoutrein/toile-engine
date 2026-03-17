@@ -60,11 +60,22 @@ pub fn show_file_browser(
             });
         });
 
-    // Right side: readme content or file info
+    // Right side: readme content or file info + image preview
     if let Some((filename, content)) = &readme {
         egui::ScrollArea::vertical().show(ui, |ui| {
             ui.heading(filename);
             ui.separator();
+            // Show image preview if available
+            if let Some(ref tex) = app.preview_texture {
+                let lower = filename.to_lowercase();
+                if lower.ends_with(".png") || lower.ends_with(".jpg") || lower.ends_with(".jpeg") || lower.ends_with(".bmp") {
+                    let max_w = ui.available_width().min(400.0);
+                    let aspect = tex.size()[1] as f32 / tex.size()[0] as f32;
+                    let size = egui::vec2(max_w, max_w * aspect);
+                    ui.image(egui::load::SizedTexture::new(tex.id(), size));
+                    ui.add_space(8.0);
+                }
+            }
             ui.label(egui::RichText::new(content).monospace().size(12.0));
         });
     } else {
@@ -203,16 +214,40 @@ fn show_directory_tree(
             } else {
                 // For non-text files, show basic info
                 let size = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
-                let rel = path.strip_prefix(pack_root)
-                    .map(|p| p.to_string_lossy().to_string())
-                    .unwrap_or_else(|_| name.clone());
                 let info = format!(
                     "File: {}\nPath: {}\nSize: {}",
                     name, rel, format_size(size)
                 );
                 app.readme_content = Some((name.clone(), info));
 
-                // Select as asset if it exists in the library — match by full relative path within the pack
+                // If it's an image, load a preview directly
+                let lower = name.to_lowercase();
+                if lower.ends_with(".png") || lower.ends_with(".jpg") || lower.ends_with(".jpeg") || lower.ends_with(".bmp") {
+                    if let Ok(img) = image::open(path) {
+                        let preview = img.thumbnail(512, 512);
+                        let rgba = preview.to_rgba8();
+                        let sz = [rgba.width() as usize, rgba.height() as usize];
+                        let pixels = rgba.into_raw();
+                        let color_image = egui::ColorImage::from_rgba_unmultiplied(sz, &pixels);
+                        let tex = ui.ctx().load_texture(
+                            format!("file_preview_{}", name),
+                            color_image,
+                            egui::TextureOptions::NEAREST,
+                        );
+                        app.preview_texture = Some(tex);
+                        app.preview_loaded_path = path.to_string_lossy().to_string();
+                        // Show image info in readme panel instead of just path
+                        if let Some((w, h)) = crate::thumbnail::image_dimensions(path) {
+                            let info = format!(
+                                "File: {}\nPath: {}\nSize: {}\nDimensions: {}×{} px",
+                                name, rel, format_size(size), w, h
+                            );
+                            app.readme_content = Some((name.clone(), info));
+                        }
+                    }
+                }
+
+                // Select as asset if it exists in the library
                 let pack_id = pack_root.file_name()
                     .map(|n| n.to_string_lossy().replace(' ', "_").to_lowercase())
                     .unwrap_or_default();
@@ -220,7 +255,7 @@ fn show_directory_tree(
                     a.pack_id == pack_id && a.path == rel
                 }) {
                     app.selected_asset = Some(asset.id.clone());
-                    app.preview_loaded_path.clear(); // force preview reload
+                    app.preview_loaded_path.clear();
                 }
             }
         }
