@@ -14,7 +14,7 @@ use crate::types::*;
 pub struct ToileAssetLibrary {
     pub packs: HashMap<String, PackInfo>,
     pub assets: Vec<ToileAsset>,
-    pack_roots: HashMap<String, PathBuf>,
+    pub pack_roots: HashMap<String, PathBuf>,
 }
 
 impl ToileAssetLibrary {

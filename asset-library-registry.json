@@ -1,10 +1,6 @@
 {
   "packs": [
     {
-      "name": "Aseprite - 15 Prototyped Animations Pack",
-      "path": "/Users/tfoutrein2/Downloads/Aseprite - 15 Prototyped Animations Pack"
-    },
-    {
       "name": "Pixel Adventure 1",
       "path": "/Users/tfoutrein2/DEV/PERSO/2d-engine/test-packs/Pixel Adventure 1"
     },
@@ -39,6 +35,10 @@
     {
       "name": "Super Pixel Effects Gigapack (Free Version) v1.9.0",
       "path": "/Users/tfoutrein2/Downloads/Super Pixel Effects Gigapack (Free Version) v1.9.0"
+    },
+    {
+      "name": "Aseprite - 15 Prototyped Animations Pack",
+      "path": "/Users/tfoutrein2/Downloads/Aseprite - 15 Prototyped Animations Pack"
     }
   ]
 }

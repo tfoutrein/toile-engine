@@ -314,23 +314,43 @@ impl AssetBrowserApp {
 
     /// Remove a pack from the library and registry.
     pub fn remove_pack(&mut self, pack_path: &str) {
-        // Remove from library
-        if let Some(id) = self.library.packs.keys()
-            .find(|k| pack_path.to_lowercase().contains(&k.to_lowercase()))
-            .cloned()
-        {
-            self.library.assets.retain(|a| a.pack_id != id);
-            self.library.packs.remove(&id);
-        }
+        // Find pack_id from registry name
+        let pack_name = self.registry.packs.iter()
+            .find(|p| p.path == pack_path)
+            .map(|p| p.name.clone())
+            .unwrap_or_default();
+        let pack_id = pack_name.replace(' ', "_").to_lowercase();
+
+        // Remove all assets belonging to this pack
+        let before = self.library.assets.len();
+        self.library.assets.retain(|a| a.pack_id != pack_id);
+        let removed = before - self.library.assets.len();
+        self.library.packs.remove(&pack_id);
+
+        // Also try removing by matching pack_roots
+        self.library.pack_roots.remove(&pack_id);
+
         // Delete cached manifest so re-import does a fresh scan
         let manifest = std::path::Path::new(pack_path).join("toile-asset-manifest.json");
         if manifest.exists() {
             let _ = std::fs::remove_file(&manifest);
         }
+
+        // Delete thumbnail cache folder
+        let thumb_dir = std::path::Path::new(pack_path).join(".toile");
+        if thumb_dir.exists() {
+            let _ = std::fs::remove_dir_all(&thumb_dir);
+        }
+
         crate::registry::unregister_pack(&mut self.registry, pack_path);
         self.thumbnail_cache.clear();
+        self.preview_texture = None;
+        self.preview_loaded_path.clear();
         self.selected_asset = None;
-        self.status_msg = "Pack removed (manifest cleared)".into();
+        self.filter_pack = None;
+        self.highlight_file = None;
+        self.readme_content = None;
+        self.status_msg = format!("Removed '{}' ({} assets)", pack_name, removed);
     }
 
     /// Get filtered assets based on current search text and type filter.
