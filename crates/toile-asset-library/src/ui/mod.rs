@@ -262,8 +262,7 @@ impl AssetBrowserApp {
 
     /// Remove a pack from the library and registry.
     pub fn remove_pack(&mut self, pack_path: &str) {
-        let pack_id = pack_path.replace(' ', "_").to_lowercase();
-        // Remove from file name match
+        // Remove from library
         if let Some(id) = self.library.packs.keys()
             .find(|k| pack_path.to_lowercase().contains(&k.to_lowercase()))
             .cloned()
@@ -271,10 +270,15 @@ impl AssetBrowserApp {
             self.library.assets.retain(|a| a.pack_id != id);
             self.library.packs.remove(&id);
         }
+        // Delete cached manifest so re-import does a fresh scan
+        let manifest = std::path::Path::new(pack_path).join("toile-asset-manifest.json");
+        if manifest.exists() {
+            let _ = std::fs::remove_file(&manifest);
+        }
         crate::registry::unregister_pack(&mut self.registry, pack_path);
         self.thumbnail_cache.clear();
         self.selected_asset = None;
-        self.status_msg = "Pack removed".into();
+        self.status_msg = "Pack removed (manifest cleared)".into();
     }
 
     /// Get filtered assets based on current search text and type filter.
