@@ -14,6 +14,14 @@ use winit::window::Window;
 use crate::types::AssetType;
 use crate::ToileAssetLibrary;
 
+pub mod file_browser;
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum ViewMode {
+    Assets,
+    Files,
+}
+
 // ---------------------------------------------------------------------------
 // EguiOverlay — inlined from toile-editor/src/overlay.rs
 // ---------------------------------------------------------------------------
@@ -141,6 +149,8 @@ pub struct AssetBrowserApp {
     pub preview_texture: Option<egui::TextureHandle>,
     pub overlay: Option<EguiOverlay>,
     pub status_msg: String,
+    pub view_mode: ViewMode,
+    pub readme_content: Option<(String, String)>, // (filename, content)
     surface_format: Option<wgpu::TextureFormat>,
     preview_loaded_path: String,
     initialized: bool,
@@ -159,6 +169,8 @@ impl AssetBrowserApp {
             preview_texture: None,
             overlay: None,
             status_msg: String::new(),
+            view_mode: ViewMode::Assets,
+            readme_content: None,
             surface_format: None,
             preview_loaded_path: String::new(),
             initialized: false,
@@ -560,9 +572,16 @@ impl AssetBrowserApp {
             }
         });
 
-        // Central panel: browser
+        // Central panel: browser or file view
         egui::CentralPanel::default().show(ctx, |ui| {
-            browser_panel::show_browser_panel(self, ui, ctx, &filtered_ids);
+            match self.view_mode {
+                ViewMode::Assets => {
+                    browser_panel::show_browser_panel(self, ui, ctx, &filtered_ids);
+                }
+                ViewMode::Files => {
+                    file_browser::show_file_browser(self, ui, ctx);
+                }
+            }
         });
     }
 }

@@ -26,6 +26,17 @@ pub fn show_browser_panel(
 ) {
     // -- Top bar --
     ui.horizontal_wrapped(|ui| {
+        // View mode toggle
+        let is_assets = app.view_mode == super::ViewMode::Assets;
+        let is_files = app.view_mode == super::ViewMode::Files;
+        if ui.selectable_label(is_assets, "🖼 Assets").clicked() {
+            app.view_mode = super::ViewMode::Assets;
+        }
+        if ui.selectable_label(is_files, "📂 Files").clicked() {
+            app.view_mode = super::ViewMode::Files;
+        }
+        ui.separator();
+
         // Search field
         ui.label("\u{1f50d}");
         ui.add(
