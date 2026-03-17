@@ -130,10 +130,10 @@ fn show_directory_tree(
     // Directories
     for dir_name in &dirs {
         let subdir = dir.join(dir_name);
-        let should_open = dir_contains_highlight(&subdir, pack_root, &app.highlight_file);
         let dir_id = ui.make_persistent_id(subdir.to_string_lossy().as_ref());
         let mut state = egui::collapsing_header::CollapsingState::load_with_default_open(ui.ctx(), dir_id, false);
-        if should_open {
+        // Only force-open folders on initial "Go to file" navigation
+        if app.highlight_needs_scroll && dir_contains_highlight(&subdir, pack_root, &app.highlight_file) {
             state.set_open(true);
         }
         state.show_header(ui, |ui| {
@@ -162,12 +162,13 @@ fn show_directory_tree(
         };
 
         let response = ui.selectable_label(is_highlighted, label);
-        if is_highlighted {
+        if is_highlighted && app.highlight_needs_scroll {
             response.scroll_to_me(Some(egui::Align::Center));
-            // Clear highlight after first display so it doesn't stick
-            app.highlight_file = None;
+            app.highlight_needs_scroll = false;
         }
         if response.clicked() {
+            app.highlight_file = Some(rel.clone());
+            app.highlight_needs_scroll = false;
             app.highlight_file = Some(rel.clone());
             if is_aseprite_file(&name) {
                 // Parse .aseprite and show structured info

@@ -158,6 +158,7 @@ pub struct AssetBrowserApp {
     pub view_mode: ViewMode,
     pub readme_content: Option<(String, String)>, // (filename, content)
     pub highlight_file: Option<String>, // relative path to highlight in file tree
+    pub highlight_needs_scroll: bool,  // true only on first frame after "Go to file"
     surface_format: Option<wgpu::TextureFormat>,
     preview_loaded_path: String,
     tex_counter: u64,
@@ -185,6 +186,7 @@ impl AssetBrowserApp {
             view_mode: ViewMode::Assets,
             readme_content: None,
             highlight_file: None,
+            highlight_needs_scroll: false,
             surface_format: None,
             preview_loaded_path: String::new(),
             tex_counter: 0,

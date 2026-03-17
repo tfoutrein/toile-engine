@@ -48,6 +48,7 @@ pub fn show_detail_panel(
                 app.view_mode = super::ViewMode::Files;
                 app.filter_pack = Some(asset_pack);
                 app.highlight_file = Some(asset_path.clone());
+                app.highlight_needs_scroll = true;
                 if let Some(abs) = app.library.absolute_path(&asset) {
                     let size = std::fs::metadata(&abs).map(|m| m.len()).unwrap_or(0);
                     let info = format!(
