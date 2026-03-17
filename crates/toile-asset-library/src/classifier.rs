@@ -23,8 +23,8 @@ fn classify_by_extension(ext: &str) -> AssetType {
         // Images → default to Sprite (refined by path)
         "png" | "jpg" | "jpeg" | "bmp" | "webp" => AssetType::Sprite,
 
-        // Aseprite
-        "aseprite" | "ase" => AssetType::Sprite,
+        // Aseprite — source files, skip in asset view (available in file browser)
+        "aseprite" | "ase" => AssetType::Data,
 
         // Tiled maps
         "tmx" | "tmj" => AssetType::Tilemap,
@@ -49,6 +49,9 @@ fn classify_by_extension(ext: &str) -> AssetType {
 
         // Data
         "json" | "xml" | "plist" => classify_structured_data(ext),
+
+        // GIF previews — source/preview files
+        "gif" => AssetType::Data,
 
         // Text
         "txt" | "md" | "toml" | "yaml" | "yml" => AssetType::Data,
