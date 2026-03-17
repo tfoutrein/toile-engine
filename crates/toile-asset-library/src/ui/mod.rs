@@ -473,16 +473,31 @@ impl AssetBrowserApp {
                     let label_w = avail_w - btn_w - 12.0;
 
                     ui.horizontal(|ui| {
-                        // Pack label — takes all space except button
-                        let label = egui::RichText::new(format!("📁 {} ({})", pack.name, count));
-                        let label = if is_selected { label.strong().color(egui::Color32::YELLOW) } else { label };
-                        let resp = ui.add_sized([label_w, 20.0], egui::SelectableLabel::new(is_selected, label));
-                        if resp.clicked() {
+                        // Truncate name to fit panel
+                        let max_chars = (label_w / 7.0) as usize;
+                        let display_name = if pack.name.len() > max_chars && max_chars > 3 {
+                            format!("{}...", &pack.name[..max_chars - 3])
+                        } else {
+                            pack.name.clone()
+                        };
+                        let text = format!("📁 {} ({})", display_name, count);
+                        let label = if is_selected {
+                            egui::RichText::new(&text).strong().color(egui::Color32::YELLOW).size(12.0)
+                        } else {
+                            egui::RichText::new(&text).size(12.0)
+                        };
+
+                        // Left-aligned selectable label
+                        let resp = ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                            ui.set_min_width(label_w);
+                            ui.selectable_label(is_selected, label)
+                        });
+                        if resp.inner.clicked() {
                             if is_selected { self.filter_pack = None; }
                             else { self.filter_pack = Some(pack_id); }
                         }
-                        // Remove button — fixed width, always aligned right
-                        if ui.add_sized([btn_w, 20.0], egui::Button::new("x")).on_hover_text("Remove pack").clicked() {
+                        // Remove button — fixed width
+                        if ui.add_sized([btn_w, 18.0], egui::Button::new("x")).on_hover_text("Remove pack").clicked() {
                             remove_path = Some(pack.path.clone());
                         }
                     });
