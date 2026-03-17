@@ -463,23 +463,26 @@ impl AssetBrowserApp {
                 ui.separator();
 
                 let mut remove_path: Option<String> = None;
+                let avail_w = ui.available_width();
                 for pack in &self.registry.packs {
                     let pack_id = pack.name.replace(' ', "_").to_lowercase();
                     let is_selected = self.filter_pack.as_deref() == Some(&pack_id);
-                    // Count assets in this pack
                     let count = self.library.assets.iter().filter(|a| a.pack_id == pack_id).count();
 
+                    let btn_w = 18.0;
+                    let label_w = avail_w - btn_w - 12.0;
+
                     ui.horizontal(|ui| {
+                        // Pack label — takes all space except button
                         let label = egui::RichText::new(format!("📁 {} ({})", pack.name, count));
                         let label = if is_selected { label.strong().color(egui::Color32::YELLOW) } else { label };
-                        if ui.selectable_label(is_selected, label).clicked() {
-                            if is_selected {
-                                self.filter_pack = None; // toggle off
-                            } else {
-                                self.filter_pack = Some(pack_id);
-                            }
+                        let resp = ui.add_sized([label_w, 20.0], egui::SelectableLabel::new(is_selected, label));
+                        if resp.clicked() {
+                            if is_selected { self.filter_pack = None; }
+                            else { self.filter_pack = Some(pack_id); }
                         }
-                        if ui.small_button("x").on_hover_text("Remove pack").clicked() {
+                        // Remove button — fixed width, always aligned right
+                        if ui.add_sized([btn_w, 20.0], egui::Button::new("x")).on_hover_text("Remove pack").clicked() {
                             remove_path = Some(pack.path.clone());
                         }
                     });
