@@ -19,3 +19,11 @@ log = { workspace = true }
 env_logger = { workspace = true }
 egui = { workspace = true }
 rfd = { workspace = true }
+toile-app = { workspace = true }
+toile-graphics = { workspace = true }
+toile-platform = { workspace = true }
+toile-core = { workspace = true }
+wgpu = { workspace = true }
+winit = { workspace = true }
+egui-wgpu = { workspace = true }
+egui-winit = { workspace = true }
