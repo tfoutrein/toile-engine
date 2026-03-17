@@ -464,9 +464,8 @@ impl AssetBrowserApp {
 
             if abs_path.exists() {
                 if let Ok(img) = image::open(&abs_path) {
-                    // Limit preview size to 512px
-                    let preview = img.thumbnail(512, 512);
-                    let rgba = preview.to_rgba8();
+                    // Load at full resolution — egui handles display sizing
+                    let rgba = img.to_rgba8();
                     let size = [rgba.width() as usize, rgba.height() as usize];
                     let pixels = rgba.into_raw();
                     let color_image = egui::ColorImage::from_rgba_unmultiplied(size, &pixels);
