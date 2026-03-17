@@ -162,10 +162,10 @@ fn show_directory_tree(
         };
 
         let response = ui.selectable_label(is_highlighted, label);
-        // Scroll to highlighted file
         if is_highlighted {
             response.scroll_to_me(Some(egui::Align::Center));
-            // Clear highlight after first display to avoid sticky state
+            // Clear highlight after first display so it doesn't stick
+            app.highlight_file = None;
         }
         if response.clicked() {
             app.highlight_file = Some(rel.clone());
