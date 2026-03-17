@@ -237,6 +237,7 @@ fn show_directory_tree(
                                 color_image,
                                 egui::TextureOptions::NEAREST,
                             );
+                            app.prev_preview_texture = app.preview_texture.take();
                             app.preview_texture = Some(tex);
                             app.preview_loaded_path = path_str;
                         }

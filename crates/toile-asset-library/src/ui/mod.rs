@@ -147,6 +147,8 @@ pub struct AssetBrowserApp {
     pub selected_asset: Option<String>,
     pub thumbnail_cache: HashMap<String, egui::TextureHandle>,
     pub preview_texture: Option<egui::TextureHandle>,
+    /// Keep the previous preview texture alive for one extra frame to avoid wgpu crash.
+    prev_preview_texture: Option<egui::TextureHandle>,
     pub overlay: Option<EguiOverlay>,
     pub status_msg: String,
     pub importing: bool,
@@ -173,6 +175,7 @@ impl AssetBrowserApp {
             selected_asset: None,
             thumbnail_cache: HashMap::new(),
             preview_texture: None,
+            prev_preview_texture: None,
             overlay: None,
             status_msg: String::new(),
             importing: false,
@@ -473,6 +476,8 @@ impl AssetBrowserApp {
                         color_image,
                         egui::TextureOptions::LINEAR,
                     );
+                    // Keep old texture alive one more frame
+                    self.prev_preview_texture = self.preview_texture.take();
                     self.preview_texture = Some(tex);
                     self.preview_loaded_path = path_str;
                 }
@@ -543,6 +548,9 @@ impl Game for AssetBrowserApp {
 impl AssetBrowserApp {
     /// Render the complete asset browser UI.
     fn show_ui(&mut self, ctx: &egui::Context) {
+        // Drop the previous preview texture (kept alive for one frame to avoid wgpu crash)
+        self.prev_preview_texture = None;
+
         // Check for background import completion
         self.check_import_result();
         if self.importing {
