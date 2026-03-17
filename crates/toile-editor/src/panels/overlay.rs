@@ -446,6 +446,76 @@ impl EditorApp {
                 self.asset_browser.initialized = true;
             }
             self.asset_browser.show_ui(ctx);
+
+            // Check if user clicked "Add to Scene"
+            if let Some(asset_id) = self.asset_browser.pending_add_to_scene.take() {
+                if let Some(asset) = self.asset_browser.library.assets.iter().find(|a| a.id == asset_id) {
+                    let abs_path = self.asset_browser.library.absolute_path(asset);
+
+                    // Compute sprite path relative to project
+                    let sprite_path = match (&pdir, &abs_path) {
+                        (Some(pd), Some(abs)) => abs.strip_prefix(pd).map(|p| p.to_string_lossy().to_string()).unwrap_or_else(|_| abs.to_string_lossy().to_string()),
+                        _ => abs_path.as_ref().map(|p| p.to_string_lossy().to_string()).unwrap_or_default(),
+                    };
+
+                    // Create entity from asset
+                    let id = self.scene.next_id;
+                    self.scene.next_id += 1;
+                    let mut entity = toile_scene::EntityData {
+                        id,
+                        name: asset.name.clone(),
+                        x: self.camera_pos.x,
+                        y: self.camera_pos.y,
+                        sprite_path,
+                        ..Default::default()
+                    };
+
+                    // Configure sprite sheet from asset metadata
+                    if let toile_asset_library::AssetMetadata::Sprite(ref sm) = asset.metadata {
+                        if sm.frame_count > 1 {
+                            entity.sprite_sheet = Some(toile_scene::SpriteSheetData {
+                                frame_width: sm.frame_width,
+                                frame_height: sm.frame_height,
+                                columns: sm.columns,
+                                rows: sm.rows,
+                            });
+                        }
+                        entity.width = sm.frame_width as f32;
+                        entity.height = sm.frame_height as f32;
+
+                        // Import animations
+                        for anim in &sm.animations {
+                            entity.animations.push(toile_scene::AnimationData {
+                                name: anim.name.clone(),
+                                frames: anim.frames.clone(),
+                                fps: anim.fps,
+                                looping: anim.looping,
+                                sprite_file: None,
+                                strip_frames: None,
+                            });
+                        }
+                        if let Some(first) = entity.animations.first() {
+                            entity.default_animation = Some(first.name.clone());
+                        }
+                    }
+
+                    // Set size from image if not from sprite metadata
+                    if entity.width <= 1.0 || entity.height <= 1.0 {
+                        if let Some(ref abs) = abs_path {
+                            if let Some((w, h)) = image::image_dimensions(abs).ok() {
+                                entity.width = w as f32;
+                                entity.height = h as f32;
+                            }
+                        }
+                    }
+
+                    self.scene.entities.push(entity);
+                    self.selected_id = Some(id);
+                    self.editor_mode = EditorMode::Entity;
+                    self.sprite_cache.clear();
+                    self.status_msg = format!("Added '{}' to scene", asset.name);
+                }
+            }
         }
 
         if self.editor_mode != EditorMode::Particle && self.editor_mode != EditorMode::SpriteAnim && self.editor_mode != EditorMode::AssetBrowser {

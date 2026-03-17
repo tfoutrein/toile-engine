@@ -61,6 +61,13 @@ pub fn show_detail_panel(
         });
     });
 
+    // Add to Scene button
+    if ui.add_sized([ui.available_width(), 28.0],
+        egui::Button::new(egui::RichText::new("➕ Add to Scene").strong().color(egui::Color32::from_rgb(80, 220, 120)))
+    ).clicked() {
+        app.pending_add_to_scene = Some(selected_id.clone());
+    }
+
     ui.separator();
 
     // -- Full-size preview image --

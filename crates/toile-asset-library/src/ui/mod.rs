@@ -159,6 +159,8 @@ pub struct AssetBrowserApp {
     pub readme_content: Option<(String, String)>, // (filename, content)
     pub highlight_file: Option<String>, // relative path to highlight in file tree
     pub highlight_needs_scroll: bool,  // true only on first frame after "Go to file"
+    /// Set by "Add to Scene" button — the editor picks this up and creates an entity.
+    pub pending_add_to_scene: Option<String>, // asset ID to add
     surface_format: Option<wgpu::TextureFormat>,
     preview_loaded_path: String,
     tex_counter: u64,
@@ -187,6 +189,7 @@ impl AssetBrowserApp {
             readme_content: None,
             highlight_file: None,
             highlight_needs_scroll: false,
+            pending_add_to_scene: None,
             surface_format: None,
             preview_loaded_path: String::new(),
             tex_counter: 0,
