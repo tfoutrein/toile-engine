@@ -35,14 +35,21 @@ pub fn show_file_browser(
         .min_width(250.0)
         .show_inside(ui, |ui| {
             egui::ScrollArea::vertical().show(ui, |ui| {
-                // Build file tree per pack
+                // Build file tree — filter by selected pack if any
                 let packs = app.registry.packs.clone();
                 for pack_reg in &packs {
+                    let pack_id_str = pack_reg.name.replace(' ', "_").to_lowercase();
+
+                    // Skip if a pack filter is active and this isn't the selected pack
+                    if let Some(ref fp) = app.filter_pack {
+                        if *fp != pack_id_str { continue; }
+                    }
+
                     let pack_path = Path::new(&pack_reg.path);
                     if !pack_path.is_dir() { continue; }
 
-                    let pack_id = ui.make_persistent_id(&pack_reg.name);
-                    egui::collapsing_header::CollapsingState::load_with_default_open(ui.ctx(), pack_id, true)
+                    let pack_ui_id = ui.make_persistent_id(&pack_reg.name);
+                    egui::collapsing_header::CollapsingState::load_with_default_open(ui.ctx(), pack_ui_id, true)
                         .show_header(ui, |ui| {
                             ui.label(egui::RichText::new(format!("📦 {}", pack_reg.name)).strong());
                         })
