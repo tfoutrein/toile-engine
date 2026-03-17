@@ -8,6 +8,8 @@ use toile_core::particles::ParticlePool;
 use winit::event::WindowEvent;
 use winit::window::Window;
 
+use toile_asset_library::ui::AssetBrowserApp;
+
 use crate::overlay::EguiOverlay;
 use crate::particle_editor::ParticleEditorPanel;
 use crate::scene_data::{EntityData, SceneData};
@@ -75,6 +77,8 @@ pub struct EditorApp {
     pub(crate) last_mouse_pos: Vec2,
     pub(crate) panning: bool,
     pub(crate) editor_mode: EditorMode,
+    // Asset browser (embedded from toile-asset-library)
+    pub(crate) asset_browser: AssetBrowserApp,
 }
 
 /// What field the file picker is targeting.
@@ -91,6 +95,7 @@ pub enum EditorMode {
     Tilemap,
     Particle,
     SpriteAnim,
+    AssetBrowser,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -164,6 +169,7 @@ impl EditorApp {
             last_mouse_pos: Vec2::ZERO,
             panning: false,
             editor_mode: EditorMode::Entity,
+            asset_browser: AssetBrowserApp::new(),
         }
     }
 

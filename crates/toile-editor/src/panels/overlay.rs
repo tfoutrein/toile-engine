@@ -234,6 +234,7 @@ impl EditorApp {
                 let entity_label  = if self.editor_mode == EditorMode::Entity   { "[ Entity ]"   } else { "Entity" };
                 let tilemap_label = if self.editor_mode == EditorMode::Tilemap  { "[ Tilemap ]"  } else { "Tilemap" };
                 let particle_label = if self.editor_mode == EditorMode::Particle { "[ Particles ]" } else { "Particles" };
+                let assets_label = if self.editor_mode == EditorMode::AssetBrowser { "[ Assets ]" } else { "Assets" };
                 if ui.button(entity_label).clicked() {
                     self.editor_mode = EditorMode::Entity;
                 }
@@ -249,6 +250,9 @@ impl EditorApp {
                 }
                 if ui.button(particle_label).clicked() {
                     self.editor_mode = EditorMode::Particle;
+                }
+                if ui.button(assets_label).clicked() {
+                    self.editor_mode = EditorMode::AssetBrowser;
                 }
                 ui.menu_button("View", |ui| {
                     ui.checkbox(&mut self.show_grid, "Show Grid");
@@ -434,7 +438,17 @@ impl EditorApp {
         }
 
         // Hierarchy panel — tree view: Game > Scenes > Entities
-        if self.editor_mode != EditorMode::Particle && self.editor_mode != EditorMode::SpriteAnim {
+        // ── Asset Browser (full-screen mode) ─────────────────────────────
+        if self.editor_mode == EditorMode::AssetBrowser {
+            // Load registered packs on first use
+            if !self.asset_browser.initialized {
+                self.asset_browser.reload_registered_packs();
+                self.asset_browser.initialized = true;
+            }
+            self.asset_browser.show_ui(ctx);
+        }
+
+        if self.editor_mode != EditorMode::Particle && self.editor_mode != EditorMode::SpriteAnim && self.editor_mode != EditorMode::AssetBrowser {
         egui::SidePanel::left("hierarchy").default_width(200.0).show(ctx, |ui| {
             egui::ScrollArea::vertical().show(ui, |ui| {
             // Project root
@@ -905,7 +919,8 @@ impl EditorApp {
             }
         }
 
-        // Status bar
+        // Status bar (skip when asset browser provides its own)
+        if self.editor_mode == EditorMode::AssetBrowser { return; }
         egui::TopBottomPanel::bottom("status").exact_height(24.0).show(ctx, |ui| {
             ui.horizontal(|ui| {
                 ui.label(&self.status_msg);

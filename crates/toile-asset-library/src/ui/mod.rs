@@ -162,7 +162,7 @@ pub struct AssetBrowserApp {
     surface_format: Option<wgpu::TextureFormat>,
     preview_loaded_path: String,
     tex_counter: u64,
-    initialized: bool,
+    pub initialized: bool,
 }
 
 impl AssetBrowserApp {
@@ -195,7 +195,7 @@ impl AssetBrowserApp {
     }
 
     /// Reload all registered packs from their manifests.
-    fn reload_registered_packs(&mut self) {
+    pub fn reload_registered_packs(&mut self) {
         let paths: Vec<String> = self.registry.packs.iter().map(|p| p.path.clone()).collect();
         for path_str in &paths {
             let path = std::path::Path::new(path_str);
@@ -553,7 +553,7 @@ impl Game for AssetBrowserApp {
 
 impl AssetBrowserApp {
     /// Render the complete asset browser UI.
-    fn show_ui(&mut self, ctx: &egui::Context) {
+    pub fn show_ui(&mut self, ctx: &egui::Context) {
         // Drop the previous preview texture (kept alive for one frame to avoid wgpu crash)
         self.prev_preview_texture = None;
 

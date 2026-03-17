@@ -27,3 +27,4 @@ serde_json = { workspace = true }
 rfd = { workspace = true }
 image = { workspace = true }
 toile-assets = { workspace = true }
+toile-asset-library = { workspace = true }
