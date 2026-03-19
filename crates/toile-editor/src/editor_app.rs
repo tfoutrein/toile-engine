@@ -18,6 +18,8 @@ use crate::tilemap_tool::TilemapEditor;
 pub struct EditorApp {
     pub(crate) overlay: Option<EguiOverlay>,
     pub(crate) surface_format: Option<wgpu::TextureFormat>,
+    // Workspace — root directory for projects, asset packs, working files
+    pub(crate) workspace_dir: PathBuf,
     // Project state
     pub(crate) project_dir: Option<PathBuf>,
     pub(crate) show_project_dialog: bool,
@@ -116,9 +118,13 @@ impl EditorApp {
     pub fn new() -> Self {
         let scene = SceneData::new("Untitled");
 
+        // Load workspace dir from config, or default to ./workspace/
+        let workspace_dir = load_workspace_config();
+
         Self {
             overlay: None,
             surface_format: None,
+            workspace_dir,
             project_dir: None,
             show_project_dialog: true, // show welcome on startup
             project_path_input: String::new(),
@@ -390,4 +396,54 @@ pub fn run_editor() {
         .with_size(1280, 720)
         .with_clear_color(Color::rgb(0.12, 0.12, 0.16))
         .run(EditorApp::new());
+}
+
+// ── Workspace config persistence ────────────────────────────────────
+
+const WORKSPACE_CONFIG_FILE: &str = "toile-editor-config.json";
+
+fn config_path() -> PathBuf {
+    // Store config in user's home directory
+    if let Some(home) = dirs_fallback() {
+        let dir = home.join(".toile");
+        let _ = std::fs::create_dir_all(&dir);
+        dir.join(WORKSPACE_CONFIG_FILE)
+    } else {
+        PathBuf::from(WORKSPACE_CONFIG_FILE)
+    }
+}
+
+fn dirs_fallback() -> Option<PathBuf> {
+    std::env::var("HOME").ok().map(PathBuf::from)
+        .or_else(|| std::env::var("USERPROFILE").ok().map(PathBuf::from))
+}
+
+fn load_workspace_config() -> PathBuf {
+    let path = config_path();
+    if path.exists() {
+        if let Ok(json) = std::fs::read_to_string(&path) {
+            if let Ok(config) = serde_json::from_str::<serde_json::Value>(&json) {
+                if let Some(ws) = config.get("workspace_dir").and_then(|v| v.as_str()) {
+                    let dir = PathBuf::from(ws);
+                    if dir.exists() {
+                        return dir;
+                    }
+                }
+            }
+        }
+    }
+    // Default: workspace/ next to current dir
+    let default = PathBuf::from("workspace");
+    let _ = std::fs::create_dir_all(&default);
+    default
+}
+
+pub(crate) fn save_workspace_config(workspace_dir: &std::path::Path) {
+    let path = config_path();
+    let config = serde_json::json!({
+        "workspace_dir": workspace_dir.to_string_lossy(),
+    });
+    if let Ok(json) = serde_json::to_string_pretty(&config) {
+        let _ = std::fs::write(&path, json);
+    }
 }

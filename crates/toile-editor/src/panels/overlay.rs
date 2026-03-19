@@ -74,7 +74,9 @@ impl EditorApp {
                             ui.add_space(6.0);
                             ui.vertical_centered(|ui| {
                                 if ui.button("  Create Project  ").clicked() {
-                                    action_create = Some(PathBuf::from(&self.new_project_name));
+                                    let projects_dir = self.workspace_dir.join("projects");
+                                    let _ = std::fs::create_dir_all(&projects_dir);
+                                    action_create = Some(projects_dir.join(&self.new_project_name));
                                 }
                             });
                         });
@@ -101,28 +103,31 @@ impl EditorApp {
                                 }
                             });
 
-                            // Scan for directories with Toile.toml nearby
-                            let mut found_projects: Vec<String> = Vec::new();
-                            if let Ok(entries) = std::fs::read_dir(".") {
+                            // Scan workspace/projects/ for projects with Toile.toml
+                            let mut found_projects: Vec<(String, PathBuf)> = Vec::new();
+                            let projects_dir = self.workspace_dir.join("projects");
+                            if let Ok(entries) = std::fs::read_dir(&projects_dir) {
                                 for entry in entries.flatten() {
                                     let p = entry.path();
                                     if p.is_dir() && p.join("Toile.toml").exists() {
                                         if let Some(name) = p.file_name() {
-                                            found_projects.push(name.to_string_lossy().to_string());
+                                            found_projects.push((name.to_string_lossy().to_string(), p));
                                         }
                                     }
                                 }
                             }
+                            // Also check examples/run-demo
                             if Path::new("examples/run-demo/Toile.toml").exists() {
-                                found_projects.push("examples/run-demo".to_string());
+                                found_projects.push(("examples/run-demo".into(), PathBuf::from("examples/run-demo")));
                             }
 
                             if !found_projects.is_empty() {
                                 ui.add_space(8.0);
-                                ui.label(egui::RichText::new("Recent projects:").size(11.0).color(egui::Color32::from_gray(140)));
-                                for proj in &found_projects {
-                                    if ui.selectable_label(self.project_path_input == *proj, proj).clicked() {
-                                        self.project_path_input = proj.clone();
+                                ui.label(egui::RichText::new("Projects in workspace:").size(11.0).color(egui::Color32::from_gray(140)));
+                                for (name, path) in &found_projects {
+                                    let path_str = path.to_string_lossy().to_string();
+                                    if ui.selectable_label(self.project_path_input == path_str, name).clicked() {
+                                        self.project_path_input = path_str;
                                     }
                                 }
                             }
@@ -142,6 +147,25 @@ impl EditorApp {
                                 ui.label(egui::RichText::new(&self.status_msg).color(egui::Color32::YELLOW).size(12.0));
                             });
                         }
+
+                        // Workspace directory
+                        ui.add_space(16.0);
+                        ui.separator();
+                        ui.horizontal(|ui| {
+                            let ws_display = self.workspace_dir.to_string_lossy();
+                            ui.label(egui::RichText::new(format!("📁 Workspace: {ws_display}")).size(10.0).color(egui::Color32::from_gray(130)));
+                            if ui.small_button("Change...").clicked() {
+                                if let Some(dir) = rfd::FileDialog::new()
+                                    .set_title("Select Workspace Directory")
+                                    .pick_folder()
+                                {
+                                    let _ = std::fs::create_dir_all(dir.join("projects"));
+                                    let _ = std::fs::create_dir_all(dir.join("asset-packs"));
+                                    crate::editor_app::save_workspace_config(&dir);
+                                    self.workspace_dir = dir;
+                                }
+                            }
+                        });
                     });
                 });
             });
