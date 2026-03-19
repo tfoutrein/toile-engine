@@ -1,7 +1,22 @@
+# Build artifacts
 /target
 **/*.rs.bk
-Cargo.lock
+
+# OS files
 .DS_Store
 *.swp
 *.swo
 *~
+
+# Cargo lock (workspace — regenerated from Cargo.toml)
+Cargo.lock
+
+# ── Workspace (all local working files) ──────────────────────────────
+# This is where the editor stores projects, imported packs, and working files.
+# Never tracked in git.
+/workspace/
+
+# ── Asset Library generated files ────────────────────────────────────
+**/.toile/
+**/toile-asset-manifest.json
+asset-library-registry.json
