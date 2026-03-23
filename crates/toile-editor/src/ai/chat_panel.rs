@@ -177,29 +177,45 @@ impl EditorApp {
                 }
             });
 
-            ui.separator();
+            // Input field — fixed at bottom with clear styling
+            ui.add_space(8.0);
+            egui::Frame::NONE
+                .fill(egui::Color32::from_rgba_unmultiplied(40, 45, 55, 200))
+                .inner_margin(egui::Margin::same(8))
+                .corner_radius(6.0)
+                .show(ui, |ui| {
+                    let mut send = false;
+                    ui.horizontal(|ui| {
+                        ui.label(egui::RichText::new("💬").size(16.0));
+                        let response = ui.add_sized(
+                            [ui.available_width() - 70.0, 28.0],
+                            egui::TextEdit::singleline(&mut self.ai_input)
+                                .hint_text("Ask Claude to create or modify the scene...")
+                                .font(egui::TextStyle::Body)
+                        );
+                        if response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                            send = true;
+                        }
+                        // Always give focus to the input when in AI mode
+                        if self.ai_input.is_empty() && !self.ai_loading {
+                            response.request_focus();
+                        }
+                        let send_btn = ui.add_enabled(
+                            !self.ai_loading && !self.ai_input.is_empty(),
+                            egui::Button::new(egui::RichText::new("Send").strong())
+                        );
+                        if send_btn.clicked() {
+                            send = true;
+                        }
+                    });
 
-            // Input field
-            let mut send = false;
-            ui.horizontal(|ui| {
-                let response = ui.add_sized(
-                    [ui.available_width() - 60.0, 30.0],
-                    egui::TextEdit::singleline(&mut self.ai_input)
-                        .hint_text("Ask Claude to create or modify the scene...")
-                );
-                if response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
-                    send = true;
-                }
-                if ui.add_enabled(!self.ai_loading && !self.ai_input.is_empty(), egui::Button::new("Send")).clicked() {
-                    send = true;
-                }
-            });
+                    if send && !self.ai_input.is_empty() && !self.ai_loading {
+                        let user_msg = self.ai_input.clone();
+                        self.ai_input.clear();
+                        self.send_ai_message(user_msg);
+                    }
+                });
 
-            if send && !self.ai_input.is_empty() && !self.ai_loading {
-                let user_msg = self.ai_input.clone();
-                self.ai_input.clear();
-                self.send_ai_message(user_msg);
-            }
         });
 
         // Check for API response
