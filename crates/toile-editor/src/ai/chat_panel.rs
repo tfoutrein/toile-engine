@@ -2,7 +2,7 @@
 
 use crate::editor_app::{EditorApp, EditorMode};
 use crate::ai::client::{ChatMessage, ToolCall};
-use crate::ai::config::AVAILABLE_MODELS;
+use crate::ai::config::ModelInfo;
 
 impl EditorApp {
     /// Render the AI copilot panel (full-screen mode).
@@ -28,6 +28,13 @@ impl EditorApp {
             ui.add_space(8.0);
             if ui.button("⚙ Settings").clicked() {
                 self.ai_show_settings = !self.ai_show_settings;
+                // Auto-load models on first settings open if API key exists
+                if self.ai_show_settings && !self.ai_models_loaded && self.ai_config.is_configured() {
+                    if let Ok(models) = crate::ai::config::fetch_models(&self.ai_config.api_key) {
+                        self.ai_available_models = models;
+                        self.ai_models_loaded = true;
+                    }
+                }
             }
             if ui.button("🗑 Clear chat").clicked() {
                 self.ai_messages.clear();
@@ -53,14 +60,38 @@ impl EditorApp {
                         ui.end_row();
 
                         ui.label("Model:");
-                        egui::ComboBox::from_id_salt("ai_model")
-                            .selected_text(&self.ai_config.model)
-                            .width(280.0)
-                            .show_ui(ui, |ui| {
-                                for (id, desc) in AVAILABLE_MODELS {
-                                    ui.selectable_value(&mut self.ai_config.model, id.to_string(), format!("{id} — {desc}"));
+                        ui.horizontal(|ui| {
+                            egui::ComboBox::from_id_salt("ai_model")
+                                .selected_text(&self.ai_config.model)
+                                .width(220.0)
+                                .show_ui(ui, |ui| {
+                                    for model in &self.ai_available_models {
+                                        let label = if model.name != model.id {
+                                            format!("{} ({})", model.name, model.id)
+                                        } else {
+                                            model.id.clone()
+                                        };
+                                        ui.selectable_value(&mut self.ai_config.model, model.id.clone(), label);
+                                    }
+                                    if self.ai_available_models.is_empty() {
+                                        ui.label(egui::RichText::new("Click Refresh to load models").color(egui::Color32::from_gray(130)));
+                                    }
+                                });
+                            if ui.small_button("🔄").on_hover_text("Refresh models from API").clicked() {
+                                if !self.ai_config.api_key.is_empty() {
+                                    match crate::ai::config::fetch_models(&self.ai_config.api_key) {
+                                        Ok(models) => {
+                                            self.ai_available_models = models;
+                                            self.ai_models_loaded = true;
+                                            self.status_msg = format!("Loaded {} models", self.ai_available_models.len());
+                                        }
+                                        Err(e) => {
+                                            self.status_msg = format!("Failed to load models: {e}");
+                                        }
+                                    }
                                 }
-                            });
+                            }
+                        });
                         ui.end_row();
                     });
 

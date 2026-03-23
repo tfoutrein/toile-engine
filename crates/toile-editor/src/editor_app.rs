@@ -90,6 +90,8 @@ pub struct EditorApp {
     pub(crate) ai_loading: bool,
     pub(crate) ai_show_settings: bool,
     pub(crate) ai_response_rx: Option<std::sync::mpsc::Receiver<Result<crate::ai::client::ApiResponse, String>>>,
+    pub(crate) ai_available_models: Vec<crate::ai::config::ModelInfo>,
+    pub(crate) ai_models_loaded: bool,
 }
 
 /// What field the file picker is targeting.
@@ -192,6 +194,8 @@ impl EditorApp {
             ai_loading: false,
             ai_show_settings: false,
             ai_response_rx: None,
+            ai_available_models: Vec::new(),
+            ai_models_loaded: false,
         }
     }
 

@@ -57,8 +57,44 @@ impl AiConfig {
     }
 }
 
-pub const AVAILABLE_MODELS: &[(&str, &str)] = &[
-    ("claude-sonnet-4-20250514", "Claude Sonnet 4 (fast, recommended)"),
-    ("claude-opus-4-20250514", "Claude Opus 4 (powerful)"),
-    ("claude-haiku-3-5-20241022", "Claude Haiku 3.5 (fastest, cheapest)"),
-];
+/// Fetch available models from the Anthropic API.
+pub fn fetch_models(api_key: &str) -> Result<Vec<ModelInfo>, String> {
+    let client = reqwest::blocking::Client::new();
+    let response = client
+        .get("https://api.anthropic.com/v1/models")
+        .header("x-api-key", api_key)
+        .header("anthropic-version", "2023-06-01")
+        .send()
+        .map_err(|e| format!("HTTP error: {e}"))?;
+
+    if !response.status().is_success() {
+        return Err(format!("API error: {}", response.status()));
+    }
+
+    let json: serde_json::Value = response.json()
+        .map_err(|e| format!("JSON error: {e}"))?;
+
+    let mut models = Vec::new();
+    if let Some(data) = json.get("data").and_then(|v| v.as_array()) {
+        for item in data {
+            let id = item.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            let name = item.get("display_name").and_then(|v| v.as_str())
+                .unwrap_or_else(|| item.get("id").and_then(|v| v.as_str()).unwrap_or(""))
+                .to_string();
+            if !id.is_empty() {
+                models.push(ModelInfo { id, name });
+            }
+        }
+    }
+
+    // Sort: newest/most capable first
+    models.sort_by(|a, b| b.id.cmp(&a.id));
+
+    Ok(models)
+}
+
+#[derive(Debug, Clone)]
+pub struct ModelInfo {
+    pub id: String,
+    pub name: String,
+}
