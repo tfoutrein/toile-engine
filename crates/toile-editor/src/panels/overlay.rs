@@ -551,7 +551,7 @@ impl EditorApp {
             self.show_ai_copilot(ctx);
         }
 
-        if self.editor_mode != EditorMode::Particle && self.editor_mode != EditorMode::SpriteAnim && self.editor_mode != EditorMode::AssetBrowser && self.editor_mode != EditorMode::AICopilot {
+        if self.editor_mode != EditorMode::Particle && self.editor_mode != EditorMode::SpriteAnim && self.editor_mode != EditorMode::AssetBrowser {
         egui::SidePanel::left("hierarchy").default_width(200.0).show(ctx, |ui| {
             egui::ScrollArea::vertical().show(ui, |ui| {
             // Project root
