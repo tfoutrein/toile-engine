@@ -66,6 +66,7 @@ Reutilisation exacte des schemas MCP existants (`toile-mcp/src/lib.rs`) :
 | `set_tile` / `fill_rect` | Peindre des tiles |
 | `create_prefab` / `instantiate_prefab` | Gerer les prefabs |
 | `create_particle_emitter` | Creer des effets particules |
+| `take_screenshot` | Capturer le viewport et renvoyer l'image a Claude |
 | + outils v0.5 : `add_behavior`, `set_entity_tags`, `create_event_sheet` |
 
 #### 4. Tool Executor
@@ -140,7 +141,18 @@ Reponds de maniere concise. Execute les actions demandees immediatement.
 - Contexte automatique (scene state envoye a chaque message)
 - Historique de conversation persistant par projet
 
-### Phase 3 : Copilote avance (v1.0)
+### Phase 3 : Vision + feedback visuel (v0.5/v1.0)
+- **Screenshot tool** : apres chaque serie de modifications, capturer le viewport et l'envoyer a Claude comme image
+- Claude peut "voir" le resultat et se corriger ("Le joueur est trop a droite, je le deplace")
+- Mecanisme :
+  1. Tool executor termine les modifications
+  2. L'editeur fait un rendu du viewport dans un buffer offscreen
+  3. L'image (PNG, max 1024px) est ajoutee au contexte de conversation
+  4. Claude recoit `[image du viewport actuel]` et peut reagir
+- Declenchement : automatique apres chaque batch de tool calls, ou sur demande ("montre-moi le resultat")
+- Nouvel outil `take_screenshot` disponible pour Claude
+
+### Phase 4 : Copilote avance (v1.0)
 - Suggestions proactives ("Cette entite n'a pas de collider, voulez-vous en ajouter ?")
 - Mode "describe & build" : l'utilisateur decrit le jeu, Claude le construit etape par etape
 - Integration avec l'Asset Library ("Utilise le sprite du pack Kenney pour le joueur")
