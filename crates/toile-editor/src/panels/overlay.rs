@@ -278,6 +278,10 @@ impl EditorApp {
                 if ui.button(assets_label).clicked() {
                     self.editor_mode = EditorMode::AssetBrowser;
                 }
+                let ai_label = if self.editor_mode == EditorMode::AICopilot { "[ 🤖 AI ]" } else { "🤖 AI" };
+                if ui.button(ai_label).clicked() {
+                    self.editor_mode = EditorMode::AICopilot;
+                }
                 ui.menu_button("View", |ui| {
                     ui.checkbox(&mut self.show_grid, "Show Grid");
                     ui.checkbox(&mut self.show_viewport_guide, "Show Player Viewport");
@@ -542,7 +546,12 @@ impl EditorApp {
             }
         }
 
-        if self.editor_mode != EditorMode::Particle && self.editor_mode != EditorMode::SpriteAnim && self.editor_mode != EditorMode::AssetBrowser {
+        // ── AI Copilot (full-screen mode) ────────────────────────────────
+        if self.editor_mode == EditorMode::AICopilot {
+            self.show_ai_copilot(ctx);
+        }
+
+        if self.editor_mode != EditorMode::Particle && self.editor_mode != EditorMode::SpriteAnim && self.editor_mode != EditorMode::AssetBrowser && self.editor_mode != EditorMode::AICopilot {
         egui::SidePanel::left("hierarchy").default_width(200.0).show(ctx, |ui| {
             egui::ScrollArea::vertical().show(ui, |ui| {
             // Project root

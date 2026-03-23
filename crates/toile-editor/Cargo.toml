@@ -28,3 +28,4 @@ rfd = { workspace = true }
 image = { workspace = true }
 toile-assets = { workspace = true }
 toile-asset-library = { workspace = true }
+reqwest = { workspace = true }

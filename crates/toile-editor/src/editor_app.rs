@@ -9,6 +9,8 @@ use winit::event::WindowEvent;
 use winit::window::Window;
 
 use toile_asset_library::ui::AssetBrowserApp;
+use crate::ai::client::ChatMessage;
+use crate::ai::config::AiConfig;
 
 use crate::overlay::EguiOverlay;
 use crate::particle_editor::ParticleEditorPanel;
@@ -81,6 +83,13 @@ pub struct EditorApp {
     pub(crate) editor_mode: EditorMode,
     // Asset browser (embedded from toile-asset-library)
     pub(crate) asset_browser: AssetBrowserApp,
+    // AI Copilot
+    pub(crate) ai_config: AiConfig,
+    pub(crate) ai_messages: Vec<ChatMessage>,
+    pub(crate) ai_input: String,
+    pub(crate) ai_loading: bool,
+    pub(crate) ai_show_settings: bool,
+    pub(crate) ai_response_rx: Option<std::sync::mpsc::Receiver<Result<crate::ai::client::ApiResponse, String>>>,
 }
 
 /// What field the file picker is targeting.
@@ -98,6 +107,7 @@ pub enum EditorMode {
     Particle,
     SpriteAnim,
     AssetBrowser,
+    AICopilot,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -176,6 +186,12 @@ impl EditorApp {
             panning: false,
             editor_mode: EditorMode::Entity,
             asset_browser: AssetBrowserApp::new(),
+            ai_config: AiConfig::load(),
+            ai_messages: Vec::new(),
+            ai_input: String::new(),
+            ai_loading: false,
+            ai_show_settings: false,
+            ai_response_rx: None,
         }
     }
 

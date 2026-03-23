@@ -17,7 +17,7 @@ impl EditorApp {
     ) -> bool {
         let mut delete_selected = false;
 
-        if self.editor_mode != EditorMode::Particle && self.editor_mode != EditorMode::SpriteAnim && self.editor_mode != EditorMode::AssetBrowser {
+        if self.editor_mode != EditorMode::Particle && self.editor_mode != EditorMode::SpriteAnim && self.editor_mode != EditorMode::AssetBrowser && self.editor_mode != EditorMode::AICopilot {
         egui::SidePanel::right("inspector").min_width(280.0).default_width(300.0).show(ctx, |ui| {
             egui::ScrollArea::vertical().show(ui, |ui| {
             ui.heading("Inspector");

@@ -7,3 +7,4 @@ pub mod panels;
 pub mod editor_app;
 pub mod input;
 pub mod viewport;
+pub mod ai;
