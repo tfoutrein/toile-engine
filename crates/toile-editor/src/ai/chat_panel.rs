@@ -2,12 +2,11 @@
 
 use crate::editor_app::{EditorApp, EditorMode};
 use crate::ai::client::{ChatMessage, ToolCall};
-use crate::ai::config::ModelInfo;
 
 impl EditorApp {
     /// Render the AI copilot panel (full-screen mode).
     pub(crate) fn show_ai_copilot(&mut self, ctx: &egui::Context) {
-        // Left panel — settings + conversation history
+        // Left panel — settings + status
         egui::SidePanel::left("ai_settings").default_width(120.0).show(ctx, |ui| {
             if ui.button("← Back").clicked() {
                 self.editor_mode = EditorMode::Entity;
@@ -16,7 +15,6 @@ impl EditorApp {
             ui.label(egui::RichText::new("AI Copilot").strong());
             ui.add_space(4.0);
 
-            // Config status
             if self.ai_config.is_configured() {
                 ui.label(egui::RichText::new("✅ Connected").color(egui::Color32::from_rgb(80, 220, 80)).size(11.0));
                 let model_short = self.ai_config.model.split('-').take(2).collect::<Vec<_>>().join("-");
@@ -28,7 +26,6 @@ impl EditorApp {
             ui.add_space(8.0);
             if ui.button("⚙ Settings").clicked() {
                 self.ai_show_settings = !self.ai_show_settings;
-                // Auto-load models on first settings open if API key exists
                 if self.ai_show_settings && !self.ai_models_loaded && self.ai_config.is_configured() {
                     if let Ok(models) = crate::ai::config::fetch_models(&self.ai_config.api_key) {
                         self.ai_available_models = models;
@@ -74,7 +71,7 @@ impl EditorApp {
                                         ui.selectable_value(&mut self.ai_config.model, model.id.clone(), label);
                                     }
                                     if self.ai_available_models.is_empty() {
-                                        ui.label(egui::RichText::new("Click Refresh to load models").color(egui::Color32::from_gray(130)));
+                                        ui.label(egui::RichText::new("Click 🔄 to load models").color(egui::Color32::from_gray(130)));
                                     }
                                 });
                             if ui.small_button("🔄").on_hover_text("Refresh models from API").clicked() {
@@ -111,9 +108,9 @@ impl EditorApp {
             if !open { self.ai_show_settings = false; }
         }
 
-        // Central panel — chat
-        egui::CentralPanel::default().show(ctx, |ui| {
-            if !self.ai_config.is_configured() {
+        // Not configured — show setup message
+        if !self.ai_config.is_configured() {
+            egui::CentralPanel::default().show(ctx, |ui| {
                 ui.vertical_centered(|ui| {
                     ui.add_space(80.0);
                     ui.heading("🤖 AI Copilot");
@@ -121,101 +118,105 @@ impl EditorApp {
                     ui.label("Configure your Anthropic API key to start.");
                     ui.label("Click ⚙ Settings on the left.");
                 });
-                return;
-            }
+            });
+            self.check_ai_response();
+            return;
+        }
 
-            // Message history
-            let scroll_area = egui::ScrollArea::vertical()
-                .auto_shrink([false, false])
-                .stick_to_bottom(true);
-
-            scroll_area.show(ui, |ui| {
-                ui.set_min_width(ui.available_width());
-
-                for msg in &self.ai_messages {
-                    let is_user = msg.role == "user";
-                    let bg = if is_user {
-                        egui::Color32::from_rgba_unmultiplied(40, 60, 90, 80)
-                    } else {
-                        egui::Color32::from_rgba_unmultiplied(50, 50, 60, 60)
-                    };
-
-                    egui::Frame::NONE
-                        .fill(bg)
-                        .inner_margin(egui::Margin::same(8))
-                        .corner_radius(4.0)
-                        .show(ui, |ui| {
-                            let label = if is_user { "You" } else { "Claude" };
-                            let color = if is_user { egui::Color32::from_rgb(100, 180, 255) } else { egui::Color32::from_rgb(180, 140, 255) };
-                            ui.label(egui::RichText::new(label).strong().color(color).size(12.0));
-
-                            if !msg.content.is_empty() {
-                                ui.label(&msg.content);
-                            }
-
-                            // Show tool calls
-                            for tc in &msg.tool_calls {
-                                ui.horizontal(|ui| {
-                                    ui.label(egui::RichText::new(format!("🔧 {}", tc.name)).size(11.0).color(egui::Color32::from_rgb(255, 200, 80)));
-                                    if let Some(ref result) = tc.result {
-                                        let short = if result.len() > 80 { format!("{}...", &result[..77]) } else { result.clone() };
-                                        ui.label(egui::RichText::new(format!("→ {short}")).size(10.0).color(egui::Color32::from_gray(140)));
-                                    }
-                                });
-                            }
-                        });
-                    ui.add_space(4.0);
-                }
-
-                // Loading indicator
-                if self.ai_loading {
-                    ui.horizontal(|ui| {
-                        ui.spinner();
-                        ui.label(egui::RichText::new("Claude is thinking...").color(egui::Color32::from_gray(150)));
-                    });
-                    ctx.request_repaint();
+        // Input bar — FIXED at the bottom
+        egui::TopBottomPanel::bottom("ai_input_bar")
+            .exact_height(50.0)
+            .show(ctx, |ui| {
+                ui.add_space(4.0);
+                let mut send = false;
+                ui.horizontal(|ui| {
+                    ui.label(egui::RichText::new("💬").size(18.0));
+                    let response = ui.add_sized(
+                        [ui.available_width() - 70.0, 30.0],
+                        egui::TextEdit::singleline(&mut self.ai_input)
+                            .hint_text("Ask Claude to create or modify the scene...")
+                            .font(egui::TextStyle::Body)
+                    );
+                    if response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                        send = true;
+                    }
+                    let send_btn = ui.add_enabled(
+                        !self.ai_loading && !self.ai_input.is_empty(),
+                        egui::Button::new(egui::RichText::new("Send").strong())
+                    );
+                    if send_btn.clicked() {
+                        send = true;
+                    }
+                });
+                if send && !self.ai_input.is_empty() && !self.ai_loading {
+                    let user_msg = self.ai_input.clone();
+                    self.ai_input.clear();
+                    self.send_ai_message(user_msg);
                 }
             });
 
-            // Input field — fixed at bottom with clear styling
-            ui.add_space(8.0);
-            egui::Frame::NONE
-                .fill(egui::Color32::from_rgba_unmultiplied(40, 45, 55, 200))
-                .inner_margin(egui::Margin::same(8))
-                .corner_radius(6.0)
-                .show(ui, |ui| {
-                    let mut send = false;
-                    ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new("💬").size(16.0));
-                        let response = ui.add_sized(
-                            [ui.available_width() - 70.0, 28.0],
-                            egui::TextEdit::singleline(&mut self.ai_input)
-                                .hint_text("Ask Claude to create or modify the scene...")
-                                .font(egui::TextStyle::Body)
-                        );
-                        if response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
-                            send = true;
+        // Chat messages — central panel fills the rest
+        egui::CentralPanel::default().show(ctx, |ui| {
+            if self.ai_messages.is_empty() {
+                ui.vertical_centered(|ui| {
+                    ui.add_space(60.0);
+                    ui.heading("🤖 AI Copilot");
+                    ui.add_space(8.0);
+                    ui.label("Type a message below to start.");
+                    ui.add_space(4.0);
+                    ui.label(egui::RichText::new("Try: \"Crée un niveau platformer avec un joueur, un sol, et 3 plateformes\"")
+                        .color(egui::Color32::from_gray(140)).italics());
+                });
+            } else {
+                egui::ScrollArea::vertical()
+                    .auto_shrink([false, false])
+                    .stick_to_bottom(true)
+                    .show(ui, |ui| {
+                        ui.set_min_width(ui.available_width());
+
+                        for msg in &self.ai_messages {
+                            let is_user = msg.role == "user";
+                            let bg = if is_user {
+                                egui::Color32::from_rgba_unmultiplied(40, 60, 90, 80)
+                            } else {
+                                egui::Color32::from_rgba_unmultiplied(50, 50, 60, 60)
+                            };
+
+                            egui::Frame::NONE
+                                .fill(bg)
+                                .inner_margin(egui::Margin::same(8))
+                                .corner_radius(4.0)
+                                .show(ui, |ui| {
+                                    let label = if is_user { "You" } else { "Claude" };
+                                    let color = if is_user { egui::Color32::from_rgb(100, 180, 255) } else { egui::Color32::from_rgb(180, 140, 255) };
+                                    ui.label(egui::RichText::new(label).strong().color(color).size(12.0));
+
+                                    if !msg.content.is_empty() {
+                                        ui.label(&msg.content);
+                                    }
+
+                                    for tc in &msg.tool_calls {
+                                        ui.horizontal(|ui| {
+                                            ui.label(egui::RichText::new(format!("🔧 {}", tc.name)).size(11.0).color(egui::Color32::from_rgb(255, 200, 80)));
+                                            if let Some(ref result) = tc.result {
+                                                let short = if result.len() > 100 { format!("{}...", &result[..97]) } else { result.clone() };
+                                                ui.label(egui::RichText::new(format!("→ {short}")).size(10.0).color(egui::Color32::from_gray(140)));
+                                            }
+                                        });
+                                    }
+                                });
+                            ui.add_space(4.0);
                         }
-                        // Always give focus to the input when in AI mode
-                        if self.ai_input.is_empty() && !self.ai_loading {
-                            response.request_focus();
-                        }
-                        let send_btn = ui.add_enabled(
-                            !self.ai_loading && !self.ai_input.is_empty(),
-                            egui::Button::new(egui::RichText::new("Send").strong())
-                        );
-                        if send_btn.clicked() {
-                            send = true;
+
+                        if self.ai_loading {
+                            ui.horizontal(|ui| {
+                                ui.spinner();
+                                ui.label(egui::RichText::new("Claude is thinking...").color(egui::Color32::from_gray(150)));
+                            });
+                            ctx.request_repaint();
                         }
                     });
-
-                    if send && !self.ai_input.is_empty() && !self.ai_loading {
-                        let user_msg = self.ai_input.clone();
-                        self.ai_input.clear();
-                        self.send_ai_message(user_msg);
-                    }
-                });
-
+            }
         });
 
         // Check for API response
@@ -260,26 +261,22 @@ impl EditorApp {
                 match result {
                     Ok(response) => {
                         if !response.tool_calls.is_empty() {
-                            // Execute tool calls on the scene
                             let mut tool_calls: Vec<ToolCall> = response.tool_calls;
                             for tc in &mut tool_calls {
                                 let result = crate::ai::tools::execute_tool(&mut self.scene, &tc.name, &tc.input);
                                 tc.result = Some(result);
                             }
 
-                            // Add assistant message with tool calls
                             self.ai_messages.push(ChatMessage {
                                 role: "assistant".into(),
                                 content: response.text.clone(),
                                 tool_calls: tool_calls.clone(),
                             });
 
-                            // Clear sprite cache to show new entities
                             self.sprite_cache.clear();
 
-                            // If stop_reason is "tool_use", Claude wants to continue — send tool results back
+                            // Auto-continue if Claude wants to use more tools
                             if response.stop_reason == "tool_use" {
-                                // Auto-continue the conversation with tool results
                                 let config = self.ai_config.clone();
                                 let messages = self.ai_messages.clone();
                                 let system_prompt = crate::ai::client::build_system_prompt(
@@ -299,7 +296,6 @@ impl EditorApp {
                                 });
                             }
                         } else {
-                            // Text-only response
                             self.ai_messages.push(ChatMessage {
                                 role: "assistant".into(),
                                 content: response.text,
