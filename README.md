@@ -76,118 +76,25 @@ cargo run -p toile-cli -- new my-game
 
 ## Examples
 
-### Breakout
-Full game with audio, collision, text, ECS, and sprite batching.
-```bash
-cargo run --example breakout
-```
+> **Full list with descriptions and commands:** [docs/EXAMPLES.md](docs/EXAMPLES.md)
 
-### Platformer
-Tiled tilemap, Aseprite animation, Lua enemy AI, camera scrolling, coyote time.
-```bash
-cargo run --example platformer
-```
+24 runnable examples covering rendering, visual effects, game systems, asset formats, and tools.
 
-### 10K Sprites Benchmark
-Stress test: 10,000 moving sprites across 4 textures and 4 layers.
-```bash
-cargo run --release --example bench_10k_sprites
-```
+| Category | Highlights |
+|----------|-----------|
+| **Games** | Breakout, Platformer, Coin Collector |
+| **Rendering** | 10k sprites benchmark, SDF fonts |
+| **Visual Effects** | Lighting, Shadows, Post-processing, Particles, Shader Graph |
+| **Game Systems** | Physics, Scene Stack, Behaviors, Event Sheets, Prefabs |
+| **Assets** | LDtk import, Aseprite binary, Project Templates |
 
-### Particles
-Interactive particle demo with 8 switchable presets + explosion burst.
+Quick start:
 ```bash
-cargo run --example particles_demo
-```
-
-### Post-Processing
-Bloom, CRT, Vignette, Pixelate, Screen Shake, Color Grading — all toggleable live.
-```bash
-cargo run --example post_processing_demo -p toile-app
-```
-
-### Lighting & Shadows
-2D point lights with falloff + soft shadow casting.
-```bash
-cargo run --example shadows_demo -p toile-app
-```
-
-### SDF Fonts
-Crisp text at any scale, outline, drop shadow, animated glow — from a single 32px atlas.
-```bash
-cargo run --example msdf_font_demo -p toile-app
-```
-
-### Shader Graph
-Node-based shader graph with 4 built-in demo effects (wave, glitch, pixelate, chromatic).
-```bash
-cargo run --example shader_graph_demo -p toile-app
-```
-
-### Particle Editor
-Live particle editor with egui inspector — curve editor, gradient editor, sub-emitters, JSON save/load.
-```bash
-cargo run --example particle_editor_demo -p toile-app
-```
-
-### Physics
-Rapier2D rigid body simulation — boxes fall, bounce, and stack. Click to spawn.
-```bash
-cargo run --example physics_demo
-```
-
-### Scene Stack
-Menu → Gameplay → Pause overlay with fade transitions.
-```bash
-cargo run --example scene_demo
-```
-
-### Async Loading
-Background asset loading with progress bar.
-```bash
-cargo run --example loading_demo
-```
-
-### Event Sheets
-Data-driven game rules with conditions and actions.
-```bash
-cargo run --example event_sheet_demo
-```
-
-### Behaviors
-All 7 pre-built behaviors in action: Platform, Sine, Bullet, Fade, Wrap.
-```bash
-cargo run --example behaviors_demo
-```
-
-### Prefabs
-Place prefab instances in Edit mode, then play as a platformer character with shooting.
-```bash
-cargo run --example prefab_demo
-```
-
-### Project Templates
-Load and play each of the 4 project templates live (Empty, Platformer, TopDown, Shmup).
-```bash
-cargo run --example template_demo
-```
-
-### LDtk Import
-Import LDtk levels with IntGrid collision, entities, and multi-level navigation.
-```bash
-cargo run --example ldtk_demo
-```
-
-### Aseprite Binary Import
-Parse .ase files directly — animated sprite with tags, filmstrip view.
-```bash
-cargo run --example aseprite_demo
-```
-
-### Visual Editor
-Scene editor with hierarchy, inspector, drag & drop, resize handles, rotation, tilemap painting, particle editor.
-```bash
-cargo run -p toile-cli -- editor
+cargo run --example breakout -p toile-app          # Play Breakout
+cargo run --example platformer -p toile-app        # Play Platformer
+cargo run --release --example bench_10k_sprites -p toile-app  # Benchmark
+toile editor                                       # Visual editor
+toile run examples/run-demo                        # Data-driven game
 ```
 
 ## AI-Native
