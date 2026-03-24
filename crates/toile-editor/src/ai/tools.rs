@@ -505,7 +505,45 @@ pub fn execute_tool_with_dir(scene: &mut SceneData, tool_name: &str, args: &serd
         "create_event_sheet" => {
             let eid = args.get("entity_id").and_then(|v| v.as_u64()).unwrap_or(0);
             let name = args.get("name").and_then(|v| v.as_str()).unwrap_or("events");
-            let events_json = args.get("events").cloned().unwrap_or(serde_json::json!([]));
+            let events_raw = args.get("events").cloned().unwrap_or(serde_json::json!([]));
+
+            // Transform Claude's simplified format into the engine's format.
+            // Claude sends: {"conditions": [{"type":"OnKeyPressed","key":"Space"}], "actions": [{"type":"Destroy"}]}
+            // Engine expects: {"conditions": [{"kind":{"type":"OnKeyPressed","key":"Space"}}], "actions": [{"kind":{"type":"Destroy"}}]}
+            let events_json = if let Some(arr) = events_raw.as_array() {
+                let fixed: Vec<serde_json::Value> = arr.iter().map(|evt| {
+                    let conditions = evt.get("conditions").and_then(|v| v.as_array())
+                        .map(|conds| conds.iter().map(|c| {
+                            // If already has "kind", leave as-is; otherwise wrap
+                            if c.get("kind").is_some() {
+                                c.clone()
+                            } else {
+                                serde_json::json!({"kind": c, "negated": false})
+                            }
+                        }).collect::<Vec<_>>())
+                        .unwrap_or_default();
+
+                    let actions = evt.get("actions").and_then(|v| v.as_array())
+                        .map(|acts| acts.iter().map(|a| {
+                            if a.get("kind").is_some() {
+                                a.clone()
+                            } else {
+                                serde_json::json!({"kind": a})
+                            }
+                        }).collect::<Vec<_>>())
+                        .unwrap_or_default();
+
+                    serde_json::json!({
+                        "conditions": conditions,
+                        "actions": actions,
+                        "sub_events": [],
+                        "enabled": true,
+                    })
+                }).collect();
+                serde_json::json!(fixed)
+            } else {
+                events_raw
+            };
 
             let sheet = serde_json::json!({
                 "name": name,
