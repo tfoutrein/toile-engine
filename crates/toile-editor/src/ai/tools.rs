@@ -131,10 +131,15 @@ pub fn tool_definitions() -> Vec<serde_json::Value> {
         })),
 
         // ── Event Sheets ──
-        tool_def("get_event_sheet", "Get the event sheet assigned to an entity (name and path)", serde_json::json!({
+        tool_def("get_event_sheet", "Get the event sheet assigned to an entity — returns path AND full content (conditions + actions)", serde_json::json!({
             "type": "object",
             "properties": {"entity_id": {"type": "integer"}},
             "required": ["entity_id"]
+        })),
+        tool_def("get_prefab", "Get the full content of a saved prefab (entity template with behaviors, tags, etc.)", serde_json::json!({
+            "type": "object",
+            "properties": {"prefab_name": {"type": "string"}},
+            "required": ["prefab_name"]
         })),
 
         // ── Prefabs ──
@@ -428,12 +433,35 @@ pub fn execute_tool(scene: &mut SceneData, tool_name: &str, args: &serde_json::V
         "get_event_sheet" => {
             let eid = args.get("entity_id").and_then(|v| v.as_u64()).unwrap_or(0);
             if let Some(entity) = scene.entities.iter().find(|e| e.id == eid) {
-                serde_json::json!({
+                let mut result = serde_json::json!({
                     "entity_id": eid,
-                    "event_sheet": entity.event_sheet,
-                }).to_string()
+                    "event_sheet_path": entity.event_sheet,
+                });
+                // Try to read the event sheet content
+                if let Some(ref path) = entity.event_sheet {
+                    if let Ok(content) = std::fs::read_to_string(path) {
+                        if let Ok(sheet) = serde_json::from_str::<serde_json::Value>(&content) {
+                            result["content"] = sheet;
+                        }
+                    }
+                }
+                result.to_string()
             } else {
                 serde_json::json!({"error": format!("Entity {} not found", eid)}).to_string()
+            }
+        }
+
+        "get_prefab" => {
+            let name = args.get("prefab_name").and_then(|v| v.as_str()).unwrap_or("");
+            let filename = format!("prefabs/{}.prefab.json", name.to_lowercase().replace(' ', "_"));
+            match std::fs::read_to_string(&filename) {
+                Ok(content) => {
+                    match serde_json::from_str::<serde_json::Value>(&content) {
+                        Ok(prefab) => serde_json::json!({"prefab_name": name, "content": prefab}).to_string(),
+                        Err(e) => serde_json::json!({"error": format!("Parse error: {e}")}).to_string(),
+                    }
+                }
+                Err(_) => serde_json::json!({"error": format!("Prefab '{}' not found", name)}).to_string(),
             }
         }
 
