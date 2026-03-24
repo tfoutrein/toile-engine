@@ -166,7 +166,20 @@ fn tool_def(name: &str, description: &str, input_schema: serde_json::Value) -> s
 }
 
 /// Execute a tool call on the scene. Returns the result as a string.
+/// `project_dir` is used to resolve file paths for event sheets and prefabs.
 pub fn execute_tool(scene: &mut SceneData, tool_name: &str, args: &serde_json::Value) -> String {
+    execute_tool_with_dir(scene, tool_name, args, None)
+}
+
+/// Execute a tool call with an optional project directory for file operations.
+pub fn execute_tool_with_dir(scene: &mut SceneData, tool_name: &str, args: &serde_json::Value, project_dir: Option<&std::path::Path>) -> String {
+    let resolve = |relative: &str| -> std::path::PathBuf {
+        if let Some(dir) = project_dir {
+            dir.join(relative)
+        } else {
+            std::path::PathBuf::from(relative)
+        }
+    };
     match tool_name {
         "list_entities" => {
             let entities: Vec<serde_json::Value> = scene.entities.iter().map(|e| {
@@ -439,7 +452,8 @@ pub fn execute_tool(scene: &mut SceneData, tool_name: &str, args: &serde_json::V
                 });
                 // Try to read the event sheet content
                 if let Some(ref path) = entity.event_sheet {
-                    if let Ok(content) = std::fs::read_to_string(path) {
+                    let full = resolve(path);
+                    if let Ok(content) = std::fs::read_to_string(&full) {
                         if let Ok(sheet) = serde_json::from_str::<serde_json::Value>(&content) {
                             result["content"] = sheet;
                         }
@@ -454,7 +468,8 @@ pub fn execute_tool(scene: &mut SceneData, tool_name: &str, args: &serde_json::V
         "get_prefab" => {
             let name = args.get("prefab_name").and_then(|v| v.as_str()).unwrap_or("");
             let filename = format!("prefabs/{}.prefab.json", name.to_lowercase().replace(' ', "_"));
-            match std::fs::read_to_string(&filename) {
+            let full = resolve(&filename);
+            match std::fs::read_to_string(&full) {
                 Ok(content) => {
                     match serde_json::from_str::<serde_json::Value>(&content) {
                         Ok(prefab) => serde_json::json!({"prefab_name": name, "content": prefab}).to_string(),
@@ -466,9 +481,9 @@ pub fn execute_tool(scene: &mut SceneData, tool_name: &str, args: &serde_json::V
         }
 
         "list_prefabs" => {
-            let prefab_dir = std::path::Path::new("prefabs");
+            let prefab_dir = resolve("prefabs");
             let mut prefabs = Vec::new();
-            if let Ok(entries) = std::fs::read_dir(prefab_dir) {
+            if let Ok(entries) = std::fs::read_dir(&prefab_dir) {
                 for entry in entries.flatten() {
                     let name = entry.file_name().to_string_lossy().to_string();
                     if name.ends_with(".prefab.json") {
@@ -484,26 +499,37 @@ pub fn execute_tool(scene: &mut SceneData, tool_name: &str, args: &serde_json::V
             let name = args.get("name").and_then(|v| v.as_str()).unwrap_or("events");
             let events_json = args.get("events").cloned().unwrap_or(serde_json::json!([]));
 
-            // Build the event sheet JSON
             let sheet = serde_json::json!({
                 "name": name,
                 "events": events_json,
             });
 
-            // Save to scripts/ directory (relative path)
             let filename = format!("scripts/{}.event.json", name.to_lowercase().replace(' ', "_"));
 
-            if let Some(entity) = scene.find_entity_mut(eid) {
-                entity.event_sheet = Some(filename.clone());
+            // Actually write the file to disk
+            let full_path = resolve(&filename);
+            if let Some(parent) = full_path.parent() {
+                let _ = std::fs::create_dir_all(parent);
             }
-
-            // Return the sheet content + filename for the editor to save
-            serde_json::json!({
-                "created_event_sheet": filename,
-                "entity_id": eid,
-                "content": sheet,
-                "note": "Event sheet assigned to entity. Save the scene to persist."
-            }).to_string()
+            match serde_json::to_string_pretty(&sheet) {
+                Ok(json) => {
+                    match std::fs::write(&full_path, &json) {
+                        Ok(()) => {
+                            // Assign to entity
+                            if let Some(entity) = scene.find_entity_mut(eid) {
+                                entity.event_sheet = Some(filename.clone());
+                            }
+                            serde_json::json!({
+                                "created_event_sheet": filename,
+                                "entity_id": eid,
+                                "written": true,
+                            }).to_string()
+                        }
+                        Err(e) => serde_json::json!({"error": format!("Failed to write {}: {e}", filename)}).to_string(),
+                    }
+                }
+                Err(e) => serde_json::json!({"error": format!("JSON error: {e}")}).to_string(),
+            }
         }
 
         "save_as_prefab" => {
@@ -514,13 +540,22 @@ pub fn execute_tool(scene: &mut SceneData, tool_name: &str, args: &serde_json::V
                 let prefab = toile_scene::prefab::Prefab::from_entity(prefab_name, entity);
                 let filename = format!("prefabs/{}.prefab.json", prefab_name.to_lowercase().replace(' ', "_"));
 
-                serde_json::json!({
-                    "prefab_name": prefab_name,
-                    "filename": filename,
-                    "entity_id": eid,
-                    "prefab": serde_json::to_value(&prefab).unwrap_or(serde_json::json!(null)),
-                    "note": "Prefab created. Save to persist."
-                }).to_string()
+                // Actually write the prefab to disk
+                let full_path = resolve(&filename);
+                if let Some(parent) = full_path.parent() {
+                    let _ = std::fs::create_dir_all(parent);
+                }
+                match toile_scene::prefab::save_prefab(&full_path, &prefab) {
+                    Ok(()) => {
+                        serde_json::json!({
+                            "prefab_name": prefab_name,
+                            "filename": filename,
+                            "entity_id": eid,
+                            "written": true,
+                        }).to_string()
+                    }
+                    Err(e) => serde_json::json!({"error": format!("Failed to save prefab: {e}")}).to_string(),
+                }
             } else {
                 serde_json::json!({"error": format!("Entity {} not found", eid)}).to_string()
             }

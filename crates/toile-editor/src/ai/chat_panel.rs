@@ -255,7 +255,7 @@ impl EditorApp {
                         if !response.tool_calls.is_empty() {
                             let mut tool_calls: Vec<ToolCall> = response.tool_calls;
                             for tc in &mut tool_calls {
-                                let result = crate::ai::tools::execute_tool(&mut self.scene, &tc.name, &tc.input);
+                                let result = crate::ai::tools::execute_tool_with_dir(&mut self.scene, &tc.name, &tc.input, self.project_dir.as_deref());
                                 tc.result = Some(result);
                             }
 
