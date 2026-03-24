@@ -110,6 +110,8 @@ pub struct GameRunner {
     scene_settings: toile_scene::SceneSettings,
     /// Smooth camera position for platformer follow mode.
     camera_pos: Vec2,
+    /// Font for HUD text.
+    hud_font: Option<toile_app::FontHandle>,
 }
 
 impl GameRunner {
@@ -129,6 +131,7 @@ impl GameRunner {
             next_id: 1,
             scene_settings: Default::default(),
             camera_pos: Vec2::ZERO,
+            hud_font: None,
         })
     }
 
@@ -330,6 +333,18 @@ impl Game for GameRunner {
         } else {
             // Create a 1x1 white texture programmatically
             self.white_tex = Some(ctx.create_texture_from_rgba(&[255, 255, 255, 255], 1, 1));
+        }
+
+        // Load HUD font
+        let font_path = self.resolve("assets/fonts/PressStart2P.ttf");
+        if font_path.exists() {
+            self.hud_font = Some(ctx.load_ttf(&font_path, 16.0));
+        } else {
+            // Try engine default font
+            let default_font = std::path::Path::new("assets/fonts/PressStart2P.ttf");
+            if default_font.exists() {
+                self.hud_font = Some(ctx.load_ttf(default_font, 16.0));
+            }
         }
 
         // Camera zoom for Retina
@@ -887,6 +902,51 @@ impl Game for GameRunner {
                         uv_min: Vec2::ZERO,
                         uv_max: Vec2::ONE,
                     });
+                }
+            }
+        }
+
+        // ── HUD: auto-display Player variables ──────────────────────────
+        if let Some(font) = self.hud_font {
+            // Find player entity and collect its variables
+            let player_vars: Vec<(String, f64)> = self.entities.iter()
+                .filter(|e| e.alive && is_player(&e.data))
+                .flat_map(|e| e.event_state.variables.iter().map(|(k, v)| (k.clone(), *v)))
+                .collect();
+
+            // Also check entity data variables (initial values)
+            let player_data_vars: Vec<(String, f64)> = if player_vars.is_empty() {
+                self.entities.iter()
+                    .filter(|e| e.alive && is_player(&e.data))
+                    .flat_map(|e| e.data.variables.iter().map(|(k, v)| (k.clone(), *v)))
+                    .collect()
+            } else {
+                player_vars
+            };
+
+            if !player_data_vars.is_empty() {
+                // Position in screen space (top-left corner)
+                let vp = ctx.camera.viewport_size();
+                let cam = ctx.camera.position;
+                let zoom = ctx.camera.zoom;
+                let half_w = vp.x / (2.0 * zoom);
+                let half_h = vp.y / (2.0 * zoom);
+                let hud_x = cam.x - half_w + 10.0 / zoom;
+                let mut hud_y = cam.y + half_h - 10.0 / zoom;
+                let line_h = 20.0 / zoom;
+
+                for (name, value) in &player_data_vars {
+                    // Format nicely
+                    let display = match name.as_str() {
+                        "health" | "hp" | "vie" => format!("❤ {}", *value as i32),
+                        "score" | "points" => format!("⭐ {}", *value as i32),
+                        "lives" | "vies" => format!("🧑 ×{}", *value as i32),
+                        "ammo" | "munitions" => format!("🔫 {}", *value as i32),
+                        _ => format!("{}: {}", name, *value as i32),
+                    };
+
+                    ctx.draw_text(&display, Vec2::new(hud_x, hud_y), font, 16.0 / zoom, 0xFFFFFFFF, 100);
+                    hud_y -= line_h;
                 }
             }
         }
