@@ -96,6 +96,7 @@ pub struct EditorApp {
     pub(crate) game_log_receiver: Option<std::sync::Arc<std::sync::Mutex<Vec<String>>>>,
     pub(crate) ai_available_models: Vec<crate::ai::config::ModelInfo>,
     pub(crate) ai_models_loaded: bool,
+    pub(crate) bug_reporter: crate::ai::bug_reporter::BugReporter,
 }
 
 /// What field the file picker is targeting.
@@ -203,6 +204,7 @@ impl EditorApp {
             game_log_receiver: None,
             ai_available_models: Vec::new(),
             ai_models_loaded: false,
+            bug_reporter: Default::default(),
         }
     }
 

@@ -43,7 +43,13 @@ pub fn build_system_prompt(config: &AiConfig, scene_name: &str, entity_count: us
           Conditions: OnKeyPressed, OnCollisionWith, EveryTick, EveryNSeconds, OnCreate, IfVariable\n\
           Actions: Destroy, SpawnObject, SetPosition, MoveAtAngle, SetVariable, AddToVariable, PlaySound, GoToScene, Log\n\
         - save_as_prefab : sauvegarder une entité comme template réutilisable\n\
-        - get_game_logs : lire les logs de la dernière session de jeu (Play). Utile pour diagnostiquer les bugs (erreurs, collisions, spawns, etc.)\n\n\
+        - get_game_logs : lire les logs de la dernière session de jeu (Play). Utile pour diagnostiquer les bugs (erreurs, collisions, spawns, etc.)\n\
+        - report_bug : signaler un bug dans le MOTEUR ou l'EDITEUR Toile (crée une GitHub Issue automatiquement)\n\n\
+        REPORT DE BUGS :\n\
+        - report_bug est UNIQUEMENT pour les bugs du moteur/éditeur Toile, PAS pour les erreurs utilisateur\n\
+        - Bug moteur = tool call échoue pour raison interne, NaN/crash dans la physique, event sheet valide non exécuté, prefab pas sauvegardé sur disque\n\
+        - PAS un bug = tag manquant, prefab pas créé par l'utilisateur, scene vide, mauvaise config\n\
+        - En cas de doute, aide l'utilisateur plutôt que de reporter un bug\n\n\
         CONVENTIONS :\n\
         - Coordonnées Y-up (Y positif = haut), (0,0) = centre\n\
         - create_entity avec role= auto-configure behaviors+tags\n\

@@ -150,6 +150,19 @@ pub fn tool_definitions() -> Vec<serde_json::Value> {
             }
         })),
 
+        // ── Bug reporting ──
+        tool_def("report_bug", "Report a bug in the Toile ENGINE or EDITOR (NOT a user project issue). Creates a GitHub Issue on toile-engine/toile. Use only when you detect an internal engine/editor malfunction.", serde_json::json!({
+            "type": "object",
+            "properties": {
+                "severity": {"type": "string", "enum": ["bug", "crash", "perf", "enhancement"], "description": "bug=incorrect behavior, crash=panic/fatal, perf=performance issue, enhancement=missing feature"},
+                "title": {"type": "string", "description": "Short summary in English (one line)"},
+                "description": {"type": "string", "description": "Detailed description: observed vs expected behavior, reproduction steps, relevant logs"},
+                "component": {"type": "string", "enum": ["editor", "runner", "events", "behaviors", "collision", "scene", "prefabs", "renderer", "audio", "other"], "description": "Toile component affected"},
+                "logs": {"type": "array", "items": {"type": "string"}, "description": "Relevant log lines"}
+            },
+            "required": ["severity", "title", "description", "component"]
+        })),
+
         // ── Prefabs ──
         tool_def("list_prefabs", "List all saved prefabs in the project", serde_json::json!({
             "type": "object", "properties": {}

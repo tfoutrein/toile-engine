@@ -10,6 +10,14 @@ pub struct AiConfig {
     pub api_key: String,
     pub model: String,
     pub custom_system_prompt: String,
+    #[serde(default = "default_github_repo")]
+    pub github_repo: String,
+    #[serde(default)]
+    pub auto_report_bugs: bool,
+}
+
+fn default_github_repo() -> String {
+    "tfoutrein/toile-engine".to_string()
 }
 
 impl Default for AiConfig {
@@ -18,6 +26,8 @@ impl Default for AiConfig {
             api_key: String::new(),
             model: "claude-sonnet-4-20250514".to_string(),
             custom_system_prompt: String::new(),
+            github_repo: default_github_repo(),
+            auto_report_bugs: false,
         }
     }
 }

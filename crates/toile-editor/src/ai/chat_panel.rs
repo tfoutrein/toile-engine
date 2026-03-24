@@ -64,6 +64,21 @@ impl EditorApp {
                         .desired_rows(3)
                         .desired_width(380.0));
 
+                    ui.add_space(12.0);
+                    ui.label(egui::RichText::new("Bug Reporting").strong());
+                    ui.separator();
+
+                    ui.checkbox(&mut self.ai_config.auto_report_bugs, "Auto-report engine bugs to GitHub");
+                    if self.ai_config.auto_report_bugs {
+                        ui.horizontal(|ui| {
+                            ui.label("GitHub repo:");
+                            ui.add(egui::TextEdit::singleline(&mut self.ai_config.github_repo)
+                                .hint_text("owner/repo")
+                                .desired_width(200.0));
+                        });
+                        ui.label(egui::RichText::new("Requires gh CLI installed and authenticated").size(10.0).color(egui::Color32::from_gray(130)));
+                    }
+
                     ui.add_space(8.0);
                     if ui.button("Save").clicked() {
                         self.ai_config.save();
@@ -272,6 +287,28 @@ impl EditorApp {
                                         "showing_last": lines.len(),
                                         "logs": lines,
                                     }).to_string()
+                                } else if tc.name == "report_bug" {
+                                    if !self.ai_config.auto_report_bugs {
+                                        serde_json::json!({
+                                            "error": "Bug reporting is disabled. The user can enable it in AI Settings > Auto-report bugs to GitHub."
+                                        }).to_string()
+                                    } else {
+                                        let severity = tc.input.get("severity").and_then(|v| v.as_str()).unwrap_or("bug");
+                                        let title = tc.input.get("title").and_then(|v| v.as_str()).unwrap_or("Untitled bug");
+                                        let description = tc.input.get("description").and_then(|v| v.as_str()).unwrap_or("");
+                                        let component = tc.input.get("component").and_then(|v| v.as_str()).unwrap_or("other");
+                                        let logs: Vec<String> = tc.input.get("logs")
+                                            .and_then(|v| v.as_array())
+                                            .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+                                            .unwrap_or_default();
+                                        match self.bug_reporter.report(
+                                            &self.ai_config.github_repo,
+                                            severity, title, description, component, &logs,
+                                        ) {
+                                            Ok(url) => serde_json::json!({"reported": true, "url": url}).to_string(),
+                                            Err(e) => serde_json::json!({"reported": false, "error": e}).to_string(),
+                                        }
+                                    }
                                 } else {
                                     crate::ai::tools::execute_tool_with_dir(&mut self.scene, &tc.name, &tc.input, self.project_dir.as_deref())
                                 };

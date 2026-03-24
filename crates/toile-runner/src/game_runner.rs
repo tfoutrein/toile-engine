@@ -17,7 +17,7 @@ use toile_behaviors::*;
 use toile_collision::{Collider, Shape, SpatialGrid, overlap_test, overlap_test_rotated};
 use toile_events::executor::{EventCommand, EventContext, EventSheetState, evaluate_event_sheet};
 use toile_events::model::EventSheet;
-use toile_graphics::sprite_renderer::DrawSprite;
+use toile_graphics::sprite_renderer::{DrawSprite, pack_color};
 use toile_scene::{ColliderData, EntityData, SceneData};
 
 use crate::manifest::ProjectManifest;
@@ -338,12 +338,12 @@ impl Game for GameRunner {
         // Load HUD font
         let font_path = self.resolve("assets/fonts/PressStart2P.ttf");
         if font_path.exists() {
-            self.hud_font = Some(ctx.load_ttf(&font_path, 16.0));
+            self.hud_font = Some(ctx.load_ttf(&font_path, 32.0));
         } else {
             // Try engine default font
             let default_font = std::path::Path::new("assets/fonts/PressStart2P.ttf");
             if default_font.exists() {
-                self.hud_font = Some(ctx.load_ttf(default_font, 16.0));
+                self.hud_font = Some(ctx.load_ttf(default_font, 32.0));
             }
         }
 
@@ -814,20 +814,25 @@ impl Game for GameRunner {
             let tex = ent.texture.unwrap_or(fallback_tex);
             let alpha = (ent.es.opacity.clamp(0.0, 1.0) * 255.0) as u8;
 
-            // Tint untextured entities with a color based on layer
+            // Color entities consistently with the editor
             let color = if ent.texture.is_some() {
-                u32::from_be_bytes([255, 255, 255, alpha])
+                pack_color(255, 255, 255, alpha)
             } else {
-                let hue = ((ent.data.layer.abs() as f32 * 0.3) % 1.0 * 6.0) as u8;
-                let (r, g, b) = match hue % 6 {
-                    0 => (100u8, 150, 220),
-                    1 => (220, 100, 100),
-                    2 => (100, 220, 100),
-                    3 => (220, 220, 100),
-                    4 => (220, 100, 220),
-                    _ => (100, 220, 220),
-                };
-                u32::from_be_bytes([r, g, b, alpha])
+                let is_player = ent.data.tags.iter().any(|t| t.eq_ignore_ascii_case("player"));
+                let is_solid = ent.data.behaviors.iter().any(|b| matches!(b, toile_behaviors::BehaviorConfig::Solid));
+                let is_coin = ent.data.tags.iter().any(|t| t.eq_ignore_ascii_case("coin"));
+                let is_enemy = ent.data.tags.iter().any(|t| t.eq_ignore_ascii_case("enemy"));
+                if is_player {
+                    pack_color(80, 220, 120, alpha)
+                } else if is_solid {
+                    pack_color(160, 160, 180, alpha)
+                } else if is_coin {
+                    pack_color(255, 220, 50, alpha)
+                } else if is_enemy {
+                    pack_color(220, 80, 80, alpha)
+                } else {
+                    pack_color(100, 150, 220, alpha)
+                }
             };
 
             // Compute UV + texture from animation
@@ -925,27 +930,32 @@ impl Game for GameRunner {
             };
 
             if !player_data_vars.is_empty() {
-                // Position in screen space (top-left corner)
+                // HUD in screen-space: fixed size regardless of zoom
                 let vp = ctx.camera.viewport_size();
                 let cam = ctx.camera.position;
                 let zoom = ctx.camera.zoom;
                 let half_w = vp.x / (2.0 * zoom);
                 let half_h = vp.y / (2.0 * zoom);
-                let hud_x = cam.x - half_w + 10.0 / zoom;
-                let mut hud_y = cam.y + half_h - 10.0 / zoom;
-                let line_h = 20.0 / zoom;
+                let font_size = 28.0 / zoom; // ~28 screen pixels
+                let padding = 12.0 / zoom;
+                let line_h = 34.0 / zoom;
+                let shadow_offset = 2.0 / zoom;
+                let hud_x = cam.x - half_w + padding;
+                let mut hud_y = cam.y + half_h - padding - font_size;
 
                 for (name, value) in &player_data_vars {
-                    // Format nicely
                     let display = match name.as_str() {
-                        "health" | "hp" | "vie" => format!("❤ {}", *value as i32),
-                        "score" | "points" => format!("⭐ {}", *value as i32),
-                        "lives" | "vies" => format!("🧑 ×{}", *value as i32),
-                        "ammo" | "munitions" => format!("🔫 {}", *value as i32),
-                        _ => format!("{}: {}", name, *value as i32),
+                        "health" | "hp" | "vie" => format!("HP: {}", *value as i32),
+                        "score" | "points" => format!("SCORE: {}", *value as i32),
+                        "lives" | "vies" => format!("LIVES: {}", *value as i32),
+                        "ammo" | "munitions" => format!("AMMO: {}", *value as i32),
+                        _ => format!("{}: {}", name.to_uppercase(), *value as i32),
                     };
 
-                    ctx.draw_text(&display, Vec2::new(hud_x, hud_y), font, 16.0 / zoom, 0xFFFFFFFF, 100);
+                    // Shadow for readability
+                    ctx.draw_text(&display, Vec2::new(hud_x + shadow_offset, hud_y - shadow_offset), font, font_size, 0xFF000000, 99);
+                    // Main text
+                    ctx.draw_text(&display, Vec2::new(hud_x, hud_y), font, font_size, 0xFFFFFFFF, 100);
                     hud_y -= line_h;
                 }
             }
