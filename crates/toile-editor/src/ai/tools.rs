@@ -56,7 +56,20 @@ pub fn tool_definitions() -> Vec<serde_json::Value> {
             "required": ["entity_id"]
         })),
 
+        tool_def("get_entity_details", "Get full details of an entity: position, size, behaviors, tags, variables, event sheet, animations", serde_json::json!({
+            "type": "object",
+            "properties": {
+                "entity_id": {"type": "integer"}
+            },
+            "required": ["entity_id"]
+        })),
+
         // ── Behaviors ──
+        tool_def("list_behaviors", "List all behaviors on an entity with their type, index, and config", serde_json::json!({
+            "type": "object",
+            "properties": {"entity_id": {"type": "integer"}},
+            "required": ["entity_id"]
+        })),
         tool_def("add_behavior", "Add a behavior to an entity (Platform, TopDown, Bullet, Sine, Fade, Wrap, Solid)", serde_json::json!({
             "type": "object",
             "properties": {
@@ -76,6 +89,16 @@ pub fn tool_definitions() -> Vec<serde_json::Value> {
         })),
 
         // ── Tags & Variables ──
+        tool_def("get_tags", "Get the tags of an entity", serde_json::json!({
+            "type": "object",
+            "properties": {"entity_id": {"type": "integer"}},
+            "required": ["entity_id"]
+        })),
+        tool_def("get_variables", "Get the variables of an entity", serde_json::json!({
+            "type": "object",
+            "properties": {"entity_id": {"type": "integer"}},
+            "required": ["entity_id"]
+        })),
         tool_def("set_tags", "Set the tags on an entity (replaces existing tags)", serde_json::json!({
             "type": "object",
             "properties": {
@@ -107,7 +130,17 @@ pub fn tool_definitions() -> Vec<serde_json::Value> {
             "required": ["entity_id", "name", "events"]
         })),
 
+        // ── Event Sheets ──
+        tool_def("get_event_sheet", "Get the event sheet assigned to an entity (name and path)", serde_json::json!({
+            "type": "object",
+            "properties": {"entity_id": {"type": "integer"}},
+            "required": ["entity_id"]
+        })),
+
         // ── Prefabs ──
+        tool_def("list_prefabs", "List all saved prefabs in the project", serde_json::json!({
+            "type": "object", "properties": {}
+        })),
         tool_def("save_as_prefab", "Save an entity as a reusable prefab template", serde_json::json!({
             "type": "object",
             "properties": {
@@ -212,10 +245,57 @@ pub fn execute_tool(scene: &mut SceneData, tool_name: &str, args: &serde_json::V
             }
         }
 
+        "get_entity_details" => {
+            let eid = args.get("entity_id").and_then(|v| v.as_u64()).unwrap_or(0);
+            if let Some(entity) = scene.entities.iter().find(|e| e.id == eid) {
+                let behaviors: Vec<serde_json::Value> = entity.behaviors.iter().enumerate().map(|(i, b)| {
+                    serde_json::json!({
+                        "index": i,
+                        "type": format!("{:?}", b).split('(').next().unwrap_or("?"),
+                        "config": serde_json::to_value(b).unwrap_or(serde_json::json!(null)),
+                    })
+                }).collect();
+                serde_json::json!({
+                    "id": entity.id, "name": entity.name,
+                    "x": entity.x, "y": entity.y,
+                    "width": entity.width, "height": entity.height,
+                    "rotation": entity.rotation,
+                    "scale_x": entity.scale_x, "scale_y": entity.scale_y,
+                    "layer": entity.layer, "visible": entity.visible,
+                    "tags": entity.tags,
+                    "variables": entity.variables,
+                    "behaviors": behaviors,
+                    "event_sheet": entity.event_sheet,
+                    "particle_emitter": entity.particle_emitter,
+                    "sprite_path": entity.sprite_path,
+                    "animations": entity.animations.iter().map(|a| &a.name).collect::<Vec<_>>(),
+                    "default_animation": entity.default_animation,
+                }).to_string()
+            } else {
+                serde_json::json!({"error": format!("Entity {} not found", eid)}).to_string()
+            }
+        }
+
         "delete_entity" => {
             let eid = args.get("entity_id").and_then(|v| v.as_u64()).unwrap_or(0);
             scene.remove_entity(eid);
             serde_json::json!({"deleted": eid}).to_string()
+        }
+
+        "list_behaviors" => {
+            let eid = args.get("entity_id").and_then(|v| v.as_u64()).unwrap_or(0);
+            if let Some(entity) = scene.entities.iter().find(|e| e.id == eid) {
+                let behaviors: Vec<serde_json::Value> = entity.behaviors.iter().enumerate().map(|(i, b)| {
+                    serde_json::json!({
+                        "index": i,
+                        "type": format!("{:?}", b).split('(').next().unwrap_or("?"),
+                        "config": serde_json::to_value(b).unwrap_or(serde_json::json!(null)),
+                    })
+                }).collect();
+                serde_json::json!({"entity_id": eid, "behaviors": behaviors}).to_string()
+            } else {
+                serde_json::json!({"error": format!("Entity {} not found", eid)}).to_string()
+            }
         }
 
         "add_behavior" => {
@@ -298,6 +378,24 @@ pub fn execute_tool(scene: &mut SceneData, tool_name: &str, args: &serde_json::V
             }
         }
 
+        "get_tags" => {
+            let eid = args.get("entity_id").and_then(|v| v.as_u64()).unwrap_or(0);
+            if let Some(entity) = scene.entities.iter().find(|e| e.id == eid) {
+                serde_json::json!({"entity_id": eid, "tags": entity.tags}).to_string()
+            } else {
+                serde_json::json!({"error": format!("Entity {} not found", eid)}).to_string()
+            }
+        }
+
+        "get_variables" => {
+            let eid = args.get("entity_id").and_then(|v| v.as_u64()).unwrap_or(0);
+            if let Some(entity) = scene.entities.iter().find(|e| e.id == eid) {
+                serde_json::json!({"entity_id": eid, "variables": entity.variables}).to_string()
+            } else {
+                serde_json::json!({"error": format!("Entity {} not found", eid)}).to_string()
+            }
+        }
+
         "set_tags" => {
             let eid = args.get("entity_id").and_then(|v| v.as_u64()).unwrap_or(0);
             if let Some(entity) = scene.find_entity_mut(eid) {
@@ -325,6 +423,32 @@ pub fn execute_tool(scene: &mut SceneData, tool_name: &str, args: &serde_json::V
             } else {
                 serde_json::json!({"error": format!("Entity {} not found", eid)}).to_string()
             }
+        }
+
+        "get_event_sheet" => {
+            let eid = args.get("entity_id").and_then(|v| v.as_u64()).unwrap_or(0);
+            if let Some(entity) = scene.entities.iter().find(|e| e.id == eid) {
+                serde_json::json!({
+                    "entity_id": eid,
+                    "event_sheet": entity.event_sheet,
+                }).to_string()
+            } else {
+                serde_json::json!({"error": format!("Entity {} not found", eid)}).to_string()
+            }
+        }
+
+        "list_prefabs" => {
+            let prefab_dir = std::path::Path::new("prefabs");
+            let mut prefabs = Vec::new();
+            if let Ok(entries) = std::fs::read_dir(prefab_dir) {
+                for entry in entries.flatten() {
+                    let name = entry.file_name().to_string_lossy().to_string();
+                    if name.ends_with(".prefab.json") {
+                        prefabs.push(name.replace(".prefab.json", ""));
+                    }
+                }
+            }
+            serde_json::json!({"prefabs": prefabs}).to_string()
         }
 
         "create_event_sheet" => {
