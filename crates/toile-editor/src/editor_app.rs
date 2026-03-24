@@ -91,6 +91,9 @@ pub struct EditorApp {
     pub(crate) ai_show_settings: bool,
     pub(crate) ai_response_rx: Option<std::sync::mpsc::Receiver<Result<crate::ai::client::ApiResponse, String>>>,
     pub(crate) ai_md_cache: egui_commonmark::CommonMarkCache,
+    /// Captured game logs from the last Play session.
+    pub(crate) game_logs: Vec<String>,
+    pub(crate) game_log_receiver: Option<std::sync::Arc<std::sync::Mutex<Vec<String>>>>,
     pub(crate) ai_available_models: Vec<crate::ai::config::ModelInfo>,
     pub(crate) ai_models_loaded: bool,
 }
@@ -196,6 +199,8 @@ impl EditorApp {
             ai_show_settings: false,
             ai_response_rx: None,
             ai_md_cache: egui_commonmark::CommonMarkCache::default(),
+            game_logs: Vec::new(),
+            game_log_receiver: None,
             ai_available_models: Vec::new(),
             ai_models_loaded: false,
         }

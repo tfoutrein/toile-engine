@@ -142,6 +142,14 @@ pub fn tool_definitions() -> Vec<serde_json::Value> {
             "required": ["prefab_name"]
         })),
 
+        // ── Diagnostics ──
+        tool_def("get_game_logs", "Get logs from the last Play session (errors, warnings, entity spawns, collisions, etc.)", serde_json::json!({
+            "type": "object",
+            "properties": {
+                "last_n": {"type": "integer", "description": "Number of last log lines to return (default 50)"}
+            }
+        })),
+
         // ── Prefabs ──
         tool_def("list_prefabs", "List all saved prefabs in the project", serde_json::json!({
             "type": "object", "properties": {}

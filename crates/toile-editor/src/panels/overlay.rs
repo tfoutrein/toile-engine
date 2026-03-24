@@ -20,6 +20,21 @@ impl EditorApp {
         project_particles: &[String],
         pdir: &Option<PathBuf>,
     ) {
+        // Check for game logs from Play session
+        let mut logs_ready = false;
+        if let Some(ref receiver) = self.game_log_receiver {
+            if let Ok(logs) = receiver.try_lock() {
+                if !logs.is_empty() {
+                    self.game_logs = logs.clone();
+                    logs_ready = true;
+                }
+            }
+        }
+        if logs_ready {
+            self.game_log_receiver = None;
+            self.status_msg = format!("Game finished — {} log lines captured", self.game_logs.len());
+        }
+
         // Set grab cursor while panning
         if self.panning {
             ctx.set_cursor_icon(egui::CursorIcon::Grabbing);
@@ -451,14 +466,44 @@ impl EditorApp {
                         let _ = std::fs::write(&save_path, &json);
                     }
                 }
-                // Spawn toile run as a child process
+                // Spawn toile run as a child process, capture logs
+                self.game_logs.clear();
+                let dir_clone = dir.clone();
                 match std::process::Command::new("toile")
                     .arg("run")
-                    .arg(dir)
+                    .arg(&dir)
+                    .env("RUST_LOG", "info")
+                    .stderr(std::process::Stdio::piped())
+                    .stdout(std::process::Stdio::piped())
                     .spawn()
                 {
-                    Ok(_) => self.status_msg = "Game launched!".to_string(),
-                    Err(e) => self.status_msg = format!("Failed to launch: {e}. Is `toile` in PATH? (cargo install --path crates/toile-cli)"),
+                    Ok(child) => {
+                        self.status_msg = "Game launched!".to_string();
+                        // Capture logs in background thread
+                        let logs = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+                        let logs_clone = logs.clone();
+                        std::thread::spawn(move || {
+                            if let Ok(output) = child.wait_with_output() {
+                                let mut captured = Vec::new();
+                                if let Ok(stderr) = String::from_utf8(output.stderr) {
+                                    for line in stderr.lines() {
+                                        captured.push(line.to_string());
+                                    }
+                                }
+                                if let Ok(stdout) = String::from_utf8(output.stdout) {
+                                    for line in stdout.lines() {
+                                        captured.push(line.to_string());
+                                    }
+                                }
+                                if let Ok(mut logs) = logs_clone.lock() {
+                                    *logs = captured;
+                                }
+                            }
+                        });
+                        // Store the Arc so we can read it later
+                        self.game_log_receiver = Some(logs);
+                    }
+                    Err(e) => self.status_msg = format!("Failed to launch: {e}. Is `toile` in PATH?"),
                 }
             } else {
                 self.status_msg = "No project open".to_string();

@@ -262,7 +262,19 @@ impl EditorApp {
                         if !response.tool_calls.is_empty() {
                             let mut tool_calls: Vec<ToolCall> = response.tool_calls;
                             for tc in &mut tool_calls {
-                                let result = crate::ai::tools::execute_tool_with_dir(&mut self.scene, &tc.name, &tc.input, self.project_dir.as_deref());
+                                let result = if tc.name == "get_game_logs" {
+                                    let last_n = tc.input.get("last_n").and_then(|v| v.as_u64()).unwrap_or(50) as usize;
+                                    let total = self.game_logs.len();
+                                    let start = total.saturating_sub(last_n);
+                                    let lines: Vec<&str> = self.game_logs[start..].iter().map(|s| s.as_str()).collect();
+                                    serde_json::json!({
+                                        "total_lines": total,
+                                        "showing_last": lines.len(),
+                                        "logs": lines,
+                                    }).to_string()
+                                } else {
+                                    crate::ai::tools::execute_tool_with_dir(&mut self.scene, &tc.name, &tc.input, self.project_dir.as_deref())
+                                };
                                 tc.result = Some(result);
                             }
 
