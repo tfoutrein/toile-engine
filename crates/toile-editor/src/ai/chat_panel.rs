@@ -162,7 +162,14 @@ impl EditorApp {
                                     ui.label(egui::RichText::new(label).strong().color(color).size(11.0));
 
                                     if !msg.content.is_empty() {
-                                        ui.label(egui::RichText::new(&msg.content).size(12.0));
+                                        if is_user {
+                                            ui.label(egui::RichText::new(&msg.content).size(12.0));
+                                        } else {
+                                            // Render assistant messages as markdown
+                                            let id = format!("ai_msg_{}", ui.id().value());
+                                            egui_commonmark::CommonMarkViewer::new()
+                                                .show(ui, &mut self.ai_md_cache, &msg.content);
+                                        }
                                     }
 
                                     for tc in &msg.tool_calls {
