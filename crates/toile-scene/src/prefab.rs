@@ -24,11 +24,15 @@ pub struct Prefab {
 impl Prefab {
     /// Create a prefab from an entity.
     pub fn from_entity(name: &str, entity: &EntityData) -> Self {
+        // Copy behaviors to root level for backward compat
+        let behaviors = entity.behaviors.iter()
+            .filter_map(|b| serde_json::to_value(b).ok())
+            .collect();
         Self {
             name: name.to_string(),
             entity: entity.clone(),
-            behaviors: Vec::new(),
-            event_sheet: None,
+            behaviors,
+            event_sheet: entity.event_sheet.clone(),
         }
     }
 

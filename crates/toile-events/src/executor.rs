@@ -33,7 +33,7 @@ pub enum EventCommand {
     MoveToward { entity_id: u64, target: String, speed: f32 },
     SetVariable { entity_id: u64, name: String, value: f64 },
     Destroy { entity_id: u64 },
-    SpawnObject { prefab: String, x: f32, y: f32 },
+    SpawnObject { entity_id: u64, prefab: String, x: f32, y: f32 },
     PlaySound { sound: String },
     PlayAnimation { entity_id: u64, anim: String },
     GoToScene { scene: String },
@@ -163,6 +163,7 @@ fn exec_action(
             entity_id: ctx.entity_id,
         }),
         ActionKind::SpawnObject { prefab, x, y } => Some(EventCommand::SpawnObject {
+            entity_id: ctx.entity_id,
             prefab: prefab.clone(),
             x: *x as f32,
             y: *y as f32,

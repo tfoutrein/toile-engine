@@ -588,13 +588,24 @@ impl Game for GameRunner {
                         ent.es.alive = false;
                     }
                 }
-                EventCommand::SpawnObject { prefab, x, y } => {
+                EventCommand::SpawnObject { entity_id, prefab, x, y } => {
                     if let Some(p) = self.prefabs.get(prefab) {
                         let id = self.next_id;
                         self.next_id += 1;
+
+                        // Use entity position as spawn point when x,y are 0,0
+                        let (spawn_x, spawn_y) = if *x == 0.0 && *y == 0.0 {
+                            self.entities.iter()
+                                .find(|e| e.data.id == *entity_id)
+                                .map(|e| (e.es.position.x, e.es.position.y))
+                                .unwrap_or((0.0, 0.0))
+                        } else {
+                            (*x, *y)
+                        };
+
                         let mut overrides = HashMap::new();
-                        overrides.insert("x".into(), serde_json::json!(*x));
-                        overrides.insert("y".into(), serde_json::json!(*y));
+                        overrides.insert("x".into(), serde_json::json!(spawn_x));
+                        overrides.insert("y".into(), serde_json::json!(spawn_y));
                         let edata = p.instantiate(id, &overrides);
                         spawns.push(edata);
                     }
