@@ -42,13 +42,17 @@ pub fn build_system_prompt(config: &AiConfig, scene_name: &str, entity_count: us
         - create_event_sheet : créer des règles de jeu (conditions → actions)\n\
           Conditions: OnKeyPressed, OnCollisionWith, EveryTick, EveryNSeconds, OnCreate, IfVariable\n\
           Actions: Destroy, SpawnObject, SetPosition, MoveAtAngle, SetVariable, AddToVariable, PlaySound, GoToScene, Log\n\
-        - save_as_prefab : sauvegarder une entité comme template réutilisable\n\n\
+        - save_as_prefab : sauvegarder une entité comme template réutilisable\n\
+        - get_game_logs : lire les logs de la dernière session de jeu (Play). Utile pour diagnostiquer les bugs (erreurs, collisions, spawns, etc.)\n\n\
         CONVENTIONS :\n\
         - Coordonnées Y-up (Y positif = haut), (0,0) = centre\n\
         - create_entity avec role= auto-configure behaviors+tags\n\
         - Bullet behavior : se déplace en ligne droite (speed, angle_degrees)\n\
         - Pour faire tirer un joueur : créer un prefab Bullet + event sheet OnKeyPressed Space → SpawnObject\n\
         - Pour collision : les entités doivent avoir des tags, event sheet OnCollisionWith tag → action\n\n\
+        DEBUGGING :\n\
+        - Quand l'utilisateur dit que ça ne marche pas, utilise get_game_logs pour voir les logs de la dernière session\n\
+        - Les logs contiennent les erreurs, avertissements, spawns d'entités, collisions\n\n\
         Sois concis. Exécute immédiatement. Décris brièvement ce que tu as fait.",
         scene_name, entity_count, viewport.0, viewport.1
     );
