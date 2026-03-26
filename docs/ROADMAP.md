@@ -1,6 +1,6 @@
 # Toile Engine — Roadmap Complète
 
-**Document vivant** | Dernière mise à jour : 2026-03-15
+**Document vivant** | Derniere mise a jour : 2026-03-26
 
 ---
 
@@ -167,91 +167,34 @@ Un non-programmeur construit un platformer jouable en event sheets et behaviors 
 
 ---
 
-## v0.5 — "Complete Editor" (10 semaines)
+## v0.5 — "Complete Editor" (10 semaines) ✅
 
 > ADR : [031-v05-editor-mvp-complet.md](adr/031-v05-editor-mvp-complet.md)
 
-**Philosophie :** Connecter toutes les briques. Un utilisateur crée un jeu complet (menus → gameplay → game over) depuis l'éditeur et le lance avec `toile run`. Toutes les features existantes (behaviors, event sheets, particules, transitions) deviennent accessibles depuis l'UI.
+**Philosophie :** Connecter toutes les briques. Un utilisateur cree un jeu complet depuis l'editeur et le lance avec `toile run`. Toutes les features existantes deviennent accessibles depuis l'UI. L'IA est un citoyen de premiere classe.
 
-### Le problème
+### Features livrees
 
-Toutes les briques existent mais sont **orphelines** :
+| Categorie | Features |
+|-----------|----------|
+| **Game Runner** | Execution data-driven des scenes. 7 behaviors (Platform, TopDown, Bullet, Sine, Fade, Wrap, Solid). Event sheets (8 conditions, 11 actions). Collision OBB/SAT + pentes. Prefab spawning. Camera modes (Fixed, FollowPlayer, PlatformerFollow avec deadzone + bounds). Auto-HUD variables joueur. Reset scene (R). Background tiling. Eclairage + post-processing. |
+| **Editeur — Inspector** | Behaviors (+Add, parametres par type). Tags & Variables. Collision shapes. Particle emitters. Sprite selector. Scene settings (gravity, camera, viewport). Entity roles (player, solid, coin, enemy). |
+| **Editeur — Viewport** | Sprite rendering. Hover highlight. Invisible entities (ghost). Background tiling extensible. Camera pan (middle mouse). Viewport guide. Lights/shadows preview. |
+| **Editeur — Projet** | Welcome screen. New/Open project. Scene management. Workspace directory configurable. Play button (auto-save + launch). Keyboard shortcuts (copy/paste/duplicate). |
+| **Sprite & Animation** | Sprite sheets auto-detect. Visual Frame Picker. Aseprite binary import. Aseprite strip import. Frame size vs entity size separation. Animation state machine (idle/walk/jump). |
+| **Asset Library** | Scanner + 3-pass classifier (extension, path, heuristics). Thumbnail generation. Spritesheet.txt atlas parser. ZIP import. Pack persistence. Virtualized grid. File browser avec preview. Detail panel avec animation preview. |
+| **AI Copilot** | 22 tools (scene, entities, behaviors, tags, variables, event sheets, prefabs, diagnostics). Auto-continuation (tool_use loop). Markdown rendering (egui_commonmark). Dynamic model list. Game logs access (get_game_logs). |
+| **AI — Multi-provider** | Anthropic (Claude) + OpenAI-compatible (Scaleway, OpenAI, Groq, Ollama). Presets rapides. Liste de modeles dynamique via GET /models. Tool calling converti entre formats Anthropic et OpenAI. |
+| **AI — Bug Reporter** | report_bug tool cree des GitHub Issues automatiquement. Labels auto-crees (severity, component). Deduplication + rate limit (5/session). Settings toggle + repo configurable. |
+| **AI — Amelioration continue** | ADR-034 : architecture pour boucle detection → GitHub Issue → correction. Log watcher prevu en Phase 2. |
+| **Editeur — Refactoring** | editor_app.rs 3740 → 387 lignes (decomposition modules). 19 crates dans le workspace. |
+| **Collision** | OBB vs OBB (SAT). Slope climbing (max 10px step-up). Solid behavior check closure. |
+| **CLI** | `toile run`, `toile editor`, `toile new`. |
 
-| Système | Sérialisable | Éditeur UI | Runtime | Verdict |
-|---------|---|---|---|---|
-| Behaviors (7 types) | ✅ | ❌ | ❌ | Orphelin |
-| Event Sheets (8 cond, 11 actions) | ✅ | ❌ | ❌ | Orphelin |
-| Prefabs | ✅ | ❌ | ⚠️ MCP only | Orphelin |
-| Particules | ✅ | ✅ panel | ⚠️ Demo | Partiel |
-| Scene transitions | ✅ code | ❌ | ❌ | Orphelin |
-| Éclairage/Ombres | ✅ code | ❌ | ⚠️ Demo | Orphelin |
-| Post-processing | ✅ code | ❌ | ⚠️ Demo | Orphelin |
-
-### Phase 1 : Format + Runtime (fondations)
-
-**Format de scène étendu :**
-
-```rust
-// EntityData v2
-pub behaviors: Vec<BehaviorConfig>,
-pub event_sheet: Option<String>,
-pub particle_emitter: Option<String>,
-pub tags: Vec<String>,
-pub variables: HashMap<String, f64>,
-pub collision_shape: Option<CollisionShape>,
-pub visible: bool,
-
-// SceneData v2
-pub background_color: [f32; 4],
-pub camera_zoom: f32,
-pub camera_position: [f32; 2],
-pub gravity: [f32; 2],
-```
-
-**Game Runner :**
-- BehaviorExecutor — exécute Platform/TopDown/Bullet/Sine/Fade/Wrap/Solid chaque frame
-- EventSheetExecutor — évalue les event sheets, exécute les commandes
-- CollisionSystem — détection AABB/Circle entre entités taggées
-- ParticleManager — charge et update les émetteurs attachés
-- SceneLoader — charge JSON, instancie textures, résout prefabs
-
-**CLI :**
-```bash
-toile run                       # depuis Toile.toml
-toile run --scene level2.json   # scène spécifique
-```
-
-### Phase 2 : Éditeur Inspector enrichi
-
-| Section Inspector | Fonctionnalité |
-|-------------------|----------------|
-| **Behaviors** | +Add Behavior, dropdown, éditeur de paramètres par type |
-| **Tags & Variables** | Chips éditables, variables initiales clé/valeur |
-| **Collision Shape** | AABB/Circle, gizmo dans le viewport |
-| **Particle Emitter** | Sélecteur .particles.json ou preset |
-| **Sprite Selector** | Choisir une texture parmi les assets |
-| **Scene Settings** | Background color, gravity, camera defaults |
-
-### Phase 3 : Play Mode + Event Sheet Editor
-
-- **Play/Stop** dans la toolbar de l'éditeur
-- **Event Sheet Editor** : mode dédié, créer conditions + actions avec pickers visuels
-- **Scene transitions** : GoToScene preview
-
-### Phase 4 : MCP + Polish
-
-| Nouvel outil MCP | Description |
-|------------------|-------------|
-| `add_behavior` | Ajouter un behavior à une entité |
-| `remove_behavior` | Retirer un behavior |
-| `set_entity_tags` | Définir les tags |
-| `set_entity_variables` | Variables initiales |
-| `create_event_sheet` | Créer un event sheet |
-| `get_event_sheet` | Lire un event sheet |
-| `update_event_sheet` | Modifier un event sheet |
-
-### Critère de sortie
-Un jeu de platformer complet (menu → 3 niveaux → game over) créé **entièrement depuis l'éditeur**, sans écrire une ligne de Rust. Lancé via `toile run`. Les behaviors Platform + Solid fonctionnent. Les event sheets gèrent les collectibles et les transitions de scène. Les particules sont attachées aux entités. Le tout sauvegarde/charge en JSON.
+### ADRs ajoutes
+- ADR-032 : Asset Library
+- ADR-033 : AI Copilot integre dans l'editeur
+- ADR-034 : Agent d'amelioration continue (Bug Reporter + Log Watcher)
 
 ---
 
