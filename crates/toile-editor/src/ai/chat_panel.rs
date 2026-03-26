@@ -11,39 +11,74 @@ impl EditorApp {
             let mut open = true;
             egui::Window::new("AI Settings")
                 .open(&mut open)
-                .default_width(400.0)
+                .default_width(420.0)
                 .show(ctx, |ui| {
-                    ui.label(egui::RichText::new("Anthropic API Configuration").strong());
+                    use crate::ai::config::AiProvider;
+
+                    // ── Provider selection ──
+                    ui.label(egui::RichText::new("Provider").strong());
                     ui.separator();
 
-                    egui::Grid::new("ai_settings_grid").num_columns(2).spacing([8.0, 6.0]).show(ui, |ui| {
-                        ui.label("API Key:");
-                        ui.add(egui::TextEdit::singleline(&mut self.ai_config.api_key)
-                            .password(true)
-                            .hint_text("sk-ant-...")
-                            .desired_width(280.0));
-                        ui.end_row();
+                    let prev_provider = self.ai_config.provider.clone();
+                    ui.horizontal(|ui| {
+                        ui.radio_value(&mut self.ai_config.provider, AiProvider::Anthropic, "Anthropic (Claude)");
+                        ui.radio_value(&mut self.ai_config.provider, AiProvider::OpenaiCompat, "OpenAI-compatible");
+                    });
+                    if self.ai_config.provider != prev_provider {
+                        self.ai_available_models.clear();
+                        self.ai_models_loaded = false;
+                    }
 
-                        ui.label("Model:");
+                    ui.add_space(4.0);
+
+                    // Helper: render model ComboBox + refresh button
+                    let render_model_combo = |ui: &mut egui::Ui, model: &mut String, models: &[crate::ai::config::ModelInfo], salt: &str| -> bool {
+                        let mut refresh_clicked = false;
                         ui.horizontal(|ui| {
-                            egui::ComboBox::from_id_salt("ai_model")
-                                .selected_text(&self.ai_config.model)
-                                .width(220.0)
+                            egui::ComboBox::from_id_salt(salt)
+                                .selected_text(model.as_str())
+                                .width(240.0)
                                 .show_ui(ui, |ui| {
-                                    for model in &self.ai_available_models {
-                                        let label = if model.name != model.id {
-                                            format!("{} ({})", model.name, model.id)
+                                    for m in models {
+                                        let label = if m.name != m.id {
+                                            format!("{} ({})", m.name, m.id)
                                         } else {
-                                            model.id.clone()
+                                            m.id.clone()
                                         };
-                                        ui.selectable_value(&mut self.ai_config.model, model.id.clone(), label);
+                                        ui.selectable_value(model, m.id.clone(), label);
                                     }
-                                    if self.ai_available_models.is_empty() {
-                                        ui.label(egui::RichText::new("Click 🔄 to load").color(egui::Color32::from_gray(130)));
+                                    if models.is_empty() {
+                                        ui.label(egui::RichText::new("Set API key, then click Refresh")
+                                            .color(egui::Color32::from_gray(130)).size(11.0));
                                     }
                                 });
-                            if ui.small_button("🔄").on_hover_text("Refresh models from API").clicked() {
-                                if !self.ai_config.api_key.is_empty() {
+                            if ui.small_button("Refresh").on_hover_text("Fetch available models").clicked() {
+                                refresh_clicked = true;
+                            }
+                        });
+                        refresh_clicked
+                    };
+
+                    match self.ai_config.provider {
+                        AiProvider::Anthropic => {
+                            egui::Grid::new("anthropic_grid").num_columns(2).spacing([8.0, 6.0]).show(ui, |ui| {
+                                ui.label("API Key:");
+                                let key_resp = ui.add(egui::TextEdit::singleline(&mut self.ai_config.api_key)
+                                    .password(true)
+                                    .hint_text("sk-ant-...")
+                                    .desired_width(280.0));
+                                // Auto-fetch models when key is pasted (lost focus after edit)
+                                if key_resp.lost_focus() && !self.ai_config.api_key.is_empty() && !self.ai_models_loaded {
+                                    if let Ok(models) = crate::ai::config::fetch_models(&self.ai_config.api_key) {
+                                        self.ai_available_models = models;
+                                        self.ai_models_loaded = true;
+                                    }
+                                }
+                                ui.end_row();
+
+                                ui.label("Model:");
+                                let refresh = render_model_combo(ui, &mut self.ai_config.model, &self.ai_available_models, "anthropic_model");
+                                if refresh && !self.ai_config.api_key.is_empty() {
                                     match crate::ai::config::fetch_models(&self.ai_config.api_key) {
                                         Ok(models) => {
                                             self.ai_available_models = models;
@@ -52,11 +87,85 @@ impl EditorApp {
                                         Err(e) => { self.status_msg = format!("Failed: {e}"); }
                                     }
                                 }
-                            }
-                        });
-                        ui.end_row();
-                    });
+                                ui.end_row();
+                            });
+                        }
+                        AiProvider::OpenaiCompat => {
+                            // Presets
+                            ui.horizontal(|ui| {
+                                ui.label("Preset:");
+                                if ui.small_button("Scaleway").clicked() {
+                                    self.ai_config.openai_base_url = "https://api.scaleway.ai/v1".into();
+                                    self.ai_config.openai_model.clear();
+                                    self.ai_models_loaded = false;
+                                    self.ai_available_models.clear();
+                                }
+                                if ui.small_button("OpenAI").clicked() {
+                                    self.ai_config.openai_base_url = "https://api.openai.com/v1".into();
+                                    self.ai_config.openai_model.clear();
+                                    self.ai_models_loaded = false;
+                                    self.ai_available_models.clear();
+                                }
+                                if ui.small_button("Groq").clicked() {
+                                    self.ai_config.openai_base_url = "https://api.groq.com/openai/v1".into();
+                                    self.ai_config.openai_model.clear();
+                                    self.ai_models_loaded = false;
+                                    self.ai_available_models.clear();
+                                }
+                                if ui.small_button("Ollama").clicked() {
+                                    self.ai_config.openai_base_url = "http://localhost:11434/v1".into();
+                                    self.ai_config.openai_model.clear();
+                                    self.ai_models_loaded = false;
+                                    self.ai_available_models.clear();
+                                }
+                            });
 
+                            ui.add_space(4.0);
+
+                            egui::Grid::new("openai_grid").num_columns(2).spacing([8.0, 6.0]).show(ui, |ui| {
+                                ui.label("Base URL:");
+                                ui.add(egui::TextEdit::singleline(&mut self.ai_config.openai_base_url)
+                                    .hint_text("https://api.scaleway.ai/v1")
+                                    .desired_width(280.0));
+                                ui.end_row();
+
+                                ui.label("API Key:");
+                                let key_resp = ui.add(egui::TextEdit::singleline(&mut self.ai_config.openai_api_key)
+                                    .password(true)
+                                    .hint_text("API key or token")
+                                    .desired_width(280.0));
+                                // Auto-fetch models when key is pasted
+                                if key_resp.lost_focus() && !self.ai_config.openai_api_key.is_empty() && !self.ai_models_loaded {
+                                    if let Ok(models) = crate::ai::config::fetch_openai_models(
+                                        &self.ai_config.openai_base_url,
+                                        &self.ai_config.openai_api_key,
+                                    ) {
+                                        self.ai_available_models = models;
+                                        self.ai_models_loaded = true;
+                                    }
+                                }
+                                ui.end_row();
+
+                                ui.label("Model:");
+                                let refresh = render_model_combo(ui, &mut self.ai_config.openai_model, &self.ai_available_models, "openai_model");
+                                if refresh && !self.ai_config.openai_api_key.is_empty() {
+                                    match crate::ai::config::fetch_openai_models(
+                                        &self.ai_config.openai_base_url,
+                                        &self.ai_config.openai_api_key,
+                                    ) {
+                                        Ok(models) => {
+                                            self.ai_available_models = models;
+                                            self.ai_models_loaded = true;
+                                        }
+                                        Err(e) => { self.status_msg = format!("Failed: {e}"); }
+                                    }
+                                }
+                                ui.end_row();
+                            });
+                        }
+                    }
+
+                    // ── System prompt ──
                     ui.add_space(8.0);
                     ui.label("Custom system prompt:");
                     ui.add(egui::TextEdit::multiline(&mut self.ai_config.custom_system_prompt)
@@ -64,6 +173,7 @@ impl EditorApp {
                         .desired_rows(3)
                         .desired_width(380.0));
 
+                    // ── Bug Reporting ──
                     ui.add_space(12.0);
                     ui.label(egui::RichText::new("Bug Reporting").strong());
                     ui.separator();
@@ -102,7 +212,8 @@ impl EditorApp {
                         }
                         if ui.small_button("⚙").on_hover_text("Settings").clicked() {
                             self.ai_show_settings = !self.ai_show_settings;
-                            if self.ai_show_settings && !self.ai_models_loaded && self.ai_config.is_configured() {
+                            if self.ai_show_settings && !self.ai_models_loaded && self.ai_config.is_configured()
+                                && self.ai_config.provider == crate::ai::config::AiProvider::Anthropic {
                                 if let Ok(models) = crate::ai::config::fetch_models(&self.ai_config.api_key) {
                                     self.ai_available_models = models;
                                     self.ai_models_loaded = true;
@@ -117,8 +228,12 @@ impl EditorApp {
 
                 // Status
                 if self.ai_config.is_configured() {
-                    let model_short = self.ai_config.model.split('-').take(2).collect::<Vec<_>>().join("-");
-                    ui.label(egui::RichText::new(format!("✅ {model_short}")).size(10.0).color(egui::Color32::from_rgb(80, 200, 80)));
+                    let provider_label = match self.ai_config.provider {
+                        crate::ai::config::AiProvider::Anthropic => "Anthropic",
+                        crate::ai::config::AiProvider::OpenaiCompat => "OpenAI",
+                    };
+                    let model_short = self.ai_config.active_model().split('-').take(2).collect::<Vec<_>>().join("-");
+                    ui.label(egui::RichText::new(format!("{provider_label}: {model_short}")).size(10.0).color(egui::Color32::from_rgb(80, 200, 80)));
                 } else {
                     ui.label(egui::RichText::new("⚠ Click ⚙ to configure API key").size(10.0).color(egui::Color32::YELLOW));
                 }
