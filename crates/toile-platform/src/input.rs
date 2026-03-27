@@ -420,7 +420,7 @@ impl Input {
     pub fn gamepad_left_stick(&self, player: usize) -> Vec2 {
         Vec2::new(
             self.gamepad_axis(player, GamepadAxis::LeftStickX),
-            -self.gamepad_axis(player, GamepadAxis::LeftStickY), // Y-up
+            self.gamepad_axis(player, GamepadAxis::LeftStickY),
         )
     }
 
@@ -428,7 +428,7 @@ impl Input {
     pub fn gamepad_right_stick(&self, player: usize) -> Vec2 {
         Vec2::new(
             self.gamepad_axis(player, GamepadAxis::RightStickX),
-            -self.gamepad_axis(player, GamepadAxis::RightStickY),
+            self.gamepad_axis(player, GamepadAxis::RightStickY),
         )
     }
 
