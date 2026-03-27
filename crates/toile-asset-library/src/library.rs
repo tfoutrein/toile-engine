@@ -274,6 +274,23 @@ impl ToileAssetLibrary {
         })
     }
 
+    /// Find an asset by its unique ID.
+    pub fn by_id(&self, id: &str) -> Option<&ToileAsset> {
+        self.assets.iter().find(|a| a.id == id)
+    }
+
+    /// Search assets filtered by type.
+    pub fn search_typed(&self, query: &str, asset_type: AssetType) -> Vec<&ToileAsset> {
+        let lower = query.to_lowercase();
+        self.assets.iter().filter(|a| {
+            a.asset_type == asset_type && (
+                a.name.to_lowercase().contains(&lower)
+                || a.path.to_lowercase().contains(&lower)
+                || a.tags.iter().any(|t| t.contains(&lower))
+            )
+        }).collect()
+    }
+
     /// Total asset count.
     pub fn count(&self) -> usize {
         self.assets.len()

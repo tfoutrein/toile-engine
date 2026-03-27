@@ -46,7 +46,8 @@ pub fn tool_definitions() -> Vec<serde_json::Value> {
                 "width": {"type": "number"}, "height": {"type": "number"},
                 "rotation": {"type": "number"},
                 "layer": {"type": "integer"},
-                "visible": {"type": "boolean"}
+                "visible": {"type": "boolean"},
+                "sprite_path": {"type": "string", "description": "Path to sprite image (relative to project)"}
             },
             "required": ["entity_id"]
         })),
@@ -161,6 +162,44 @@ pub fn tool_definitions() -> Vec<serde_json::Value> {
                 "logs": {"type": "array", "items": {"type": "string"}, "description": "Relevant log lines"}
             },
             "required": ["severity", "title", "description", "component"]
+        })),
+
+        // ── Asset Library ──
+        tool_def("search_assets", "Search the Asset Library for sprites, tilesets, backgrounds, etc. Returns matching assets with metadata (frame info, animations, tags). Use this to find sprites to assign to entities.", serde_json::json!({
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Search text (matches name, path, tags). Examples: 'player', 'knight idle', 'enemy walk', 'coin'"},
+                "asset_type": {"type": "string", "enum": ["sprite", "tileset", "background", "gui", "icon", "vfx", "prop", "audio"], "description": "Filter by asset type (optional, default: all types)"}
+            },
+            "required": ["query"]
+        })),
+        tool_def("get_asset_details", "Get full details of an asset from the library: sprite metadata, all animations with frame indices, file path.", serde_json::json!({
+            "type": "object",
+            "properties": {
+                "asset_id": {"type": "string", "description": "Asset ID from search_assets results"}
+            },
+            "required": ["asset_id"]
+        })),
+        tool_def("add_entity_animation", "Add an animation to an entity from a separate sprite strip file in the Asset Library. Use this to build up multiple animations (idle, run, jump) from different files. Does NOT replace existing animations.", serde_json::json!({
+            "type": "object",
+            "properties": {
+                "entity_id": {"type": "integer", "description": "Entity to add the animation to"},
+                "asset_id": {"type": "string", "description": "Asset ID of the sprite strip from search_assets"},
+                "animation_name": {"type": "string", "description": "Name for this animation (e.g. 'idle', 'run', 'jump', 'attack')"},
+                "fps": {"type": "number", "description": "Playback speed in frames per second (default 8)"},
+                "looping": {"type": "boolean", "description": "Whether the animation loops (default true)"},
+                "set_as_default": {"type": "boolean", "description": "Set this as the default animation (default false)"}
+            },
+            "required": ["entity_id", "asset_id", "animation_name"]
+        })),
+        tool_def("set_entity_sprite", "Assign a sprite from the Asset Library to an entity. Auto-configures sprite_path, sprite_sheet grid, and all animations (idle, walk, run, jump, etc.). For multiple animations from SEPARATE files, use add_entity_animation instead.", serde_json::json!({
+            "type": "object",
+            "properties": {
+                "entity_id": {"type": "integer", "description": "Entity to assign the sprite to"},
+                "asset_id": {"type": "string", "description": "Asset ID from search_assets results"},
+                "default_animation": {"type": "string", "description": "Name of the default animation to play (optional, defaults to 'idle' or first available)"}
+            },
+            "required": ["entity_id", "asset_id"]
         })),
 
         // ── Prefabs ──
@@ -278,6 +317,7 @@ pub fn execute_tool_with_dir(scene: &mut SceneData, tool_name: &str, args: &serd
                 if let Some(v) = args.get("rotation").and_then(|v| v.as_f64()) { entity.rotation = v as f32; }
                 if let Some(v) = args.get("layer").and_then(|v| v.as_i64()) { entity.layer = v as i32; }
                 if let Some(v) = args.get("visible").and_then(|v| v.as_bool()) { entity.visible = v; }
+                if let Some(v) = args.get("sprite_path").and_then(|v| v.as_str()) { entity.sprite_path = v.to_string(); }
                 serde_json::json!({"updated": eid}).to_string()
             } else {
                 serde_json::json!({"error": format!("Entity {} not found", eid)}).to_string()

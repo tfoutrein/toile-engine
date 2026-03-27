@@ -169,7 +169,7 @@ pub struct AssetBrowserApp {
 
 impl AssetBrowserApp {
     pub fn new() -> Self {
-        Self {
+        let mut app = Self {
             library: ToileAssetLibrary::new(),
             registry: crate::registry::load_registry(),
             filter_type: None,
@@ -194,7 +194,10 @@ impl AssetBrowserApp {
             preview_loaded_path: String::new(),
             tex_counter: 0,
             initialized: false,
-        }
+        };
+        // Pre-load all registered packs so the library is always available (for AI tools, etc.)
+        app.reload_registered_packs();
+        app
     }
 
     /// Reload all registered packs from their manifests.

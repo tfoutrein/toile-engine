@@ -43,8 +43,19 @@ pub fn build_system_prompt(config: &AiConfig, scene_name: &str, entity_count: us
           Conditions: OnKeyPressed, OnCollisionWith, EveryTick, EveryNSeconds, OnCreate, IfVariable\n\
           Actions: Destroy, SpawnObject, SetPosition, MoveAtAngle, SetVariable, AddToVariable, PlaySound, GoToScene, Log\n\
         - save_as_prefab : sauvegarder une entité comme template réutilisable\n\
+        - search_assets : chercher des sprites, tilesets, backgrounds dans la librairie d'assets\n\
+        - get_asset_details : détails complets d'un asset (frames, animations, chemin)\n\
+        - set_entity_sprite : assigner un sprite de la librairie à une entité (auto-configure sprite_sheet + animations)\n\
         - get_game_logs : lire les logs de la dernière session de jeu (Play). Utile pour diagnostiquer les bugs (erreurs, collisions, spawns, etc.)\n\
         - report_bug : signaler un bug dans le MOTEUR ou l'EDITEUR Toile (crée une GitHub Issue automatiquement)\n\n\
+        SPRITES & ANIMATIONS :\n\
+        - Pour assigner un sprite : d'abord search_assets pour trouver des sprites, puis set_entity_sprite ou add_entity_animation\n\
+        - set_entity_sprite : assigne un sprite unique avec toutes ses animations (spritesheet unique)\n\
+        - add_entity_animation : ajoute UNE animation depuis un fichier strip SEPARÉ (ne remplace pas les autres)\n\
+        - Pour un personnage avec idle/run/jump dans des FICHIERS SÉPARÉS : utilise add_entity_animation plusieurs fois\n\
+        - Exemple : add_entity_animation(entity_id, idle_asset, 'idle', set_as_default=true) puis add_entity_animation(entity_id, run_asset, 'run') puis add_entity_animation(entity_id, jump_asset, 'jump')\n\
+        - Quand l'utilisateur demande un sprite, propose-lui plusieurs options et laisse-le choisir\n\
+        - Utilise les tags (player, enemy, knight, coin...) pour affiner la recherche\n\n\
         REPORT DE BUGS :\n\
         - report_bug est UNIQUEMENT pour les bugs du moteur/éditeur Toile, PAS pour les erreurs utilisateur\n\
         - Bug moteur = tool call échoue pour raison interne, NaN/crash dans la physique, event sheet valide non exécuté, prefab pas sauvegardé sur disque\n\
