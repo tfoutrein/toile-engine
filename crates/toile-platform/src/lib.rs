@@ -1,6 +1,8 @@
 pub mod input;
+pub mod input_actions;
 
 pub use input::{Input, Key, MouseButton, GamepadButton, GamepadAxis, GamepadType, GamepadState};
+pub use input_actions::{InputActionMap, InputAction, InputBinding, InputSource, ActionType, CompositeRole, ActionState};
 
 /// Window configuration.
 pub struct WindowConfig {

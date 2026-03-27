@@ -43,6 +43,7 @@ pub use toile_graphics::shader_graph::{NodeKind, ShaderEdge, ShaderGraph, Shader
 pub use toile_graphics::sprite_renderer::{DrawSprite as Sprite, COLOR_WHITE};
 pub use toile_graphics::texture::TextureHandle;
 pub use toile_platform::input::{Key, MouseButton, GamepadButton, GamepadAxis, GamepadType};
+pub use toile_platform::input_actions::{InputActionMap, InputAction, ActionType, ActionState};
 
 /// Style parameters for `draw_text_msdf`.
 #[derive(Clone)]
@@ -96,6 +97,8 @@ pub struct GameContext<'a> {
     sdf_renderer: &'a mut SdfTextRenderer,
     sdf_fonts: &'a mut Vec<SdfFont>,
     sdf_draw_list: &'a mut Vec<DrawSdfGlyph>,
+    /// Input actions — query named actions instead of raw keys/buttons.
+    pub actions: &'a mut InputActionMap,
 }
 
 impl<'a> GameContext<'a> {
@@ -430,6 +433,7 @@ impl App {
             sdf_renderer: None,
             sdf_fonts: Vec::new(),
             sdf_draw_list: Vec::new(),
+            input_actions: InputActionMap::with_defaults(),
         };
 
         event_loop.run_app(&mut handler).expect("Event loop error");
@@ -462,6 +466,7 @@ struct AppHandler {
     sdf_renderer: Option<SdfTextRenderer>,
     sdf_fonts: Vec<SdfFont>,
     sdf_draw_list: Vec<DrawSdfGlyph>,
+    input_actions: InputActionMap,
 }
 
 macro_rules! make_ctx {
@@ -483,6 +488,7 @@ macro_rules! make_ctx {
             sdf_renderer: $self.sdf_renderer.as_mut().unwrap(),
             sdf_fonts: &mut $self.sdf_fonts,
             sdf_draw_list: &mut $self.sdf_draw_list,
+            actions: &mut $self.input_actions,
         }
     };
 }
@@ -608,8 +614,9 @@ impl ApplicationHandler for AppHandler {
                 let fps = clock.fps();
                 self.elapsed_secs += (ticks as f64 * dt) as f32;
 
-                // Poll gamepad events before update
+                // Poll gamepad events and update input actions
                 self.input.poll_gamepads();
+                self.input_actions.update(&self.input);
 
                 for tick_idx in 0..ticks {
                     let mut ctx = make_ctx!(self, fps);

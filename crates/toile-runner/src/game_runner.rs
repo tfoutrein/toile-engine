@@ -269,34 +269,14 @@ impl GameRunner {
     }
 
     fn build_behavior_input(ctx: &GameContext) -> BehaviorInput {
-        use toile_app::{GamepadButton, GamepadAxis};
-
-        // Keyboard
-        let kb_left = ctx.input.is_key_down(Key::ArrowLeft) || ctx.input.is_key_down(Key::KeyA);
-        let kb_right = ctx.input.is_key_down(Key::ArrowRight) || ctx.input.is_key_down(Key::KeyD);
-        let kb_up = ctx.input.is_key_down(Key::ArrowUp) || ctx.input.is_key_down(Key::KeyW);
-        let kb_down = ctx.input.is_key_down(Key::ArrowDown) || ctx.input.is_key_down(Key::KeyS);
-        let kb_jump = ctx.input.is_key_just_pressed(Key::Space)
-            || ctx.input.is_key_just_pressed(Key::ArrowUp)
-            || ctx.input.is_key_just_pressed(Key::KeyW);
-        let kb_jump_down = ctx.input.is_key_down(Key::Space);
-
-        // Gamepad (player 0)
-        let stick = ctx.input.gamepad_left_stick(0);
-        let gp_left = stick.x < -0.3 || ctx.input.is_gamepad_button_down(0, GamepadButton::DPadLeft);
-        let gp_right = stick.x > 0.3 || ctx.input.is_gamepad_button_down(0, GamepadButton::DPadRight);
-        let gp_up = stick.y > 0.3 || ctx.input.is_gamepad_button_down(0, GamepadButton::DPadUp);
-        let gp_down = stick.y < -0.3 || ctx.input.is_gamepad_button_down(0, GamepadButton::DPadDown);
-        let gp_jump = ctx.input.is_gamepad_button_just_pressed(0, GamepadButton::South);
-        let gp_jump_down = ctx.input.is_gamepad_button_down(0, GamepadButton::South);
-
+        let move_vec = ctx.actions.get_vec2("move");
         BehaviorInput {
-            left: kb_left || gp_left,
-            right: kb_right || gp_right,
-            up: kb_up || gp_up,
-            down: kb_down || gp_down,
-            jump_pressed: kb_jump || gp_jump,
-            jump_down: kb_jump_down || gp_jump_down,
+            left: move_vec.x < -0.3,
+            right: move_vec.x > 0.3,
+            up: move_vec.y > 0.3,
+            down: move_vec.y < -0.3,
+            jump_pressed: ctx.actions.is_just_pressed("jump"),
+            jump_down: ctx.actions.is_pressed("jump"),
         }
     }
 
