@@ -42,7 +42,7 @@ pub use toile_graphics::post_processing::{PostEffect, PostProcessingStack};
 pub use toile_graphics::shader_graph::{NodeKind, ShaderEdge, ShaderGraph, ShaderNode};
 pub use toile_graphics::sprite_renderer::{DrawSprite as Sprite, COLOR_WHITE};
 pub use toile_graphics::texture::TextureHandle;
-pub use toile_platform::input::{Key, MouseButton};
+pub use toile_platform::input::{Key, MouseButton, GamepadButton, GamepadAxis, GamepadType};
 
 /// Style parameters for `draw_text_msdf`.
 #[derive(Clone)]
@@ -607,6 +607,9 @@ impl ApplicationHandler for AppHandler {
                 let dt = clock.fixed_dt_secs();
                 let fps = clock.fps();
                 self.elapsed_secs += (ticks as f64 * dt) as f32;
+
+                // Poll gamepad events before update
+                self.input.poll_gamepads();
 
                 for tick_idx in 0..ticks {
                     let mut ctx = make_ctx!(self, fps);

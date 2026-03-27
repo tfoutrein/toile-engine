@@ -125,3 +125,6 @@ reqwest = { version = "0.12", features = ["json", "blocking"] }
 egui_commonmark = "0.22"
 
 toile-asset-library = { path = "crates/toile-asset-library" }
+
+# Gamepad input (see ADR-035)
+gilrs = "0.11"

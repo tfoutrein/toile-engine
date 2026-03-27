@@ -1,6 +1,6 @@
 pub mod input;
 
-pub use input::{Input, Key, MouseButton};
+pub use input::{Input, Key, MouseButton, GamepadButton, GamepadAxis, GamepadType, GamepadState};
 
 /// Window configuration.
 pub struct WindowConfig {

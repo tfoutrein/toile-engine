@@ -10,3 +10,4 @@ toile-core = { workspace = true }
 winit = { workspace = true }
 glam = { workspace = true }
 log = { workspace = true }
+gilrs = { workspace = true }
