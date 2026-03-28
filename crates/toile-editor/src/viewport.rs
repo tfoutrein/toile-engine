@@ -336,10 +336,12 @@ impl EditorApp {
 
             // Compute UV from sprite sheet (show first frame or idle frame 0)
             let (uv_min, uv_max) = if let Some(ref sheet) = entity.sprite_sheet {
-                let frame_idx = entity.default_animation.as_ref()
-                    .and_then(|anim_name| entity.animations.iter().find(|a| a.name == *anim_name))
-                    .and_then(|a| a.frames.first().copied())
-                    .unwrap_or(0);
+                let frame_idx = entity.preview_frame.unwrap_or_else(|| {
+                    entity.default_animation.as_ref()
+                        .and_then(|anim_name| entity.animations.iter().find(|a| a.name == *anim_name))
+                        .and_then(|a| a.frames.first().copied())
+                        .unwrap_or(0)
+                });
                 let col = frame_idx % sheet.columns;
                 let row = frame_idx / sheet.columns;
                 let u_step = 1.0 / sheet.columns as f32;

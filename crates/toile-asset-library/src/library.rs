@@ -29,14 +29,20 @@ impl ToileAssetLibrary {
     /// Import a pack from a directory. Scans, classifies, generates manifest.
     /// Import a pack from a directory.
     pub fn import_pack(&mut self, pack_dir: &Path) -> Result<usize, String> {
-        self.import_pack_with_progress(pack_dir, None)
+        self.import_pack_with_plan(pack_dir, None, None)
     }
 
-    /// Import with optional progress callback: (current, total).
-    pub fn import_pack_with_progress(
+    /// Import with an AI-generated ImportPlan for better classification.
+    pub fn import_pack_with_ai_plan(&mut self, pack_dir: &Path, plan: &crate::ai_import::ImportPlan) -> Result<usize, String> {
+        self.import_pack_with_plan(pack_dir, None, Some(plan))
+    }
+
+    /// Import with optional progress callback and optional AI plan.
+    pub fn import_pack_with_plan(
         &mut self,
         pack_dir: &Path,
         progress: Option<&dyn Fn(u32, u32)>,
+        ai_plan: Option<&crate::ai_import::ImportPlan>,
     ) -> Result<usize, String> {
         let pack_name = pack_dir.file_name()
             .map(|n| n.to_string_lossy().to_string())
@@ -158,7 +164,7 @@ impl ToileAssetLibrary {
                 }
             }
 
-            let asset_type = classifier::classify(file);
+            let mut asset_type = classifier::classify(file);
             if asset_type == AssetType::Unknown || asset_type == AssetType::Data {
                 continue;
             }
@@ -168,11 +174,75 @@ impl ToileAssetLibrary {
                 .map(|s| s.to_string_lossy().to_string())
                 .unwrap_or_else(|| file.path.clone());
 
-            let subtype = classifier::detect_subtype(file, asset_type);
-            let tags = classifier::tags_from_path(&file.path);
+            let mut subtype = classifier::detect_subtype(file, asset_type);
+            let mut tags = classifier::tags_from_path(&file.path);
 
-            // Build metadata
-            let metadata = build_metadata(pack_dir, file, asset_type);
+            // Build metadata (heuristic)
+            let mut metadata = build_metadata(pack_dir, file, asset_type);
+
+            // ── AI Plan overrides ──
+            if let Some(plan) = ai_plan {
+                // Override classification
+                if let Some(classif) = plan.classifications.iter().find(|c| c.file == file.path) {
+                    let new_type = match classif.asset_type.as_str() {
+                        "sprite" => AssetType::Sprite,
+                        "tileset" => AssetType::Tileset,
+                        "background" => AssetType::Background,
+                        "gui" => AssetType::Gui,
+                        "icon" => AssetType::Icon,
+                        "vfx" => AssetType::Vfx,
+                        "prop" => AssetType::Prop,
+                        _ => asset_type,
+                    };
+                    if new_type != asset_type {
+                        log::info!("AI override: {} reclassified {:?} → {:?}", file.path, asset_type, new_type);
+                        asset_type = new_type;
+                    }
+                    // Override tile size for tilesets
+                    if asset_type == AssetType::Tileset {
+                        if let (Some(tw), Some(th)) = (classif.tile_width, classif.tile_height) {
+                            metadata = AssetMetadata::Sprite(SpriteMetadata {
+                                frame_width: tw, frame_height: th,
+                                columns: 1, rows: 1, frame_count: 1,
+                                animations: vec![], source_format: String::new(),
+                            });
+                        }
+                    }
+                }
+                // Override sprite metadata with animation plan
+                if let Some(anim_plan) = plan.animations.iter().find(|a| a.file == file.path) {
+                    log::info!("AI override: {} → {}x{} grid {}x{}, {} animations",
+                        file.path, anim_plan.frame_width, anim_plan.frame_height,
+                        anim_plan.columns, anim_plan.rows, anim_plan.animations.len());
+                    asset_type = AssetType::Sprite;
+                    subtype = if anim_plan.rows == 1 && anim_plan.columns > 1 {
+                        "spritesheet_strip".into()
+                    } else if anim_plan.columns > 1 || anim_plan.rows > 1 {
+                        "spritesheet_grid".into()
+                    } else {
+                        String::new()
+                    };
+                    metadata = AssetMetadata::Sprite(SpriteMetadata {
+                        frame_width: anim_plan.frame_width,
+                        frame_height: anim_plan.frame_height,
+                        columns: anim_plan.columns,
+                        rows: anim_plan.rows,
+                        frame_count: anim_plan.columns * anim_plan.rows,
+                        animations: anim_plan.animations.clone(),
+                        source_format: String::new(),
+                    });
+                }
+                // Override tags
+                for (path_prefix, extra_tags) in &plan.tags {
+                    if file.path.starts_with(path_prefix) {
+                        for t in extra_tags {
+                            if !tags.contains(t) {
+                                tags.push(t.clone());
+                            }
+                        }
+                    }
+                }
+            }
 
             // Generate thumbnail for images
             let thumb_path = if matches!(asset_type, AssetType::Sprite | AssetType::Tileset | AssetType::Background | AssetType::Icon | AssetType::Gui | AssetType::Prop | AssetType::Vfx) {

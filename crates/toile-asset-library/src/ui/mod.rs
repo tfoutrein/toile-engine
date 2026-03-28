@@ -20,6 +20,78 @@ pub mod file_browser;
 pub enum ViewMode {
     Assets,
     Files,
+    Providers,
+}
+
+/// An asset provider / source website.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct AssetProvider {
+    pub name: String,
+    pub url: String,
+    pub description: String,
+    pub tags: Vec<String>,
+    pub builtin: bool,
+}
+
+fn default_providers() -> Vec<AssetProvider> {
+    vec![
+        AssetProvider {
+            name: "Kenney".into(),
+            url: "https://kenney.nl/assets".into(),
+            description: "Huge library of free game assets (CC0). Sprites, tiles, UI, audio, 3D.".into(),
+            tags: vec!["free".into(), "cc0".into(), "sprites".into(), "tiles".into(), "audio".into(), "ui".into()],
+            builtin: true,
+        },
+        AssetProvider {
+            name: "itch.io Game Assets".into(),
+            url: "https://itch.io/game-assets/free".into(),
+            description: "Thousands of free and paid 2D game assets from indie creators.".into(),
+            tags: vec!["free".into(), "paid".into(), "sprites".into(), "community".into()],
+            builtin: true,
+        },
+        AssetProvider {
+            name: "OpenGameArt".into(),
+            url: "https://opengameart.org".into(),
+            description: "Community-driven repository of free game art (CC, GPL, public domain).".into(),
+            tags: vec!["free".into(), "open-source".into(), "sprites".into(), "tiles".into(), "audio".into()],
+            builtin: true,
+        },
+        AssetProvider {
+            name: "Craftpix".into(),
+            url: "https://craftpix.net/freebies/".into(),
+            description: "Premium and free 2D game assets. Characters, tilesets, GUI, backgrounds.".into(),
+            tags: vec!["free".into(), "paid".into(), "premium".into(), "sprites".into()],
+            builtin: true,
+        },
+        AssetProvider {
+            name: "GameDev Market".into(),
+            url: "https://www.gamedevmarket.net".into(),
+            description: "Marketplace for indie game assets. 2D sprites, tilesets, audio, fonts.".into(),
+            tags: vec!["paid".into(), "marketplace".into(), "sprites".into()],
+            builtin: true,
+        },
+        AssetProvider {
+            name: "Pixel Frog".into(),
+            url: "https://pixelfrog-assets.itch.io/".into(),
+            description: "Free pixel art character packs with animations (idle, run, jump, attack).".into(),
+            tags: vec!["free".into(), "pixel-art".into(), "characters".into(), "animations".into()],
+            builtin: true,
+        },
+        AssetProvider {
+            name: "LPC (Liberated Pixel Cup)".into(),
+            url: "https://lpc.opengameart.org/".into(),
+            description: "Modular character generator with CC-BY-SA assets. RPG style.".into(),
+            tags: vec!["free".into(), "cc-by-sa".into(), "rpg".into(), "characters".into(), "modular".into()],
+            builtin: true,
+        },
+        AssetProvider {
+            name: "Aseprite Resources".into(),
+            url: "https://community.aseprite.org/c/resources/".into(),
+            description: "Pixel art resources shared by the Aseprite community.".into(),
+            tags: vec!["free".into(), "pixel-art".into(), "aseprite".into(), "community".into()],
+            builtin: true,
+        },
+    ]
 }
 
 // ---------------------------------------------------------------------------
@@ -165,6 +237,22 @@ pub struct AssetBrowserApp {
     preview_loaded_path: String,
     tex_counter: u64,
     pub initialized: bool,
+    // AI import analysis
+    pub ai_analyzing: bool,
+    pub ai_import_plan: Option<crate::ai_import::ImportPlan>,
+    pub ai_analysis_status: String,
+    ai_analysis_rx: Option<std::sync::mpsc::Receiver<Result<crate::ai_import::ImportPlan, String>>>,
+    /// Set by "AI Re-import" button — the editor picks this up and triggers analysis with its AI config.
+    pub pending_ai_reimport: Option<String>,
+    /// Asset providers list.
+    pub providers: Vec<AssetProvider>,
+    pub new_provider_name: String,
+    pub new_provider_url: String,
+    pub new_provider_desc: String,
+    /// Show the AI analysis bottom panel.
+    pub show_ai_panel: bool,
+    /// Log messages from AI analysis.
+    pub ai_log: Vec<(String, egui::Color32)>,
 }
 
 impl AssetBrowserApp {
@@ -194,6 +282,17 @@ impl AssetBrowserApp {
             preview_loaded_path: String::new(),
             tex_counter: 0,
             initialized: false,
+            ai_analyzing: false,
+            ai_import_plan: None,
+            ai_analysis_status: String::new(),
+            ai_analysis_rx: None,
+            pending_ai_reimport: None,
+            providers: load_providers(),
+            new_provider_name: String::new(),
+            new_provider_url: String::new(),
+            new_provider_desc: String::new(),
+            show_ai_panel: false,
+            ai_log: Vec::new(),
         };
         // Pre-load all registered packs so the library is always available (for AI tools, etc.)
         app.reload_registered_packs();
@@ -216,6 +315,121 @@ impl AssetBrowserApp {
         }
         if !paths.is_empty() {
             self.status_msg = format!("Loaded {} pack(s), {} assets total", paths.len(), self.library.count());
+        }
+    }
+
+    /// Start AI analysis of a pack directory in a background thread.
+    pub fn start_ai_analysis(&mut self, pack_dir: &std::path::Path, api_key: &str, base_url: &str, model: &str, use_anthropic: bool) {
+        self.ai_analyzing = true;
+        self.ai_analysis_status = "Collecting pack context...".into();
+        self.ai_import_plan = None;
+        self.show_ai_panel = true;
+        self.ai_log.clear();
+        self.ai_log.push(("Starting AI analysis...".into(), egui::Color32::from_rgb(255, 200, 80)));
+        self.ai_log.push((format!("Pack: {}", pack_dir.display()), egui::Color32::from_gray(180)));
+        self.ai_log.push((format!("Provider: {} ({})", if use_anthropic { "Anthropic" } else { "OpenAI-compat" }, model), egui::Color32::from_gray(180)));
+
+        let dir = pack_dir.to_path_buf();
+        let key = api_key.to_string();
+        let url = base_url.to_string();
+        let mdl = model.to_string();
+        let (tx, rx) = std::sync::mpsc::channel();
+        self.ai_analysis_rx = Some(rx);
+
+        self.ai_log.push(("Scanning files and collecting context...".into(), egui::Color32::from_gray(160)));
+
+        std::thread::spawn(move || {
+            let context = crate::ai_import::collect_pack_context(&dir);
+            let n_chunks = (context.file_tree.len() + 79) / 80; // CHUNK_SIZE = 80
+            log::info!("AI analysis: {} files, {} READMEs, {} metadata, {} chunk(s)",
+                context.total_files, context.readme_contents.len(),
+                context.metadata_files.len(), n_chunks);
+            let result = crate::ai_import::analyze_pack(&context, &key, &url, &mdl, use_anthropic);
+            let _ = tx.send(result);
+        });
+    }
+
+    /// Check if AI analysis completed.
+    pub fn check_ai_analysis(&mut self) {
+        if let Some(ref rx) = self.ai_analysis_rx {
+            if let Ok(result) = rx.try_recv() {
+                self.ai_analyzing = false;
+                self.ai_analysis_rx = None;
+                match result {
+                    Ok(plan) => {
+                        let n_anims = plan.animations.len();
+                        let n_classif = plan.classifications.len();
+                        let n_tags = plan.tags.len();
+                        self.ai_analysis_status = "Analysis complete".into();
+
+                        self.ai_log.push(("Analysis complete!".into(), egui::Color32::from_rgb(80, 255, 120)));
+                        if !plan.pack_description.is_empty() {
+                            self.ai_log.push((format!("Description: {}", plan.pack_description), egui::Color32::from_gray(200)));
+                        }
+                        self.ai_log.push((format!("Sprite configs: {}", n_anims), egui::Color32::from_gray(180)));
+                        for anim in &plan.animations {
+                            let anim_names: Vec<&str> = anim.animations.iter().map(|a| a.name.as_str()).collect();
+                            self.ai_log.push((
+                                format!("  {} → {}x{} grid {}x{} [{}]",
+                                    anim.file, anim.frame_width, anim.frame_height,
+                                    anim.columns, anim.rows,
+                                    anim_names.join(", ")),
+                                egui::Color32::from_rgb(180, 220, 255),
+                            ));
+                        }
+                        self.ai_log.push((format!("Classification overrides: {}", n_classif), egui::Color32::from_gray(180)));
+                        for classif in &plan.classifications {
+                            self.ai_log.push((
+                                format!("  {} → {}", classif.file, classif.asset_type),
+                                egui::Color32::from_rgb(255, 220, 180),
+                            ));
+                        }
+                        if n_tags > 0 {
+                            self.ai_log.push((format!("Tag groups: {}", n_tags), egui::Color32::from_gray(180)));
+                        }
+                        self.ai_log.push(("Re-importing with AI plan...".into(), egui::Color32::from_rgb(255, 200, 80)));
+
+                        self.ai_import_plan = Some(plan);
+                    }
+                    Err(e) => {
+                        self.ai_analysis_status = "Analysis failed".into();
+                        self.ai_log.push((format!("ERROR: {}", e), egui::Color32::from_rgb(255, 80, 80)));
+                        log::warn!("AI analysis failed: {e}");
+                    }
+                }
+            }
+        }
+    }
+
+    /// Re-import a pack using the cached AI plan.
+    pub fn reimport_with_ai_plan(&mut self, pack_path: &str) {
+        let path = std::path::Path::new(pack_path);
+        if !path.is_dir() { return; }
+
+        // Delete existing manifest to force re-scan
+        let manifest = path.join("toile-asset-manifest.json");
+        if manifest.exists() { let _ = std::fs::remove_file(&manifest); }
+
+        let plan = self.ai_import_plan.clone();
+        match self.library.import_pack_with_plan(path, None, plan.as_ref()) {
+            Ok(count) => {
+                if let Some(ref p) = plan {
+                    let _ = crate::ai_import::save_plan(path, p);
+                }
+                self.ai_log.push((
+                    format!("Re-import complete: {} assets imported", count),
+                    egui::Color32::from_rgb(80, 255, 120),
+                ));
+                self.status_msg = format!("AI import: {} assets", count);
+                log::info!("AI import complete: {} assets", count);
+            }
+            Err(e) => {
+                self.ai_log.push((
+                    format!("Import failed: {}", e),
+                    egui::Color32::from_rgb(255, 80, 80),
+                ));
+                self.status_msg = format!("Import failed: {e}");
+            }
         }
     }
 
@@ -284,7 +498,7 @@ impl AssetBrowserApp {
                 progress_current.store(current, std::sync::atomic::Ordering::Relaxed);
                 progress_total.store(total.max(1), std::sync::atomic::Ordering::Relaxed);
             };
-            let result = lib.import_pack_with_progress(&path_owned, Some(&progress_cb));
+            let result = lib.import_pack_with_plan(&path_owned, Some(&progress_cb), None);
             let name = path_owned.file_name()
                 .map(|n| n.to_string_lossy().to_string())
                 .unwrap_or_else(|| "pack".into());
@@ -627,6 +841,10 @@ impl AssetBrowserApp {
                     self.import_pack_dialog();
                 }
             });
+
+            // Check AI analysis (result handled in bottom panel)
+            self.check_ai_analysis();
+
             ui.add_space(8.0);
 
             if self.registry.packs.is_empty() {
@@ -678,6 +896,16 @@ impl AssetBrowserApp {
                             remove_path = Some(pack.path.clone());
                         }
                     });
+                    // AI re-import button (shown when pack is selected)
+                    if is_selected {
+                        ui.horizontal(|ui| {
+                            ui.add_space(20.0);
+                            // The AI button needs config from the editor — store pack path for the editor to trigger
+                            if ui.small_button("AI Re-import").on_hover_text("Re-analyze with AI and re-import").clicked() {
+                                self.pending_ai_reimport = Some(pack.path.clone());
+                            }
+                        });
+                    }
                 }
                 if let Some(path) = remove_path {
                     self.remove_pack(&path);
@@ -685,6 +913,43 @@ impl AssetBrowserApp {
                 }
             }
         });
+
+        // AI Analysis bottom panel
+        if self.show_ai_panel && !self.ai_log.is_empty() {
+            egui::TopBottomPanel::bottom("ai_analysis_panel")
+                .min_height(100.0)
+                .max_height(250.0)
+                .resizable(true)
+                .show(ctx, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.label(egui::RichText::new("AI Import Analysis").strong().size(13.0));
+                        if self.ai_analyzing {
+                            ui.spinner();
+                            ui.label(egui::RichText::new("Analyzing...").color(egui::Color32::from_rgb(255, 200, 80)));
+                            ctx.request_repaint();
+                        }
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if ui.small_button("Close").clicked() {
+                                self.show_ai_panel = false;
+                            }
+                            if ui.small_button("Clear").clicked() {
+                                self.ai_log.clear();
+                                self.ai_analysis_status.clear();
+                            }
+                        });
+                    });
+                    ui.separator();
+
+                    egui::ScrollArea::vertical()
+                        .auto_shrink([false, false])
+                        .stick_to_bottom(true)
+                        .show(ui, |ui| {
+                            for (msg, color) in &self.ai_log {
+                                ui.label(egui::RichText::new(msg).size(11.0).color(*color));
+                            }
+                        });
+                });
+        }
 
         // Central panel: browser or file view
         egui::CentralPanel::default().show(ctx, |ui| {
@@ -695,8 +960,156 @@ impl AssetBrowserApp {
                 ViewMode::Files => {
                     file_browser::show_file_browser(self, ui, ctx);
                 }
+                ViewMode::Providers => {
+                    self.show_providers_view(ui);
+                }
             }
         });
+    }
+
+    fn show_providers_view(&mut self, ui: &mut egui::Ui) {
+        // Tab bar (reuse from browser_panel for consistency)
+        ui.horizontal_wrapped(|ui| {
+            if ui.selectable_label(false, "Assets").clicked() { self.view_mode = ViewMode::Assets; }
+            if ui.selectable_label(false, "Files").clicked() { self.view_mode = ViewMode::Files; }
+            if ui.selectable_label(true, "Sources").clicked() {}
+            ui.separator();
+            ui.label(egui::RichText::new("Find asset packs online").color(egui::Color32::from_gray(140)).size(11.0));
+        });
+        ui.separator();
+
+        egui::ScrollArea::vertical().show(ui, |ui| {
+            ui.add_space(4.0);
+
+            let mut remove_idx: Option<usize> = None;
+            for (i, provider) in self.providers.iter().enumerate() {
+                egui::Frame::NONE
+                    .fill(egui::Color32::from_rgba_unmultiplied(50, 55, 65, 180))
+                    .inner_margin(egui::Margin::same(10))
+                    .corner_radius(6.0)
+                    .show(ui, |ui| {
+                        ui.horizontal(|ui| {
+                            ui.label(egui::RichText::new(&provider.name).strong().size(14.0).color(egui::Color32::from_rgb(100, 200, 255)));
+                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                if !provider.builtin {
+                                    if ui.small_button("x").on_hover_text("Remove").clicked() {
+                                        remove_idx = Some(i);
+                                    }
+                                }
+                                if ui.small_button("Open").on_hover_text("Open in browser").clicked() {
+                                    let _ = open::that(&provider.url);
+                                }
+                            });
+                        });
+
+                        ui.label(egui::RichText::new(&provider.description).size(11.0).color(egui::Color32::from_gray(180)));
+
+                        ui.horizontal_wrapped(|ui| {
+                            ui.label(egui::RichText::new(&provider.url).size(10.0).color(egui::Color32::from_gray(120)));
+                        });
+
+                        if !provider.tags.is_empty() {
+                            ui.horizontal_wrapped(|ui| {
+                                for tag in &provider.tags {
+                                    egui::Frame::NONE
+                                        .fill(egui::Color32::from_rgba_unmultiplied(80, 80, 100, 150))
+                                        .inner_margin(egui::Margin::symmetric(5, 1))
+                                        .corner_radius(3.0)
+                                        .show(ui, |ui| {
+                                            ui.label(egui::RichText::new(tag).size(9.0).color(egui::Color32::from_gray(170)));
+                                        });
+                                }
+                            });
+                        }
+                    });
+                ui.add_space(4.0);
+            }
+
+            if let Some(idx) = remove_idx {
+                self.providers.remove(idx);
+                save_providers(&self.providers);
+            }
+
+            // Add custom provider
+            ui.add_space(8.0);
+            ui.label(egui::RichText::new("Add custom source").strong().size(12.0));
+            ui.separator();
+            egui::Grid::new("add_provider").num_columns(2).spacing([8.0, 4.0]).show(ui, |ui| {
+                ui.label("Name:");
+                ui.add(egui::TextEdit::singleline(&mut self.new_provider_name)
+                    .hint_text("My Asset Store")
+                    .desired_width(250.0));
+                ui.end_row();
+
+                ui.label("URL:");
+                ui.add(egui::TextEdit::singleline(&mut self.new_provider_url)
+                    .hint_text("https://...")
+                    .desired_width(250.0));
+                ui.end_row();
+
+                ui.label("Description:");
+                ui.add(egui::TextEdit::singleline(&mut self.new_provider_desc)
+                    .hint_text("What kind of assets?")
+                    .desired_width(250.0));
+                ui.end_row();
+            });
+            if ui.add_enabled(
+                !self.new_provider_name.is_empty() && !self.new_provider_url.is_empty(),
+                egui::Button::new("+ Add"),
+            ).clicked() {
+                self.providers.push(AssetProvider {
+                    name: self.new_provider_name.clone(),
+                    url: self.new_provider_url.clone(),
+                    description: self.new_provider_desc.clone(),
+                    tags: vec![],
+                    builtin: false,
+                });
+                save_providers(&self.providers);
+                self.new_provider_name.clear();
+                self.new_provider_url.clear();
+                self.new_provider_desc.clear();
+            }
+        });
+    }
+}
+
+// ── Provider persistence ────────────────────────────────────────────────────
+
+const PROVIDERS_FILENAME: &str = "toile-asset-providers.json";
+
+fn providers_path() -> std::path::PathBuf {
+    if let Ok(home) = std::env::var("HOME") {
+        let dir = std::path::PathBuf::from(home).join(".toile");
+        let _ = std::fs::create_dir_all(&dir);
+        dir.join(PROVIDERS_FILENAME)
+    } else {
+        std::path::PathBuf::from(PROVIDERS_FILENAME)
+    }
+}
+
+fn load_providers() -> Vec<AssetProvider> {
+    let path = providers_path();
+    if path.exists() {
+        if let Ok(json) = std::fs::read_to_string(&path) {
+            if let Ok(mut providers) = serde_json::from_str::<Vec<AssetProvider>>(&json) {
+                // Ensure builtins are present
+                let defaults = default_providers();
+                for d in &defaults {
+                    if !providers.iter().any(|p| p.url == d.url) {
+                        providers.insert(0, d.clone());
+                    }
+                }
+                return providers;
+            }
+        }
+    }
+    default_providers()
+}
+
+fn save_providers(providers: &[AssetProvider]) {
+    let path = providers_path();
+    if let Ok(json) = serde_json::to_string_pretty(providers) {
+        let _ = std::fs::write(path, json);
     }
 }
 

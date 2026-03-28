@@ -223,6 +223,33 @@ impl EditorApp {
                             ui.end_row();
                         });
 
+                    // Frame picker for spritesheet preview
+                    if let Some(ref sheet) = entity.sprite_sheet {
+                        let total_frames = sheet.columns * sheet.rows;
+                        if total_frames > 1 {
+                            ui.horizontal(|ui| {
+                                ui.label(egui::RichText::new("Preview frame:").size(11.0));
+                                let mut frame = entity.preview_frame.unwrap_or(0) as i32;
+                                if ui.add(egui::DragValue::new(&mut frame)
+                                    .range(0..=(total_frames as i32 - 1))
+                                    .speed(0.2)
+                                ).changed() {
+                                    entity.preview_frame = Some(frame.max(0) as u32);
+                                }
+                                ui.label(egui::RichText::new(format!("/ {}", total_frames - 1)).size(10.0).color(egui::Color32::from_gray(130)));
+                                if ui.small_button("Edit Sprite").on_hover_text("Open Sprite & Animation Editor").clicked() {
+                                    self.show_sprite_editor = true;
+                                }
+                            });
+                        }
+                    } else if !entity.sprite_path.is_empty() {
+                        ui.horizontal(|ui| {
+                            if ui.small_button("Edit Sprite").on_hover_text("Open Sprite & Animation Editor").clicked() {
+                                self.show_sprite_editor = true;
+                            }
+                        });
+                    }
+
                     // ── Behaviors ─────────────────────────────────────────
                     ui.add_space(8.0);
                     egui::CollapsingHeader::new(egui::RichText::new("Behaviors").strong())

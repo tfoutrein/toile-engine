@@ -524,6 +524,46 @@ impl EditorApp {
             }
             self.asset_browser.show_ui(ctx);
 
+            // Check if user clicked "AI Re-import" on a pack
+            if let Some(pack_path) = self.asset_browser.pending_ai_reimport.take() {
+                if self.ai_config.is_configured() && !self.asset_browser.ai_analyzing {
+                    use crate::ai::config::AiProvider;
+                    let (key, url, model, is_anthropic) = match self.ai_config.provider {
+                        AiProvider::Anthropic => (
+                            self.ai_config.api_key.clone(),
+                            "https://api.anthropic.com".to_string(),
+                            self.ai_config.model.clone(),
+                            true,
+                        ),
+                        AiProvider::OpenaiCompat => (
+                            self.ai_config.openai_api_key.clone(),
+                            self.ai_config.openai_base_url.clone(),
+                            self.ai_config.openai_model.clone(),
+                            false,
+                        ),
+                    };
+                    let path = std::path::Path::new(&pack_path);
+                    self.asset_browser.start_ai_analysis(path, &key, &url, &model, is_anthropic);
+                } else if !self.ai_config.is_configured() {
+                    self.status_msg = "Configure AI in Settings first".into();
+                }
+            }
+
+            // Check if AI analysis completed — auto re-import
+            if self.asset_browser.ai_import_plan.is_some() && !self.asset_browser.ai_analyzing {
+                // Find which pack was selected for AI import
+                if let Some(ref pack_id) = self.asset_browser.filter_pack {
+                    if let Some(pack) = self.asset_browser.registry.packs.iter().find(|p| {
+                        p.name.replace(' ', "_").to_lowercase() == *pack_id
+                    }) {
+                        let path = pack.path.clone();
+                        self.asset_browser.reimport_with_ai_plan(&path);
+                        self.asset_browser.ai_import_plan = None;
+                        self.sprite_cache.clear();
+                    }
+                }
+            }
+
             // Check if user clicked "Add to Scene"
             if let Some(asset_id) = self.asset_browser.pending_add_to_scene.take() {
                 if let Some(asset) = self.asset_browser.library.assets.iter().find(|a| a.id == asset_id) {

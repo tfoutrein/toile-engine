@@ -21,6 +21,7 @@ pub mod thumbnail;
 pub mod library;
 pub mod registry;
 pub mod importers;
+pub mod ai_import;
 pub mod ui;
 
 // Re-exports for convenience

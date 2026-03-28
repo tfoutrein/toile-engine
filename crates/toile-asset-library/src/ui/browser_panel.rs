@@ -28,11 +28,15 @@ pub fn show_browser_panel(
     ui.horizontal_wrapped(|ui| {
         let is_assets = app.view_mode == super::ViewMode::Assets;
         let is_files = app.view_mode == super::ViewMode::Files;
-        if ui.selectable_label(is_assets, "🖼 Assets").clicked() {
+        let is_providers = app.view_mode == super::ViewMode::Providers;
+        if ui.selectable_label(is_assets, "Assets").clicked() {
             app.view_mode = super::ViewMode::Assets;
         }
-        if ui.selectable_label(is_files, "📂 Files").clicked() {
+        if ui.selectable_label(is_files, "Files").clicked() {
             app.view_mode = super::ViewMode::Files;
+        }
+        if ui.selectable_label(is_providers, "Sources").clicked() {
+            app.view_mode = super::ViewMode::Providers;
         }
         ui.separator();
 

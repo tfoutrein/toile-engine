@@ -266,6 +266,9 @@ pub struct EntityData {
     pub animations: Vec<AnimationData>,
     #[serde(default)]
     pub default_animation: Option<String>,
+    /// Frame index to show as preview in the editor (when using a spritesheet).
+    #[serde(default)]
+    pub preview_frame: Option<u32>,
     #[serde(default)]
     pub light: Option<LightData>,
     #[serde(default = "default_visible")]
@@ -296,6 +299,7 @@ impl Default for EntityData {
             sprite_sheet: None,
             animations: Vec::new(),
             default_animation: None,
+            preview_frame: None,
             light: None,
             visible: true,
         }
