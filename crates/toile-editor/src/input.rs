@@ -457,5 +457,86 @@ impl EditorApp {
                 }
             }
         }
+
+        // ── Apply pending input map mutations ──
+        if let Some((action_name, binding)) = self.input_map_pending_add_binding.take() {
+            ctx.actions.add_binding(&action_name, binding);
+        }
+        if let Some((action_name, idx)) = self.input_map_pending_remove_binding.take() {
+            ctx.actions.remove_binding(&action_name, idx);
+        }
+        if let Some(action) = self.input_map_pending_add_action.take() {
+            ctx.actions.add_action(action);
+        }
+        if let Some(name) = self.input_map_pending_remove_action.take() {
+            ctx.actions.remove_action(&name);
+        }
+        if self.input_map_save_requested {
+            self.input_map_save_requested = false;
+            if let Some(ref dir) = self.project_dir {
+                let path = dir.join("input_map.json");
+                if let Err(e) = ctx.actions.save_to_file(&path) {
+                    self.status_msg = format!("Failed to save input map: {e}");
+                } else {
+                    self.status_msg = "Input map saved".into();
+                }
+            }
+        }
+
+        // ── "Press any key/button" capture ──
+        if let Some(ref action_name) = self.input_map_listening.clone() {
+            if let Some(source) = ctx.input.take_last_pressed_source() {
+                let binding = toile_app::platform::input_actions::InputBinding {
+                    source,
+                    dead_zone: 0.2,
+                    composite: None,
+                };
+                ctx.actions.add_binding(action_name, binding);
+                self.input_map_listening = None;
+                self.status_msg = format!("Binding added to '{}'", action_name);
+            }
+        }
+
+        // ── Update gamepad/actions snapshot for UI ──
+        if self.show_input_map {
+            self.gamepad_snapshot = ctx.input.connected_gamepads()
+                .into_iter()
+                .map(|(i, s)| (i, s.clone()))
+                .collect();
+
+            self.actions_snapshot = ctx.actions.actions.iter().map(|a| {
+                let type_str = match a.action_type {
+                    toile_app::ActionType::Button => "Button",
+                    toile_app::ActionType::Axis => "Axis",
+                    toile_app::ActionType::Vec2 => "Vec2",
+                };
+                let pressed = ctx.actions.is_pressed(&a.name);
+                let value = ctx.actions.get_value(&a.name);
+                let v2 = ctx.actions.get_vec2(&a.name);
+                (a.name.clone(), type_str.to_string(), pressed, value, [v2.x, v2.y])
+            }).collect();
+
+            self.actions_bindings_snapshot = ctx.actions.actions.iter().map(|a| {
+                let type_str = match a.action_type {
+                    toile_app::ActionType::Button => "Button",
+                    toile_app::ActionType::Axis => "Axis",
+                    toile_app::ActionType::Vec2 => "Vec2",
+                };
+                let bindings: Vec<String> = a.bindings.iter().map(|b| {
+                    let src = match &b.source {
+                        toile_app::platform::InputSource::Key { key } => format!("Key: {}", key),
+                        toile_app::platform::InputSource::MouseButton { button } => format!("Mouse: {}", button),
+                        toile_app::platform::InputSource::GamepadButton { button } => format!("Pad: {}", button),
+                        toile_app::platform::InputSource::GamepadAxis { axis } => format!("Axis: {}", axis),
+                    };
+                    if let Some(ref c) = b.composite {
+                        format!("{} ({:?})", src, c)
+                    } else {
+                        src
+                    }
+                }).collect();
+                (a.name.clone(), type_str.to_string(), bindings)
+            }).collect();
+        }
     }
 }

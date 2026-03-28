@@ -190,6 +190,64 @@ impl InputActionMap {
     pub fn action_names(&self) -> Vec<&str> {
         self.actions.iter().map(|a| a.name.as_str()).collect()
     }
+
+    // ── Mutation API ──
+
+    /// Add a new action.
+    pub fn add_action(&mut self, action: InputAction) {
+        self.states.insert(action.name.clone(), ActionState::default());
+        self.actions.push(action);
+    }
+
+    /// Remove an action by name.
+    pub fn remove_action(&mut self, name: &str) {
+        self.actions.retain(|a| a.name != name);
+        self.states.remove(name);
+    }
+
+    /// Add a binding to an existing action. Returns false if action not found.
+    pub fn add_binding(&mut self, action_name: &str, binding: InputBinding) -> bool {
+        if let Some(action) = self.actions.iter_mut().find(|a| a.name == action_name) {
+            action.bindings.push(binding);
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Remove a binding from an action by index.
+    pub fn remove_binding(&mut self, action_name: &str, binding_index: usize) -> bool {
+        if let Some(action) = self.actions.iter_mut().find(|a| a.name == action_name) {
+            if binding_index < action.bindings.len() {
+                action.bindings.remove(binding_index);
+                return true;
+            }
+        }
+        false
+    }
+
+    // ── Serialization ──
+
+    /// Save actions to a JSON file.
+    pub fn save_to_file(&self, path: &std::path::Path) -> Result<(), String> {
+        let json = serde_json::to_string_pretty(&self.actions)
+            .map_err(|e| format!("Serialize error: {e}"))?;
+        std::fs::write(path, json)
+            .map_err(|e| format!("Write error: {e}"))?;
+        Ok(())
+    }
+
+    /// Load actions from a JSON file. Falls back to defaults if file doesn't exist.
+    pub fn load_from_file(path: &std::path::Path) -> Self {
+        if path.exists() {
+            if let Ok(json) = std::fs::read_to_string(path) {
+                if let Ok(actions) = serde_json::from_str::<Vec<InputAction>>(&json) {
+                    return Self::new(actions);
+                }
+            }
+        }
+        Self::with_defaults()
+    }
 }
 
 // ── Source evaluation ───────────────────────────────────────────────────────

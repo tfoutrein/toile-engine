@@ -304,6 +304,10 @@ impl EditorApp {
                         self.show_scene_settings = true;
                         ui.close_menu();
                     }
+                    if ui.button("Input Map...").clicked() {
+                        self.show_input_map = !self.show_input_map;
+                        ui.close_menu();
+                    }
                     if ui.button("Reset Camera").clicked() {
                         self.camera_pos = Vec2::ZERO;
                         self.camera_zoom = 1.0;
@@ -763,6 +767,9 @@ impl EditorApp {
                 self.status_msg = format!("Deleted entity {id}");
             }
         }
+
+        // ── Input Map panel ──────────────────────────────────────────────
+        self.show_input_map_panel(ctx);
 
         // ── Sprite & Animation Editor window ─────────────────────────────
         self.show_sprite_editor_window(ctx, pdir);

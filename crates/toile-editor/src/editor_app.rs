@@ -97,6 +97,19 @@ pub struct EditorApp {
     pub(crate) ai_available_models: Vec<crate::ai::config::ModelInfo>,
     pub(crate) ai_models_loaded: bool,
     pub(crate) bug_reporter: crate::ai::bug_reporter::BugReporter,
+    // Input Map panel
+    pub(crate) show_input_map: bool,
+    pub(crate) input_map_listening: Option<String>, // action name we're capturing a binding for
+    // Snapshot of gamepad/actions state for UI display (updated each frame)
+    pub(crate) gamepad_snapshot: Vec<(usize, toile_app::platform::GamepadState)>,
+    pub(crate) actions_snapshot: Vec<(String, String, bool, f32, [f32; 2])>, // (name, type, pressed, value, vec2)
+    pub(crate) actions_bindings_snapshot: Vec<(String, String, Vec<String>)>, // (name, type, binding_strs)
+    // Pending mutations from UI → applied in update()
+    pub(crate) input_map_pending_add_binding: Option<(String, toile_app::platform::input_actions::InputBinding)>,
+    pub(crate) input_map_pending_remove_binding: Option<(String, usize)>,
+    pub(crate) input_map_pending_add_action: Option<toile_app::platform::input_actions::InputAction>,
+    pub(crate) input_map_pending_remove_action: Option<String>,
+    pub(crate) input_map_save_requested: bool,
 }
 
 /// What field the file picker is targeting.
@@ -205,6 +218,16 @@ impl EditorApp {
             ai_available_models: Vec::new(),
             ai_models_loaded: false,
             bug_reporter: Default::default(),
+            show_input_map: false,
+            input_map_listening: None,
+            gamepad_snapshot: Vec::new(),
+            actions_snapshot: Vec::new(),
+            actions_bindings_snapshot: Vec::new(),
+            input_map_pending_add_binding: None,
+            input_map_pending_remove_binding: None,
+            input_map_pending_add_action: None,
+            input_map_pending_remove_action: None,
+            input_map_save_requested: false,
         }
     }
 

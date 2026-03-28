@@ -168,6 +168,8 @@ pub struct Input {
     gamepads: HashMap<gilrs::GamepadId, GamepadState>,
     /// Ordered list of connected gamepad IDs (for player indexing).
     gamepad_order: Vec<gilrs::GamepadId>,
+    /// Last input source that was pressed this frame (for "Press any key" capture).
+    last_pressed_source: Option<crate::input_actions::InputSource>,
 }
 
 impl Input {
@@ -195,6 +197,7 @@ impl Input {
             gilrs,
             gamepads: HashMap::new(),
             gamepad_order: Vec::new(),
+            last_pressed_source: None,
         };
 
         // Register already-connected gamepads
@@ -225,6 +228,9 @@ impl Input {
                 ElementState::Pressed => {
                     if self.keys_down.insert(code) {
                         self.keys_pressed_this_frame.insert(code);
+                        self.last_pressed_source = Some(crate::input_actions::InputSource::Key {
+                            key: format!("{:?}", code),
+                        });
                     }
                 }
                 ElementState::Released => {
@@ -248,6 +254,9 @@ impl Input {
             ElementState::Pressed => {
                 if self.mouse_down.insert(btn) {
                     self.mouse_pressed_this_frame.insert(btn);
+                    self.last_pressed_source = Some(crate::input_actions::InputSource::MouseButton {
+                        button: format!("{:?}", btn),
+                    });
                 }
             }
             ElementState::Released => {
@@ -315,6 +324,9 @@ impl Input {
                             state.buttons_down.insert(gb);
                             state.buttons_pressed.insert(gb);
                         }
+                        self.last_pressed_source = Some(crate::input_actions::InputSource::GamepadButton {
+                            button: format!("{:?}", gb),
+                        });
                     }
                 }
                 gilrs::EventType::ButtonReleased(btn, _) => {
@@ -347,6 +359,15 @@ impl Input {
             self.mouse_pressed_this_frame.clear();
         }
         self.scroll_delta = Vec2::ZERO;
+        self.last_pressed_source = None;
+    }
+
+    // --- Capture API (for "Press any key" UI) ---
+
+    /// Returns the last input source pressed this frame (key, mouse, or gamepad button).
+    /// Used by the editor for "Press any key/button" binding capture.
+    pub fn take_last_pressed_source(&mut self) -> Option<crate::input_actions::InputSource> {
+        self.last_pressed_source.take()
     }
 
     // --- Keyboard query API ---
