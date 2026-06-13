@@ -297,6 +297,27 @@ impl EditorApp {
         self.sprite_cache.clear();
     }
 
+    /// Persist the current scene to its file if one is set. Called before switching
+    /// scenes / creating a new one so in-progress edits are never silently lost.
+    pub(crate) fn autosave_current_scene(&mut self) {
+        if self.current_file.is_empty() {
+            return;
+        }
+        if let Some(dir) = &self.project_dir {
+            let path = dir.join(&self.current_file);
+            if let Ok(json) = serde_json::to_string_pretty(&self.scene) {
+                let _ = std::fs::write(&path, json);
+            }
+        }
+    }
+
+    /// Forget undo/redo history (e.g. after switching scenes — history belongs to
+    /// the scene it was recorded against).
+    pub(crate) fn clear_history(&mut self) {
+        self.undo_stack.clear();
+        self.redo_stack.clear();
+    }
+
     /// Resolve a path relative to the project directory.
     pub(crate) fn project_path(&self, relative: &str) -> PathBuf {
         match &self.project_dir {

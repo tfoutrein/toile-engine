@@ -212,3 +212,22 @@ fn undo_redo_add_entity() {
     h.run();
     assert_eq!(h.state().scene.entities.len(), 1, "redo restores the entity");
 }
+
+#[test]
+fn switching_scene_autosaves_current() {
+    let Some(mut h) = editor_with_project("autosave") else { return };
+    // Add an entity to the current (main) scene.
+    h.get_by_label_contains("Add Entity").click();
+    h.run();
+    assert_eq!(h.state().scene.entities.len(), 1);
+    let pdir = h.state().project_dir.clone().unwrap();
+
+    // Create a new scene — this must autosave the current (main) scene first.
+    h.get_by_label_contains("New Scene").click();
+    h.run();
+
+    let main = std::fs::read_to_string(pdir.join("scenes/main.json")).unwrap();
+    let scene: toile_scene::SceneData = serde_json::from_str(&main).unwrap();
+    assert_eq!(scene.entities.len(), 1, "current scene must be autosaved before switching");
+    assert!(h.state().undo_stack.is_empty(), "undo history cleared on scene switch");
+}

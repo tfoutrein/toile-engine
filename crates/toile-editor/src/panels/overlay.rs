@@ -762,6 +762,7 @@ impl EditorApp {
                             }
                             // Switch scene if clicked
                             if let Some(scene_file) = switch_scene {
+                                self.autosave_current_scene(); // don't lose in-progress edits
                                 let path = pdir.as_ref().map(|d| d.join(&scene_file)).unwrap_or_else(|| PathBuf::from(&scene_file));
                                 match toile_scene::load_scene(&path) {
                                     Ok(scene) => {
@@ -770,6 +771,7 @@ impl EditorApp {
                                         self.scene = scene;
                                         self.current_file = scene_file;
                                         self.selected_id = None;
+                                        self.clear_history();
                                         self.status_msg = "Scene loaded".to_string();
                                     }
                                     Err(e) => self.status_msg = format!("Error: {e}"),
@@ -778,6 +780,7 @@ impl EditorApp {
 
                             // New scene button
                             if ui.small_button("+ New Scene").clicked() {
+                                self.autosave_current_scene(); // don't lose in-progress edits
                                 let name = format!("scene_{}", project_scenes.len() + 1);
                                 let path_str = format!("scenes/{name}.json");
                                 let new_scene = SceneData::new(&name);
@@ -788,6 +791,7 @@ impl EditorApp {
                                 self.scene = new_scene;
                                 self.current_file = path_str;
                                 self.selected_id = None;
+                                self.clear_history();
                                 self.status_msg = format!("Created scene '{name}'");
                             }
                         });
