@@ -269,10 +269,12 @@ impl EditorApp {
                     }
                 });
                 ui.menu_button("Edit", |ui| {
-                    if ui.add_enabled(!self.undo_stack.is_empty(), egui::Button::new("Undo  (Ctrl+Z)")).clicked() {
+                    // Use the platform-native modifier name in the labels (⌘ on macOS).
+                    let m = if cfg!(target_os = "macos") { "Cmd" } else { "Ctrl" };
+                    if ui.add_enabled(!self.undo_stack.is_empty(), egui::Button::new(format!("Undo  ({m}+Z)"))).clicked() {
                         do_undo = true; ui.close_menu();
                     }
-                    if ui.add_enabled(!self.redo_stack.is_empty(), egui::Button::new("Redo  (Ctrl+Shift+Z)")).clicked() {
+                    if ui.add_enabled(!self.redo_stack.is_empty(), egui::Button::new(format!("Redo  ({m}+Shift+Z)"))).clicked() {
                         do_redo = true; ui.close_menu();
                     }
                     ui.separator();
