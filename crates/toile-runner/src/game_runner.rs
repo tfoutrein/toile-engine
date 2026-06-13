@@ -668,7 +668,40 @@ impl Game for GameRunner {
                 EventCommand::Log { message } => {
                     log::info!("[Game] {message}");
                 }
-                _ => {} // MoveToward, PlayAnimation — not yet implemented
+                EventCommand::MoveToward { entity_id, target, speed } => {
+                    // Move the entity toward the nearest entity matching `target`
+                    // (by name or tag). Position is moved directly by speed*dt so it
+                    // works without depending on a movement behavior.
+                    let src = self.entities.iter()
+                        .find(|e| e.data.id == *entity_id)
+                        .map(|e| e.es.position);
+                    if let Some(src) = src {
+                        let nearest = self.entities.iter()
+                            .filter(|e| e.alive && e.data.id != *entity_id
+                                && (e.data.name == *target || e.data.tags.iter().any(|t| t == target)))
+                            .map(|e| e.es.position)
+                            .min_by(|a, b| (*a - src).length_squared().total_cmp(&(*b - src).length_squared()));
+                        if let Some(tp) = nearest {
+                            let to = tp - src;
+                            let dist = to.length();
+                            if dist > 1e-4 {
+                                let step = (*speed * dt as f32).min(dist);
+                                let new_pos = src + to / dist * step;
+                                if let Some(ent) = self.entities.iter_mut().find(|e| e.data.id == *entity_id) {
+                                    ent.es.position = new_pos;
+                                }
+                            }
+                        }
+                    }
+                }
+                EventCommand::PlayAnimation { entity_id, anim } => {
+                    if let Some(ent) = self.entities.iter_mut().find(|e| e.data.id == *entity_id) {
+                        if ent.current_anim.as_deref() != Some(anim.as_str()) {
+                            ent.current_anim = Some(anim.clone());
+                            ent.anim_frame = 0.0;
+                        }
+                    }
+                }
             }
         }
 
