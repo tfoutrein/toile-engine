@@ -131,7 +131,8 @@ mod tests {
         let files = scan_directory(&dir);
         // May contain files from other tests, but should not crash
         let _ = fs::remove_dir_all(&dir);
-        assert!(files.is_empty() || true); // Just ensure no panic
+        // The scan above must simply not panic on an empty / removed directory.
+        let _ = files;
     }
 
     #[test]
