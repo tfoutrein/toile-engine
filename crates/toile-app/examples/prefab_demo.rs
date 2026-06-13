@@ -83,6 +83,7 @@ impl PrefabDemo {
                 scale_x: 1.0, scale_y: 1.0, layer: 0,
                 sprite_path: String::new(),
                 width: 28.0, height: 28.0,
+                ..Default::default()
             }),
             Prefab::from_entity("Coin", &EntityData {
                 id: 0, name: "Coin".into(),
@@ -90,6 +91,7 @@ impl PrefabDemo {
                 scale_x: 1.0, scale_y: 1.0, layer: 0,
                 sprite_path: String::new(),
                 width: 16.0, height: 16.0,
+                ..Default::default()
             }),
             Prefab::from_entity("Platform", &EntityData {
                 id: 0, name: "Platform".into(),
@@ -97,6 +99,7 @@ impl PrefabDemo {
                 scale_x: 1.0, scale_y: 1.0, layer: -1,
                 sprite_path: String::new(),
                 width: 120.0, height: 16.0,
+                ..Default::default()
             }),
         ]
     }

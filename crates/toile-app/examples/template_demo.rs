@@ -105,6 +105,7 @@ fn make_entity(id: u64, name: &str, x: f32, y: f32, w: f32, h: f32, layer: i32) 
         scale_x: 1.0, scale_y: 1.0,
         layer, sprite_path: String::new(),
         width: w, height: h,
+        ..Default::default()
     }
 }
 

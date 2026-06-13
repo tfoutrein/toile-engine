@@ -101,7 +101,10 @@ fn call_anthropic(
     messages: &[ChatMessage],
     system_prompt: &str,
 ) -> Result<ApiResponse, String> {
-    let client = reqwest::blocking::Client::new();
+    let client = reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(120))
+        .build()
+        .map_err(|e| format!("HTTP client error: {e}"))?;
 
     let mut api_messages = Vec::new();
     for msg in messages {
@@ -228,7 +231,10 @@ fn call_openai_compat(
     messages: &[ChatMessage],
     system_prompt: &str,
 ) -> Result<ApiResponse, String> {
-    let client = reqwest::blocking::Client::new();
+    let client = reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(120))
+        .build()
+        .map_err(|e| format!("HTTP client error: {e}"))?;
 
     // Build OpenAI messages format
     let mut api_messages: Vec<serde_json::Value> = Vec::new();

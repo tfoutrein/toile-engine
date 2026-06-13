@@ -212,6 +212,7 @@ impl Game for LightingDemo {
                 falloff: 2.0,
                 color: [lr, lg, lb],
                 intensity,
+                cast_shadow: false,
             });
         }
 
@@ -234,6 +235,7 @@ impl Game for LightingDemo {
             falloff: 1.5,
             color: [1.0, 1.0, 0.9],
             intensity: 2.0,
+            cast_shadow: false,
         });
 
         // ── HUD ────────────────────────────────────────────────────────────

@@ -10,6 +10,8 @@ pub struct SpatialGrid {
     cell_size: f32,
     inv_cell_size: f32,
     cells: HashMap<(i32, i32), Vec<u32>>,
+    /// Persistent dedup set reused by `query_pairs_into` to avoid a per-frame allocation.
+    seen: HashSet<(u32, u32)>,
 }
 
 impl SpatialGrid {
@@ -18,6 +20,7 @@ impl SpatialGrid {
             cell_size,
             inv_cell_size: 1.0 / cell_size,
             cells: HashMap::new(),
+            seen: HashSet::new(),
         }
     }
 
@@ -44,10 +47,11 @@ impl SpatialGrid {
         }
     }
 
-    /// Return all unique candidate pairs (i, j) where i < j.
-    pub fn query_pairs(&self) -> Vec<(u32, u32)> {
-        let mut seen = HashSet::new();
-
+    /// Fill `out` with unique candidate pairs (i, j), i < j, using `seen` for
+    /// dedup. Both are cleared first.
+    fn collect_pairs(&self, seen: &mut HashSet<(u32, u32)>, out: &mut Vec<(u32, u32)>) {
+        seen.clear();
+        out.clear();
         for cell in self.cells.values() {
             if cell.len() < 2 {
                 continue;
@@ -56,12 +60,29 @@ impl SpatialGrid {
                 for j in (i + 1)..cell.len() {
                     let a = cell[i].min(cell[j]);
                     let b = cell[i].max(cell[j]);
-                    seen.insert((a, b));
+                    if seen.insert((a, b)) {
+                        out.push((a, b));
+                    }
                 }
             }
         }
+    }
 
-        seen.into_iter().collect()
+    /// Return all unique candidate pairs (i, j) where i < j. Allocates; prefer
+    /// [`query_pairs_into`] on the hot path.
+    pub fn query_pairs(&self) -> Vec<(u32, u32)> {
+        let mut seen = HashSet::new();
+        let mut out = Vec::new();
+        self.collect_pairs(&mut seen, &mut out);
+        out
+    }
+
+    /// Fill the caller's `out` with unique candidate pairs, reusing the grid's
+    /// persistent dedup set so neither this nor `out` allocates after warm-up.
+    pub fn query_pairs_into(&mut self, out: &mut Vec<(u32, u32)>) {
+        let mut seen = std::mem::take(&mut self.seen);
+        self.collect_pairs(&mut seen, out);
+        self.seen = seen;
     }
 }
 

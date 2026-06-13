@@ -82,6 +82,11 @@ pub struct GameContext<'a> {
     pub audio: &'a mut toile_audio::Audio,
     pub stats: &'a RenderStats,
     pub fps: f64,
+    /// Render interpolation factor in [0,1): how far this frame sits between the
+    /// previous and current fixed-update states. Lerp render transforms by this
+    /// for smooth motion when the display refresh differs from `update_hz`
+    /// (Glenn Fiedler, "Fix Your Timestep"). 0.0 during `init`/`update`.
+    pub alpha: f32,
     /// True only during the first fixed-update tick of each frame.
     /// Use this to guard one-shot actions (toggles) in update().
     pub first_tick: bool,
@@ -470,13 +475,14 @@ struct AppHandler {
 }
 
 macro_rules! make_ctx {
-    ($self:ident, $fps:expr) => {
+    ($self:ident, $fps:expr, $alpha:expr) => {
         GameContext {
             input: &mut $self.input,
             camera: $self.camera.as_mut().unwrap(),
             audio: $self.audio.as_mut().unwrap(),
             stats: &$self.last_stats,
             fps: $fps,
+            alpha: $alpha,
             gpu: $self.gpu.as_ref().unwrap(),
             renderer: $self.renderer.as_mut().unwrap(),
             first_tick: true,
@@ -604,12 +610,13 @@ impl ApplicationHandler for AppHandler {
             WindowEvent::RedrawRequested => {
                 if !self.initialized {
                     self.initialized = true;
-                    let mut ctx = make_ctx!(self, 0.0);
+                    let mut ctx = make_ctx!(self, 0.0, 0.0);
                     self.game.init(&mut ctx);
                 }
 
                 let clock = self.clock.as_mut().unwrap();
-                let (ticks, _alpha) = clock.advance();
+                let (ticks, alpha) = clock.advance();
+                let alpha = alpha as f32;
                 let dt = clock.fixed_dt_secs();
                 let fps = clock.fps();
                 self.elapsed_secs += (ticks as f64 * dt) as f32;
@@ -619,7 +626,7 @@ impl ApplicationHandler for AppHandler {
                 self.input_actions.update(&self.input);
 
                 for tick_idx in 0..ticks {
-                    let mut ctx = make_ctx!(self, fps);
+                    let mut ctx = make_ctx!(self, fps, 0.0);
                     ctx.first_tick = tick_idx == 0;
                     self.game.update(&mut ctx, dt);
                 }
@@ -628,7 +635,7 @@ impl ApplicationHandler for AppHandler {
                 self.sdf_draw_list.clear();
                 self.lighting_config.lights.clear();
                 {
-                    let mut ctx = make_ctx!(self, fps);
+                    let mut ctx = make_ctx!(self, fps, alpha);
                     self.game.draw(&mut ctx);
                 }
 

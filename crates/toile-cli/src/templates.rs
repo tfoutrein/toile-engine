@@ -76,14 +76,13 @@ fn make_entity(id: u64, name: &str, x: f32, y: f32, w: f32, h: f32, layer: i32) 
 }
 
 fn make_prefab(name: &str, w: f32, h: f32, layer: i32, behaviors: Vec<BehaviorConfig>) -> Prefab {
-    Prefab {
-        name: name.to_string(),
-        entity: make_entity(0, name, 0.0, 0.0, w, h, layer),
-        behaviors: behaviors.iter()
-            .map(|b| serde_json::to_value(b).unwrap())
-            .collect(),
-        event_sheet: None,
-    }
+    // Put behaviors on the entity itself (the v0.5 home) so instantiation keeps
+    // them; `from_entity` mirrors them to the deprecated top-level field for
+    // backward compat. Previously behaviors lived only top-level and were dropped
+    // on instantiate (audit X1).
+    let mut entity = make_entity(0, name, 0.0, 0.0, w, h, layer);
+    entity.behaviors = behaviors;
+    Prefab::from_entity(name, &entity)
 }
 
 // ── Empty ────────────────────────────────────────────────────

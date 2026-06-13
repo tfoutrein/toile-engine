@@ -380,8 +380,9 @@ impl EditorApp {
         });
     }
 
-    /// Check if the background API call finished.
-    fn check_ai_response(&mut self) {
+    /// Check if the background API call finished. Safe to call every frame from
+    /// anywhere (no-op when no request is in flight).
+    pub(crate) fn check_ai_response(&mut self) {
         if let Some(ref rx) = self.ai_response_rx {
             if let Ok(result) = rx.try_recv() {
                 self.ai_loading = false;

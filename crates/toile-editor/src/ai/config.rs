@@ -118,7 +118,12 @@ impl AiConfig {
 
 /// Fetch available models from the Anthropic API.
 pub fn fetch_models(api_key: &str) -> Result<Vec<ModelInfo>, String> {
-    let client = reqwest::blocking::Client::new();
+    // Bounded timeout: these run synchronously on the UI thread, so a hung/slow
+    // endpoint must not freeze the editor indefinitely (audit C2).
+    let client = reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+        .map_err(|e| format!("HTTP client error: {e}"))?;
     let response = client
         .get("https://api.anthropic.com/v1/models")
         .header("x-api-key", api_key)
@@ -152,7 +157,12 @@ pub fn fetch_models(api_key: &str) -> Result<Vec<ModelInfo>, String> {
 
 /// Fetch models from an OpenAI-compatible API (GET /models).
 pub fn fetch_openai_models(base_url: &str, api_key: &str) -> Result<Vec<ModelInfo>, String> {
-    let client = reqwest::blocking::Client::new();
+    // Bounded timeout: these run synchronously on the UI thread, so a hung/slow
+    // endpoint must not freeze the editor indefinitely (audit C2).
+    let client = reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+        .map_err(|e| format!("HTTP client error: {e}"))?;
     let url = format!("{}/models", base_url.trim_end_matches('/'));
 
     let response = client

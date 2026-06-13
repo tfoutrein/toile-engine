@@ -128,7 +128,14 @@ pub fn load_aseprite_json(json_text: &str, texture: TextureHandle) -> SpriteShee
                 "reverse" => PlaybackMode::Loop, // TODO: reverse frame order
                 _ => PlaybackMode::Loop,
             };
-            let frames = all_frames[tag.from..=tag.to].to_vec();
+            // Clamp the tag range to the available frames so a malformed export
+            // (from > to, or to >= frame count) cannot panic the inclusive slice.
+            if all_frames.is_empty() {
+                continue;
+            }
+            let to = tag.to.min(all_frames.len() - 1);
+            let from = tag.from.min(to);
+            let frames = all_frames[from..=to].to_vec();
             clips.insert(
                 tag.name.clone(),
                 AnimationClip {

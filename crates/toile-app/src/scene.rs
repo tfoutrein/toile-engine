@@ -157,7 +157,10 @@ impl SceneStack {
         // Process queued commands (only if no transition is active)
         if self.transition.is_none() && !self.commands.is_empty() {
             let commands: Vec<_> = self.commands.drain(..).collect();
-            for cmd in commands {
+            // Process one queued command per update (the rest are dropped, as before).
+            // Written as `if let ... next()` rather than `for { ...; break }` to satisfy
+            // clippy::never_loop while keeping the exact same behaviour.
+            if let Some(cmd) = commands.into_iter().next() {
                 match cmd {
                     SceneCommand::Push(scene, transition) => {
                         if let Some(t) = transition {
@@ -208,7 +211,6 @@ impl SceneStack {
                         }
                     }
                 }
-                break; // Process one command at a time
             }
         }
 

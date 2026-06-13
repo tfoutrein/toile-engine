@@ -1,0 +1,26 @@
+[package]
+name = "toile-harness"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Headless rendering + visual-snapshot test harness for the Toile engine (a Playwright-like tool for the renderer)."
+
+[dependencies]
+toile-core = { workspace = true }
+toile-graphics = { workspace = true }
+toile-scene = { workspace = true }
+
+wgpu = { workspace = true }
+pollster = { workspace = true }
+glam = { workspace = true }
+image = { workspace = true }
+log = { workspace = true }
+env_logger = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+clap = { workspace = true }
+
+[[bin]]
+name = "toile-harness"
+path = "src/main.rs"

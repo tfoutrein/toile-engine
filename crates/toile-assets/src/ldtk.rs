@@ -239,7 +239,7 @@ pub fn load_ldtk(
                     map_height = layer.c_hei;
 
                     // Convert tiles to row-major grid
-                    let grid_size = layer.grid_size;
+                    let grid_size = layer.grid_size.max(1); // guard div-by-zero on malformed .ldtk
                     let mut tile_data = vec![0u32; (layer.c_wid * layer.c_hei) as usize];
 
                     for tile in tiles {
@@ -281,7 +281,7 @@ pub fn load_ldtk(
                             }
                         }
 
-                        let grid_size = layer.grid_size;
+                        let grid_size = layer.grid_size.max(1); // guard div-by-zero on malformed .ldtk
                         let mut tile_data = vec![0u32; (layer.c_wid * layer.c_hei) as usize];
                         for tile in &layer.auto_layer_tiles {
                             let col = tile.px[0] as u32 / grid_size;
@@ -384,11 +384,15 @@ pub fn build_ldtk_tile_sprites(
     let tw = tilemap.tile_size as f32;
     let th = tilemap.tile_size as f32;
     let map_h = (tilemap.height * tilemap.tile_size) as f32;
+    // `.max(1)` on the divisor and the result guards against malformed tileset
+    // metadata (zero tile_size or zero columns) that would panic the integer
+    // modulo/division below.
     let cols = if tileset_px_wid > 0 {
-        tileset_px_wid / tilemap.tile_size
+        tileset_px_wid / tilemap.tile_size.max(1)
     } else {
         tilemap.columns
-    };
+    }
+    .max(1);
 
     let mut result = Vec::new();
 
@@ -496,7 +500,7 @@ pub fn load_ldtk_scenes(ldtk_path: &Path) -> Result<Vec<LdtkLevelResult>, String
                         tile_size = layer.grid_size;
                     }
 
-                    let grid_size = layer.grid_size;
+                    let grid_size = layer.grid_size.max(1); // guard div-by-zero on malformed .ldtk
                     let mut tile_data = vec![0u32; (layer.c_wid * layer.c_hei) as usize];
                     for tile in tiles {
                         let col = tile.px[0] as u32 / grid_size;
@@ -530,7 +534,7 @@ pub fn load_ldtk_scenes(ldtk_path: &Path) -> Result<Vec<LdtkLevelResult>, String
                             }
                         }
 
-                        let grid_size = layer.grid_size;
+                        let grid_size = layer.grid_size.max(1); // guard div-by-zero on malformed .ldtk
                         let mut tile_data = vec![0u32; (layer.c_wid * layer.c_hei) as usize];
                         for tile in &layer.auto_layer_tiles {
                             let col = tile.px[0] as u32 / grid_size;

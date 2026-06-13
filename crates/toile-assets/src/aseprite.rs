@@ -29,40 +29,65 @@ const CHUNK_PALETTE: u16 = 0x2019;
 struct BinReader<'a> {
     data: &'a [u8],
     pos: usize,
+    /// Set the first time a read runs past the end of `data`. Lets parsing fail
+    /// cleanly (parse_ase returns Err) instead of panicking on a truncated or
+    /// malformed file (audit R1).
+    error: Option<String>,
 }
 
 impl<'a> BinReader<'a> {
     fn new(data: &'a [u8]) -> Self {
-        Self { data, pos: 0 }
+        Self { data, pos: 0, error: None }
     }
 
     fn remaining(&self) -> usize {
         self.data.len().saturating_sub(self.pos)
     }
 
+    /// Returns true when `n` more bytes are available; otherwise records an error
+    /// (once) and returns false so the caller yields a safe default value.
+    fn ensure(&mut self, n: usize) -> bool {
+        if self.pos.saturating_add(n) <= self.data.len() {
+            true
+        } else {
+            if self.error.is_none() {
+                self.error = Some(format!(
+                    "unexpected end of Aseprite data at offset {} (needed {n} more bytes, {} remaining)",
+                    self.pos,
+                    self.remaining()
+                ));
+            }
+            false
+        }
+    }
+
     fn skip(&mut self, n: usize) {
-        self.pos += n;
+        self.pos = self.pos.saturating_add(n);
     }
 
     fn byte(&mut self) -> u8 {
+        if !self.ensure(1) { return 0; }
         let v = self.data[self.pos];
         self.pos += 1;
         v
     }
 
     fn word(&mut self) -> u16 {
+        if !self.ensure(2) { return 0; }
         let v = u16::from_le_bytes([self.data[self.pos], self.data[self.pos + 1]]);
         self.pos += 2;
         v
     }
 
     fn short(&mut self) -> i16 {
+        if !self.ensure(2) { return 0; }
         let v = i16::from_le_bytes([self.data[self.pos], self.data[self.pos + 1]]);
         self.pos += 2;
         v
     }
 
     fn dword(&mut self) -> u32 {
+        if !self.ensure(4) { return 0; }
         let v = u32::from_le_bytes([
             self.data[self.pos],
             self.data[self.pos + 1],
@@ -74,6 +99,7 @@ impl<'a> BinReader<'a> {
     }
 
     fn bytes(&mut self, n: usize) -> &'a [u8] {
+        if !self.ensure(n) { return &[]; }
         let slice = &self.data[self.pos..self.pos + n];
         self.pos += n;
         slice
@@ -81,6 +107,7 @@ impl<'a> BinReader<'a> {
 
     fn string(&mut self) -> String {
         let len = self.word() as usize;
+        if !self.ensure(len) { return String::new(); }
         let s = std::str::from_utf8(&self.data[self.pos..self.pos + len])
             .unwrap_or("")
             .to_string();
@@ -171,6 +198,7 @@ pub fn parse_ase(data: &[u8]) -> Result<AseFile, String> {
 
     // Parse frames
     for _frame_idx in 0..frame_count {
+        if r.error.is_some() { break; }
         let frame_start = r.pos;
         let frame_bytes = r.dword() as usize;
         let frame_magic = r.word();
@@ -187,10 +215,12 @@ pub fn parse_ase(data: &[u8]) -> Result<AseFile, String> {
         let mut frame_cels = Vec::new();
 
         for _chunk_idx in 0..chunk_count {
+            if r.error.is_some() { break; }
             let chunk_start = r.pos;
             let chunk_size = r.dword() as usize;
             let chunk_type = r.word();
-            let chunk_data_end = chunk_start + chunk_size;
+            // Clamp to the buffer so a bogus chunk_size can't push pos out of bounds.
+            let chunk_data_end = chunk_start.saturating_add(chunk_size).min(r.data.len());
 
             match chunk_type {
                 CHUNK_LAYER => {
@@ -227,7 +257,7 @@ pub fn parse_ase(data: &[u8]) -> Result<AseFile, String> {
                             let w = r.word();
                             let h = r.word();
                             let pixel_bytes = decode_pixels(
-                                r.bytes((chunk_data_end - r.pos).min(r.remaining())),
+                                r.bytes(chunk_data_end.saturating_sub(r.pos).min(r.remaining())),
                                 w, h, color_depth, transparent_index, &palette,
                             );
                             frame_cels.push(AseCel {
@@ -240,7 +270,7 @@ pub fn parse_ase(data: &[u8]) -> Result<AseFile, String> {
                             // Compressed image
                             let w = r.word();
                             let h = r.word();
-                            let compressed = r.bytes((chunk_data_end - r.pos).min(r.remaining()));
+                            let compressed = r.bytes(chunk_data_end.saturating_sub(r.pos).min(r.remaining()));
                             let mut decoder = ZlibDecoder::new(Cursor::new(compressed));
                             let mut raw = Vec::new();
                             decoder.read_to_end(&mut raw).map_err(|e| format!("Zlib: {e}"))?;
@@ -267,6 +297,7 @@ pub fn parse_ase(data: &[u8]) -> Result<AseFile, String> {
                     r.skip(8); // future
 
                     for _ in 0..tag_count {
+                        if r.error.is_some() { break; }
                         let from = r.word();
                         let to = r.word();
                         let direction = r.byte();
@@ -287,6 +318,7 @@ pub fn parse_ase(data: &[u8]) -> Result<AseFile, String> {
                     r.skip(8); // future
 
                     for i in first..=last {
+                        if r.error.is_some() { break; }
                         let flags = r.word();
                         let red = r.byte();
                         let green = r.byte();
@@ -312,7 +344,11 @@ pub fn parse_ase(data: &[u8]) -> Result<AseFile, String> {
             cels: frame_cels,
         });
 
-        r.pos = frame_start + frame_bytes;
+        r.pos = frame_start.saturating_add(frame_bytes).min(r.data.len());
+    }
+
+    if let Some(e) = r.error {
+        return Err(e);
     }
 
     Ok(AseFile {
@@ -504,8 +540,10 @@ pub fn ase_to_sprite_sheet(ase: &AseFile, texture: TextureHandle) -> SpriteSheet
         );
     } else {
         for tag in &ase.tags {
-            let from = tag.from as usize;
             let to = (tag.to as usize).min(all_frames.len().saturating_sub(1));
+            // Clamp `from` too (it was previously raw): a tag with from > frame
+            // count would otherwise panic the inclusive slice (start > end).
+            let from = (tag.from as usize).min(to);
             let mode = match tag.direction {
                 1 => PlaybackMode::Loop, // reverse — frames would need reversing
                 2 | 3 => PlaybackMode::PingPong,
@@ -772,5 +810,21 @@ mod tests {
         assert_eq!(h, 1);
         assert_eq!(durs, vec![100, 150, 200]);
         assert_eq!(atlas.len(), 12); // 3 pixels * 4 bytes
+    }
+
+    #[test]
+    fn parse_ase_rejects_malformed_without_panicking() {
+        // Empty / too-short buffers must be Err, never panic.
+        assert!(parse_ase(&[]).is_err());
+        assert!(parse_ase(&[0x00, 0x01, 0x02]).is_err());
+
+        // Truncating a valid file at every length must never panic (R1).
+        let frame = vec![255, 0, 0, 255];
+        let full = build_test_ase(1, 1, &[(100, frame)], &[]);
+        for len in 0..full.len() {
+            let _ = parse_ase(&full[..len]); // Ok or Err, but must not panic
+        }
+        // The complete file still parses.
+        assert!(parse_ase(&full).is_ok());
     }
 }
