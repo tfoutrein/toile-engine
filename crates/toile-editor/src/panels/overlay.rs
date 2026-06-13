@@ -215,8 +215,17 @@ impl EditorApp {
         let mut add_entity = false;
         let mut delete_selected = false;
         let mut play_game = false;
+        let mut stop_game = false;
         let mut do_undo = false;
         let mut do_redo = false;
+
+        // Drop the handle if the game exited on its own, so the button flips back to Play.
+        if let Some(child) = &mut self.running_game {
+            if !matches!(child.try_wait(), Ok(None)) {
+                self.running_game = None;
+            }
+        }
+        let game_running = self.running_game.is_some();
 
         egui::TopBottomPanel::top("menu").show(ctx, |ui| {
             egui::menu::bar(ui, |ui| {
@@ -331,9 +340,13 @@ impl EditorApp {
                         ui.close_menu();
                     }
                 });
-                // Play button — pushed to the right
+                // Play / Stop button — pushed to the right (toggles while a game is running)
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui.button(egui::RichText::new("▶ Play").color(egui::Color32::from_rgb(80, 220, 80)).strong()).clicked() {
+                    if game_running {
+                        if ui.button(egui::RichText::new("\u{25A0} Stop").color(egui::Color32::from_rgb(230, 90, 90)).strong()).clicked() {
+                            stop_game = true;
+                        }
+                    } else if ui.button(egui::RichText::new("▶ Play").color(egui::Color32::from_rgb(80, 220, 80)).strong()).clicked() {
                         play_game = true;
                     }
                 });
@@ -482,6 +495,13 @@ impl EditorApp {
                 self.status_msg = format!("Deleted entity {id}");
             }
         }
+        if stop_game {
+            if let Some(mut child) = self.running_game.take() {
+                let _ = child.kill();
+                let _ = child.wait();
+            }
+            self.status_msg = "Game stopped".to_string();
+        }
         if play_game {
             if let Some(dir) = pdir {
                 // Auto-save before playing
@@ -491,9 +511,8 @@ impl EditorApp {
                         let _ = std::fs::write(&save_path, &json);
                     }
                 }
-                // Spawn toile run as a child process, capture logs
+                // Spawn `toile run` as a child process; keep the handle so we can Stop it.
                 self.game_logs.clear();
-                let dir_clone = dir.clone();
                 match std::process::Command::new("toile")
                     .arg("run")
                     .arg(&dir)
@@ -502,31 +521,30 @@ impl EditorApp {
                     .stdout(std::process::Stdio::piped())
                     .spawn()
                 {
-                    Ok(child) => {
-                        self.status_msg = "Game launched!".to_string();
-                        // Capture logs in background thread
+                    Ok(mut child) => {
+                        self.status_msg = "Game launched! (press \u{25A0} Stop to end)".to_string();
+                        // Stream stdout+stderr into a shared buffer WITHOUT consuming the child
+                        // handle (wait_with_output would move it, leaving nothing to kill).
+                        use std::io::{BufRead, BufReader};
                         let logs = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
-                        let logs_clone = logs.clone();
-                        std::thread::spawn(move || {
-                            if let Ok(output) = child.wait_with_output() {
-                                let mut captured = Vec::new();
-                                if let Ok(stderr) = String::from_utf8(output.stderr) {
-                                    for line in stderr.lines() {
-                                        captured.push(line.to_string());
+                        for pipe in [
+                            child.stdout.take().map(|p| Box::new(p) as Box<dyn std::io::Read + Send>),
+                            child.stderr.take().map(|p| Box::new(p) as Box<dyn std::io::Read + Send>),
+                        ]
+                        .into_iter()
+                        .flatten()
+                        {
+                            let l = logs.clone();
+                            std::thread::spawn(move || {
+                                for line in BufReader::new(pipe).lines().map_while(Result::ok) {
+                                    if let Ok(mut g) = l.lock() {
+                                        g.push(line);
                                     }
                                 }
-                                if let Ok(stdout) = String::from_utf8(output.stdout) {
-                                    for line in stdout.lines() {
-                                        captured.push(line.to_string());
-                                    }
-                                }
-                                if let Ok(mut logs) = logs_clone.lock() {
-                                    *logs = captured;
-                                }
-                            }
-                        });
-                        // Store the Arc so we can read it later
+                            });
+                        }
                         self.game_log_receiver = Some(logs);
+                        self.running_game = Some(child);
                     }
                     Err(e) => self.status_msg = format!("Failed to launch: {e}. Is `toile` in PATH?"),
                 }

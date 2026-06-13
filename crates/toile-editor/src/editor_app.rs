@@ -94,6 +94,9 @@ pub struct EditorApp {
     /// Captured game logs from the last Play session.
     pub(crate) game_logs: Vec<String>,
     pub(crate) game_log_receiver: Option<std::sync::Arc<std::sync::Mutex<Vec<String>>>>,
+    /// Handle to the running `toile run` child (Some while a game launched via Play is alive),
+    /// so the Play button can toggle to Stop and actually terminate it.
+    pub(crate) running_game: Option<std::process::Child>,
     pub(crate) ai_available_models: Vec<crate::ai::config::ModelInfo>,
     pub(crate) ai_models_loaded: bool,
     pub(crate) bug_reporter: crate::ai::bug_reporter::BugReporter,
@@ -220,6 +223,7 @@ impl EditorApp {
             ai_md_cache: egui_commonmark::CommonMarkCache::default(),
             game_logs: Vec::new(),
             game_log_receiver: None,
+            running_game: None,
             ai_available_models: Vec::new(),
             ai_models_loaded: false,
             bug_reporter: Default::default(),
