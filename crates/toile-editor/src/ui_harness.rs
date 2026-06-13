@@ -32,20 +32,42 @@ fn temp_workspace(name: &str) -> PathBuf {
 /// Build a kittest harness driving the editor's full overlay panel tree with a
 /// real wgpu renderer, so frames can be rendered to PNG. Mirrors `render_overlay`
 /// by pre-collecting the project file lists each frame.
-fn editor_harness(app: EditorApp) -> Harness<'static, EditorApp> {
-    Harness::builder()
-        .with_size(egui::vec2(1280.0, 720.0))
-        .wgpu()
-        .build_state(
-            |ctx, app| {
-                let scenes = app.list_project_scenes();
-                let scripts = app.list_project_files("scripts", "json");
-                let particles = app.list_project_files("particles", "json");
-                let pdir = app.project_dir.clone();
-                app.show_overlay_panels(ctx, &scenes, &scripts, &particles, &pdir);
-            },
-            app,
-        )
+fn editor_harness(app: EditorApp) -> Option<Harness<'static, EditorApp>> {
+    if !gpu_available() {
+        eprintln!("skipping editor UI test: no GPU adapter available");
+        return None;
+    }
+    Some(
+        Harness::builder()
+            .with_size(egui::vec2(1280.0, 720.0))
+            .wgpu()
+            .build_state(
+                |ctx, app| {
+                    let scenes = app.list_project_scenes();
+                    let scripts = app.list_project_files("scripts", "json");
+                    let particles = app.list_project_files("particles", "json");
+                    let pdir = app.project_dir.clone();
+                    app.show_overlay_panels(ctx, &scenes, &scripts, &particles, &pdir);
+                },
+                app,
+            ),
+    )
+}
+
+/// True if a usable GPU adapter exists. egui_kittest's wgpu renderer is created
+/// eagerly (panicking on failure), so headless CI without a GPU must skip these
+/// tests rather than crash.
+fn gpu_available() -> bool {
+    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
+        backends: wgpu::Backends::PRIMARY,
+        ..Default::default()
+    });
+    pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
+        power_preference: wgpu::PowerPreference::default(),
+        compatible_surface: None,
+        force_fallback_adapter: false,
+    }))
+    .is_ok()
 }
 
 /// A fresh editor with the splash skipped and an isolated workspace.
@@ -57,12 +79,13 @@ fn fresh_editor(workspace_name: &str) -> EditorApp {
 }
 
 /// Build a harness, create the default empty project, and land in the main editor.
-fn editor_with_project(name: &str) -> Harness<'static, EditorApp> {
-    let mut h = editor_harness(fresh_editor(name));
+/// Returns `None` (test skips) when no GPU is available.
+fn editor_with_project(name: &str) -> Option<Harness<'static, EditorApp>> {
+    let mut h = editor_harness(fresh_editor(name))?;
     h.run();
     h.get_by_label_contains("Create Project").click();
     h.run();
-    h
+    Some(h)
 }
 
 /// Render the current frame to `toile-ui/<name>.png` (best effort; skips if no GPU).
@@ -79,7 +102,7 @@ fn snapshot(h: &mut Harness<'static, EditorApp>, name: &str) {
 
 #[test]
 fn welcome_screen_renders() {
-    let mut h = editor_harness(fresh_editor("welcome"));
+    let Some(mut h) = editor_harness(fresh_editor("welcome")) else { return };
     h.run();
     snapshot(&mut h, "01-welcome");
     // The welcome dialog must be showing the create-project affordance.
@@ -88,7 +111,7 @@ fn welcome_screen_renders() {
 
 #[test]
 fn create_project_opens_main_editor() {
-    let mut h = editor_harness(fresh_editor("create"));
+    let Some(mut h) = editor_harness(fresh_editor("create")) else { return };
     h.run();
 
     // Drive the welcome screen: create the default "my-game" empty project.
@@ -108,7 +131,7 @@ fn create_project_opens_main_editor() {
 
 #[test]
 fn add_entity_shows_inspector() {
-    let mut h = editor_with_project("add-entity");
+    let Some(mut h) = editor_with_project("add-entity") else { return };
     h.get_by_label_contains("Add Entity").click();
     h.run();
     // The new entity should be added and auto-selected so the inspector populates.
@@ -124,7 +147,7 @@ fn add_entity_shows_inspector() {
 
 #[test]
 fn scene_settings_window_renders() {
-    let mut h = editor_with_project("scene-settings");
+    let Some(mut h) = editor_with_project("scene-settings") else { return };
     h.state_mut().show_scene_settings = true;
     h.run();
     snapshot(&mut h, "04-scene-settings");
@@ -132,7 +155,7 @@ fn scene_settings_window_renders() {
 
 #[test]
 fn tilemap_mode_renders() {
-    let mut h = editor_with_project("tilemap");
+    let Some(mut h) = editor_with_project("tilemap") else { return };
     h.state_mut().editor_mode = crate::editor_app::EditorMode::Tilemap;
     h.run();
     snapshot(&mut h, "05-tilemap");
@@ -140,7 +163,7 @@ fn tilemap_mode_renders() {
 
 #[test]
 fn particle_mode_renders() {
-    let mut h = editor_with_project("particle");
+    let Some(mut h) = editor_with_project("particle") else { return };
     h.state_mut().editor_mode = crate::editor_app::EditorMode::Particle;
     h.run();
     snapshot(&mut h, "06-particle");
@@ -148,7 +171,7 @@ fn particle_mode_renders() {
 
 #[test]
 fn ai_copilot_renders() {
-    let mut h = editor_with_project("ai");
+    let Some(mut h) = editor_with_project("ai") else { return };
     h.state_mut().editor_mode = crate::editor_app::EditorMode::AICopilot;
     h.run();
     snapshot(&mut h, "07-ai-copilot");
@@ -156,7 +179,7 @@ fn ai_copilot_renders() {
 
 #[test]
 fn game_output_console_shows_logs() {
-    let mut h = editor_with_project("game-output");
+    let Some(mut h) = editor_with_project("game-output") else { return };
     {
         let app = h.state_mut();
         app.game_logs = vec![
@@ -174,7 +197,7 @@ fn game_output_console_shows_logs() {
 
 #[test]
 fn undo_redo_add_entity() {
-    let mut h = editor_with_project("undo");
+    let Some(mut h) = editor_with_project("undo") else { return };
     h.get_by_label_contains("Add Entity").click();
     h.run();
     assert_eq!(h.state().scene.entities.len(), 1, "entity added");
