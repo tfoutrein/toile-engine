@@ -6,25 +6,64 @@ use crate::camera::{Camera2D, CameraUniform};
 use crate::texture::{self, TextureEntry, TextureHandle};
 use toile_core::color::Color;
 
+/// Per-instance sprite data (audit P4: instanced rendering). One record per
+/// sprite; the vertex shader expands a shared unit quad, scales it by `size`,
+/// rotates by `rotation`, translates to `position`, and picks the UV rect.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct SpriteVertex {
+pub struct SpriteInstance {
     pub position: [f32; 2],
-    pub uv: [f32; 2],
+    pub size: [f32; 2],
+    pub rotation: f32,
+    pub uv_min: [f32; 2],
+    pub uv_max: [f32; 2],
     pub color: u32,
 }
 
-impl SpriteVertex {
+impl SpriteInstance {
+    const LAYOUT: wgpu::VertexBufferLayout<'static> = wgpu::VertexBufferLayout {
+        array_stride: std::mem::size_of::<Self>() as wgpu::BufferAddress,
+        step_mode: wgpu::VertexStepMode::Instance,
+        // NOTE: order must match the struct field order so offsets line up.
+        attributes: &wgpu::vertex_attr_array![
+            2 => Float32x2, // position
+            3 => Float32x2, // size
+            4 => Float32,   // rotation
+            5 => Float32x2, // uv_min
+            6 => Float32x2, // uv_max
+            7 => Uint32,    // color
+        ],
+    };
+}
+
+/// Static unit-quad vertex shared by every sprite instance.
+#[repr(C)]
+#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+struct QuadVertex {
+    corner: [f32; 2], // ±0.5 around the centre
+    uv_sel: [f32; 2], // 0 or 1 per axis (selects between uv_min and uv_max)
+}
+
+impl QuadVertex {
     const LAYOUT: wgpu::VertexBufferLayout<'static> = wgpu::VertexBufferLayout {
         array_stride: std::mem::size_of::<Self>() as wgpu::BufferAddress,
         step_mode: wgpu::VertexStepMode::Vertex,
         attributes: &wgpu::vertex_attr_array![
-            0 => Float32x2,
-            1 => Float32x2,
-            2 => Uint32,
+            0 => Float32x2, // corner
+            1 => Float32x2, // uv_sel
         ],
     };
 }
+
+// Unit quad (y-up) + matching UV selectors, in the same corner order the old
+// per-sprite CPU path used (TL, TR, BR, BL), drawn via UNIT_QUAD_INDICES.
+const UNIT_QUAD: [QuadVertex; 4] = [
+    QuadVertex { corner: [-0.5,  0.5], uv_sel: [0.0, 0.0] },
+    QuadVertex { corner: [ 0.5,  0.5], uv_sel: [1.0, 0.0] },
+    QuadVertex { corner: [ 0.5, -0.5], uv_sel: [1.0, 1.0] },
+    QuadVertex { corner: [-0.5, -0.5], uv_sel: [0.0, 1.0] },
+];
+const UNIT_QUAD_INDICES: [u32; 6] = [0, 1, 2, 0, 2, 3];
 
 #[derive(Clone)]
 pub struct DrawSprite {
@@ -75,18 +114,15 @@ pub struct SpriteRenderer {
     texture_bind_groups: HashMap<TextureHandle, wgpu::BindGroup>,
     textures: Vec<TextureEntry>,
     next_texture_id: u32,
-    vertex_buffer: wgpu::Buffer,
-    index_buffer: wgpu::Buffer,
-    vertex_capacity: usize,
-    index_capacity: usize,
+    // Static geometry shared by all sprites.
+    quad_vbo: wgpu::Buffer,
+    quad_ibo: wgpu::Buffer,
+    // Per-frame instance data.
+    instance_buffer: wgpu::Buffer,
+    instance_capacity: usize,
     sort_order: Vec<usize>,
-    // Persistent CPU scratch, reused each frame to avoid per-frame allocation.
-    vertices: Vec<SpriteVertex>,
-    indices: Vec<u32>,
-    // How many quads' indices the GPU index buffer currently holds. The index
-    // pattern is a deterministic positional sequence, so it is only ever grown
-    // and re-uploaded, never rebuilt per frame.
-    index_buffer_quads: usize,
+    // Persistent CPU scratch reused each frame to avoid per-frame allocation.
+    instances: Vec<SpriteInstance>,
 }
 
 impl SpriteRenderer {
@@ -145,7 +181,7 @@ impl SpriteRenderer {
                 module: &shader,
                 entry_point: Some("vs_main"),
                 compilation_options: Default::default(),
-                buffers: &[SpriteVertex::LAYOUT],
+                buffers: &[QuadVertex::LAYOUT, SpriteInstance::LAYOUT],
             },
             primitive: wgpu::PrimitiveState {
                 topology: wgpu::PrimitiveTopology::TriangleList,
@@ -191,17 +227,37 @@ impl SpriteRenderer {
             ..Default::default()
         });
 
-        let cap = 256;
-        let vertex_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("sprite_vbo"),
-            size: (cap * 4 * std::mem::size_of::<SpriteVertex>()) as u64,
-            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
+        // Static unit-quad vertex + index buffers, initialised at creation (no
+        // queue available here, so map-at-creation and copy).
+        let quad_vbo = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("sprite_quad_vbo"),
+            size: std::mem::size_of_val(&UNIT_QUAD) as u64,
+            usage: wgpu::BufferUsages::VERTEX,
+            mapped_at_creation: true,
         });
-        let index_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("sprite_ibo"),
-            size: (cap * 6 * std::mem::size_of::<u32>()) as u64,
-            usage: wgpu::BufferUsages::INDEX | wgpu::BufferUsages::COPY_DST,
+        quad_vbo
+            .slice(..)
+            .get_mapped_range_mut()
+            .copy_from_slice(bytemuck::cast_slice(&UNIT_QUAD));
+        quad_vbo.unmap();
+
+        let quad_ibo = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("sprite_quad_ibo"),
+            size: std::mem::size_of_val(&UNIT_QUAD_INDICES) as u64,
+            usage: wgpu::BufferUsages::INDEX,
+            mapped_at_creation: true,
+        });
+        quad_ibo
+            .slice(..)
+            .get_mapped_range_mut()
+            .copy_from_slice(bytemuck::cast_slice(&UNIT_QUAD_INDICES));
+        quad_ibo.unmap();
+
+        let instance_capacity = 256;
+        let instance_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("sprite_instances"),
+            size: (instance_capacity * std::mem::size_of::<SpriteInstance>()) as u64,
+            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
 
@@ -214,14 +270,12 @@ impl SpriteRenderer {
             texture_bind_groups: HashMap::new(),
             textures: Vec::new(),
             next_texture_id: 0,
-            vertex_buffer,
-            index_buffer,
-            vertex_capacity: cap * 4,
-            index_capacity: cap * 6,
+            quad_vbo,
+            quad_ibo,
+            instance_buffer,
+            instance_capacity,
             sort_order: Vec::new(),
-            vertices: Vec::new(),
-            indices: Vec::new(),
-            index_buffer_quads: 0,
+            instances: Vec::new(),
         }
     }
 
@@ -287,44 +341,7 @@ impl SpriteRenderer {
         handle
     }
 
-    fn build_quad(sprite: &DrawSprite) -> [SpriteVertex; 4] {
-        let half = sprite.size * 0.5;
-        let (sin, cos) = sprite.rotation.sin_cos();
-
-        let corners = [
-            Vec2::new(-half.x, half.y),
-            Vec2::new(half.x, half.y),
-            Vec2::new(half.x, -half.y),
-            Vec2::new(-half.x, -half.y),
-        ];
-        let uvs = [
-            [sprite.uv_min.x, sprite.uv_min.y],
-            [sprite.uv_max.x, sprite.uv_min.y],
-            [sprite.uv_max.x, sprite.uv_max.y],
-            [sprite.uv_min.x, sprite.uv_max.y],
-        ];
-
-        let mut verts = [SpriteVertex {
-            position: [0.0; 2],
-            uv: [0.0; 2],
-            color: 0,
-        }; 4];
-
-        for i in 0..4 {
-            let c = corners[i];
-            let rotated = Vec2::new(c.x * cos - c.y * sin, c.x * sin + c.y * cos);
-            let world = rotated + sprite.position;
-            verts[i] = SpriteVertex {
-                position: [world.x, world.y],
-                uv: uvs[i],
-                color: sprite.color,
-            };
-        }
-
-        verts
-    }
-
-    /// Render all sprites with sort-and-batch. Returns render statistics.
+    /// Render all sprites with sort-and-batch via instancing. Returns stats.
     pub fn draw(
         &mut self,
         device: &wgpu::Device,
@@ -375,59 +392,35 @@ impl SpriteRenderer {
                 .then(sa.texture.0.cmp(&sb.texture.0))
         });
 
-        // Build vertex data into the persistent scratch buffer (reused — no
-        // per-frame heap allocation). Vertices must be rebuilt every frame
-        // because sprite positions change.
-        let num_quads = sprites.len();
-        let total_verts = num_quads * 4;
-        self.vertices.clear();
+        // Build one instance per sprite into the reused scratch buffer.
+        self.instances.clear();
         for &sprite_idx in &self.sort_order {
-            self.vertices.extend_from_slice(&Self::build_quad(&sprites[sprite_idx]));
+            let s = &sprites[sprite_idx];
+            self.instances.push(SpriteInstance {
+                position: [s.position.x, s.position.y],
+                size: [s.size.x, s.size.y],
+                rotation: s.rotation,
+                uv_min: [s.uv_min.x, s.uv_min.y],
+                uv_max: [s.uv_max.x, s.uv_max.y],
+                color: s.color,
+            });
         }
 
-        // Indices are a deterministic positional pattern (depend only on quad
-        // ordinal), so grow them once and never rebuild per frame.
-        let total_indices = num_quads * 6;
-        if self.indices.len() < total_indices {
-            let start_quad = self.indices.len() / 6;
-            for q in start_quad..num_quads {
-                let b = (q * 4) as u32;
-                self.indices.extend_from_slice(&[b, b + 1, b + 2, b, b + 2, b + 3]);
-            }
-        }
-
-        // Grow GPU buffers if needed.
-        if total_verts > self.vertex_capacity {
-            self.vertex_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("sprite_vbo"),
-                size: (total_verts * std::mem::size_of::<SpriteVertex>()) as u64,
+        // Grow the instance buffer if needed, then upload this frame's instances.
+        let count = self.instances.len();
+        if count > self.instance_capacity {
+            self.instance_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("sprite_instances"),
+                size: (count * std::mem::size_of::<SpriteInstance>()) as u64,
                 usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
                 mapped_at_creation: false,
             });
-            self.vertex_capacity = total_verts;
+            self.instance_capacity = count;
         }
-        let mut index_buffer_grew = false;
-        if total_indices > self.index_capacity {
-            self.index_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("sprite_ibo"),
-                size: (self.indices.len() * std::mem::size_of::<u32>()) as u64,
-                usage: wgpu::BufferUsages::INDEX | wgpu::BufferUsages::COPY_DST,
-                mapped_at_creation: false,
-            });
-            self.index_capacity = self.indices.len();
-            self.index_buffer_quads = 0; // new buffer: force a re-upload below
-            index_buffer_grew = true;
-        }
+        queue.write_buffer(&self.instance_buffer, 0, bytemuck::cast_slice(&self.instances));
 
-        // Upload vertices every frame; upload indices only when the buffer grew
-        // or now needs to cover more quads than it currently holds.
-        queue.write_buffer(&self.vertex_buffer, 0, bytemuck::cast_slice(&self.vertices));
-        if index_buffer_grew || num_quads > self.index_buffer_quads {
-            queue.write_buffer(&self.index_buffer, 0, bytemuck::cast_slice(&self.indices));
-            self.index_buffer_quads = self.indices.len() / 6;
-        }
-
-        // Render pass with batched draw calls
+        // Render pass: one shared unit quad, one draw call per texture batch,
+        // each drawing a contiguous range of instances.
         {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("sprite_pass"),
@@ -446,10 +439,12 @@ impl SpriteRenderer {
 
             pass.set_pipeline(&self.pipeline);
             pass.set_bind_group(0, &self.camera_bind_group, &[]);
-            pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
-            pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
+            pass.set_vertex_buffer(0, self.quad_vbo.slice(..));
+            pass.set_vertex_buffer(1, self.instance_buffer.slice(..));
+            pass.set_index_buffer(self.quad_ibo.slice(..), wgpu::IndexFormat::Uint32);
 
-            // Batched draw: group consecutive sprites with same texture
+            // Batched draw: group consecutive sprites with the same texture and
+            // draw them as one instanced call.
             let mut batch_start: u32 = 0;
             let mut batch_texture = sprites[self.sort_order[0]].texture;
 
@@ -460,12 +455,9 @@ impl SpriteRenderer {
 
                 if at_end || texture_changed {
                     let batch_end = i as u32;
-                    let index_start = batch_start * 6;
-                    let index_end = batch_end * 6;
-
                     if let Some(bg) = self.texture_bind_groups.get(&batch_texture) {
                         pass.set_bind_group(1, bg, &[]);
-                        pass.draw_indexed(index_start..index_end, 0, 0..1);
+                        pass.draw_indexed(0..6, 0, batch_start..batch_end);
                         stats.draw_calls += 1;
                     }
                     stats.batch_count += 1;
