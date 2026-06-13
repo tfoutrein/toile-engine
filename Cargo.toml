@@ -19,6 +19,7 @@ members = [
     "crates/toile-behaviors",
     "crates/toile-runner",
     "crates/toile-asset-library",
+    "crates/toile-harness",
 ]
 
 [workspace.package]
