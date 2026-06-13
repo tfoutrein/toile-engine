@@ -404,6 +404,42 @@ impl EditorApp {
                 }
             }
 
+            // Collider bounds preview for the selected entity — visualises the
+            // collision shape (green), rotated with the entity, for quick debugging.
+            if selected {
+                if let Some(col) = &entity.collider {
+                    let (chw, chh) = match col {
+                        toile_scene::ColliderData::Aabb { half_w, half_h } => (*half_w, *half_h),
+                        toile_scene::ColliderData::Circle { radius } => (*radius, *radius),
+                    };
+                    let t = 1.5 / self.camera_zoom;
+                    let cc = pack_color(80, 220, 120, 220);
+                    let rot = entity.rotation;
+                    let (sin, cos) = rot.sin_cos();
+                    let center = Vec2::new(entity.x, entity.y);
+                    let rot_off = |lx: f32, ly: f32| {
+                        center + Vec2::new(lx * cos - ly * sin, lx * sin + ly * cos)
+                    };
+                    for (lx, ly, sx, sy) in [
+                        (0.0, chh, chw * 2.0, t),
+                        (0.0, -chh, chw * 2.0, t),
+                        (-chw, 0.0, t, chh * 2.0),
+                        (chw, 0.0, t, chh * 2.0),
+                    ] {
+                        ctx.draw_sprite(DrawSprite {
+                            texture: tex,
+                            position: rot_off(lx, ly),
+                            size: Vec2::new(sx, sy),
+                            rotation: rot,
+                            color: cc,
+                            layer: 88,
+                            uv_min: Vec2::ZERO,
+                            uv_max: Vec2::ONE,
+                        });
+                    }
+                }
+            }
+
             // Selection outline + resize handles (rotated with entity)
             if selected {
                 let hw = entity.width * entity.scale_x * 0.5;
