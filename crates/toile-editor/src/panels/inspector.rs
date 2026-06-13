@@ -554,14 +554,8 @@ impl EditorApp {
                                     ui.label("Intensity");
                                     ui.add(egui::DragValue::new(&mut light.intensity).speed(0.05).range(0.0..=10.0));
                                     ui.end_row();
-                                    ui.label("Color R");
-                                    ui.add(egui::Slider::new(&mut light.color[0], 0.0..=1.0));
-                                    ui.end_row();
-                                    ui.label("Color G");
-                                    ui.add(egui::Slider::new(&mut light.color[1], 0.0..=1.0));
-                                    ui.end_row();
-                                    ui.label("Color B");
-                                    ui.add(egui::Slider::new(&mut light.color[2], 0.0..=1.0));
+                                    ui.label("Color");
+                                    ui.color_edit_button_rgb(&mut light.color);
                                     ui.end_row();
                                     ui.label("Shadows");
                                     ui.checkbox(&mut light.cast_shadow, "Cast shadow");

@@ -874,7 +874,7 @@ impl EditorApp {
                     let s = &mut self.scene.settings;
                     egui::Grid::new("scene_settings_grid").num_columns(2).show(ui, |ui| {
                         ui.label("Gravity");
-                        ui.add(egui::DragValue::new(&mut s.gravity).speed(1.0));
+                        ui.add(egui::DragValue::new(&mut s.gravity).speed(1.0).range(-10000.0..=10000.0));
                         ui.end_row();
 
                         ui.label("Viewport W");
@@ -916,14 +916,13 @@ impl EditorApp {
                         if let Some(m) = new_mode { s.camera_mode = m; }
                         ui.end_row();
 
-                        ui.label("Clear R");
-                        ui.add(egui::Slider::new(&mut s.clear_color[0], 0.0..=1.0));
-                        ui.end_row();
-                        ui.label("Clear G");
-                        ui.add(egui::Slider::new(&mut s.clear_color[1], 0.0..=1.0));
-                        ui.end_row();
-                        ui.label("Clear B");
-                        ui.add(egui::Slider::new(&mut s.clear_color[2], 0.0..=1.0));
+                        ui.label("Clear Color");
+                        let mut rgb = [s.clear_color[0], s.clear_color[1], s.clear_color[2]];
+                        if ui.color_edit_button_rgb(&mut rgb).changed() {
+                            s.clear_color[0] = rgb[0];
+                            s.clear_color[1] = rgb[1];
+                            s.clear_color[2] = rgb[2];
+                        }
                         ui.end_row();
                     });
 
