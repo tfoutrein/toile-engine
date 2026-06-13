@@ -119,6 +119,9 @@ pub struct GameRunner {
     /// allocating a fresh HashSet/Vec/HashMap every frame (audit P3).
     collision_pairs: Vec<(u32, u32)>,
     collision_map: HashMap<u64, Vec<String>>,
+    /// Reused buffer for a single emitter's render data (avoids a per-emitter
+    /// per-frame allocation; audit P6).
+    particle_render_buf: Vec<(Vec2, f32, f32, u32)>,
 }
 
 impl GameRunner {
@@ -141,6 +144,7 @@ impl GameRunner {
             hud_font: None,
             collision_pairs: Vec::new(),
             collision_map: HashMap::new(),
+            particle_render_buf: Vec::new(),
         })
     }
 
@@ -921,9 +925,10 @@ impl Game for GameRunner {
                 uv_max,
             });
 
-            // Draw particles
+            // Draw particles (reuse the persistent buffer; no per-emitter alloc).
             if let Some(pool) = &ent.particle_pool {
-                for (pos, size, rot, pcolor) in pool.render_data() {
+                pool.render_into(&mut self.particle_render_buf);
+                for &(pos, size, rot, pcolor) in &self.particle_render_buf {
                     ctx.draw_sprite(DrawSprite {
                         texture: fallback_tex,
                         position: pos,
@@ -940,21 +945,19 @@ impl Game for GameRunner {
 
         // ── HUD: auto-display Player variables ──────────────────────────
         if let Some(font) = self.hud_font {
-            // Find player entity and collect its variables
-            let player_vars: Vec<(String, f64)> = self.entities.iter()
+            // Collect player variables by reference (borrow names instead of
+            // cloning a String per variable every frame; audit P6).
+            let mut player_data_vars: Vec<(&String, f64)> = self.entities.iter()
                 .filter(|e| e.alive && is_player(&e.data))
-                .flat_map(|e| e.event_state.variables.iter().map(|(k, v)| (k.clone(), *v)))
+                .flat_map(|e| e.event_state.variables.iter().map(|(k, v)| (k, *v)))
                 .collect();
-
-            // Also check entity data variables (initial values)
-            let player_data_vars: Vec<(String, f64)> = if player_vars.is_empty() {
-                self.entities.iter()
+            // Fall back to entity data variables (initial values) if no live ones.
+            if player_data_vars.is_empty() {
+                player_data_vars = self.entities.iter()
                     .filter(|e| e.alive && is_player(&e.data))
-                    .flat_map(|e| e.data.variables.iter().map(|(k, v)| (k.clone(), *v)))
-                    .collect()
-            } else {
-                player_vars
-            };
+                    .flat_map(|e| e.data.variables.iter().map(|(k, v)| (k, *v)))
+                    .collect();
+            }
 
             if !player_data_vars.is_empty() {
                 // HUD in screen-space: fixed size regardless of zoom

@@ -160,33 +160,43 @@ impl ParticlePool {
         // Remove dead particles
         self.particles.retain(|p| p.age < p.lifetime);
 
-        // Spawn sub-emitter bursts at death positions (no recursion: sub-emitters ignored)
+        // Spawn sub-emitter bursts at death positions (no recursion). Move the
+        // sub-emitter in and out instead of deep-cloning the whole emitter twice
+        // per frame (P6).
         if !death_positions.is_empty() {
-            if let Some(sub_emitter) = &self.emitter.on_death.clone() {
+            if let Some(sub) = self.emitter.on_death.take() {
                 let saved_position = self.position;
-                let saved_emitter = std::mem::replace(&mut self.emitter, *sub_emitter.clone());
+                let original = std::mem::replace(&mut self.emitter, *sub);
                 for death_pos in death_positions {
                     self.position = death_pos;
                     self.spawn_one();
                 }
-                self.emitter = saved_emitter;
+                // Restore the original emitter and put the sub-emitter back on it.
+                let sub_used = std::mem::replace(&mut self.emitter, original);
+                self.emitter.on_death = Some(Box::new(sub_used));
                 self.position = saved_position;
             }
         }
     }
 
-    /// Get the current visual state of each particle for rendering.
-    /// Returns (position, size, rotation, packed_color) tuples.
+    /// Append each particle's visual state (position, size, rotation, packed
+    /// color) into `out`, which is cleared first. Reuses the caller's buffer to
+    /// avoid a per-frame, per-emitter allocation (P6).
+    pub fn render_into(&self, out: &mut Vec<(Vec2, f32, f32, u32)>) {
+        out.clear();
+        out.extend(self.particles.iter().map(|p| {
+            let t = (p.age / p.lifetime).clamp(0.0, 1.0);
+            let size = p.base_size * self.emitter.size_over_life.sample(t);
+            let color = self.emitter.color_over_life.sample_packed(t);
+            (p.position, size, p.rotation, color)
+        }));
+    }
+
+    /// Allocating convenience wrapper around [`render_into`].
     pub fn render_data(&self) -> Vec<(Vec2, f32, f32, u32)> {
-        self.particles
-            .iter()
-            .map(|p| {
-                let t = (p.age / p.lifetime).clamp(0.0, 1.0);
-                let size = p.base_size * self.emitter.size_over_life.sample(t);
-                let color = self.emitter.color_over_life.sample_packed(t);
-                (p.position, size, p.rotation, color)
-            })
-            .collect()
+        let mut out = Vec::new();
+        self.render_into(&mut out);
+        out
     }
 
     pub fn particle_count(&self) -> usize {
