@@ -277,3 +277,88 @@ fn frame_picker_renders_spritesheet_grid() {
     h.run();
     assert_eq!(h.state().scene.entities[0].animations[0].frames.len(), 2, "Remove last drops one frame");
 }
+
+/// Guided walkthrough that drives the editor UI step by step and captures a
+/// numbered sequence of screenshots showcasing the new features. Run with:
+///   cargo test -p toile-editor demo_walkthrough -- --ignored --nocapture
+#[test]
+#[ignore = "demo: produces a screenshot sequence; run explicitly"]
+fn demo_walkthrough() {
+    let Some(mut h) = editor_harness(fresh_editor("demo")) else { return };
+    h.run();
+    snapshot(&mut h, "demo-01-welcome");
+
+    // (1) Real click: create the project from the welcome screen.
+    h.get_by_label_contains("Create Project").click();
+    h.run();
+    snapshot(&mut h, "demo-02-main-editor");
+
+    // (2) Real click: add an entity → inspector populates (note "/ N" 1-based frame label later).
+    h.get_by_label_contains("Add Entity").click();
+    h.run();
+    if h.state().selected_id.is_none() {
+        let id = h.state().scene.entities[0].id;
+        h.state_mut().selected_id = Some(id);
+    }
+    h.run();
+    snapshot(&mut h, "demo-03-inspector");
+
+    // (3) Undo/redo: add a second entity, then undo it.
+    h.get_by_label_contains("Add Entity").click();
+    h.run();
+    assert_eq!(h.state().scene.entities.len(), 2);
+    h.state_mut().undo();
+    h.run();
+    assert_eq!(h.state().scene.entities.len(), 1, "undo removed the 2nd entity");
+    snapshot(&mut h, "demo-04-after-undo");
+
+    // (4) Scene Settings — real color picker swatch for Clear Color.
+    h.state_mut().show_scene_settings = true;
+    h.run();
+    snapshot(&mut h, "demo-05-scene-settings");
+    h.state_mut().show_scene_settings = false;
+
+    // (5) Frame Picker with a generated 4-frame sheet.
+    let pdir = h.state().project_dir.clone().unwrap();
+    let mut img = image::RgbaImage::new(64, 16);
+    let colors = [[230u8, 60, 60, 255], [60, 200, 90, 255], [70, 120, 240, 255], [240, 210, 60, 255]];
+    for (i, c) in colors.iter().enumerate() {
+        for y in 0..16 { for x in 0..16 { img.put_pixel((i * 16 + x) as u32, y as u32, image::Rgba(*c)); } }
+    }
+    img.save(pdir.join("assets/sheet.png")).unwrap();
+    {
+        let app = h.state_mut();
+        let id = app.scene.entities[0].id;
+        app.selected_id = Some(id);
+        let e = app.scene.entities.iter_mut().find(|e| e.id == id).unwrap();
+        e.sprite_path = "assets/sheet.png".into();
+        e.sprite_sheet = Some(toile_scene::SpriteSheetData { frame_width: 16, frame_height: 16, columns: 4, rows: 1 });
+        e.animations.push(toile_scene::AnimationData {
+            name: "idle".into(), frames: vec![0, 1, 2, 3], fps: 8.0, looping: true,
+            sprite_file: None, strip_frames: None,
+        });
+        app.frame_picker_anim = "idle".into();
+        app.show_frame_picker = true;
+    }
+    h.run();
+    snapshot(&mut h, "demo-06-frame-picker");
+    // Real click: Remove last frame (new UX).
+    h.get_by_label_contains("Remove last").click();
+    h.run();
+    snapshot(&mut h, "demo-07-frame-picker-removed");
+    h.state_mut().show_frame_picker = false;
+
+    // (6) Game Output console (new — captured Play logs are now shown).
+    {
+        let app = h.state_mut();
+        app.game_logs = vec![
+            "[INFO toile_app] Window created: 800x600".into(),
+            "[INFO toile_runner] Loaded scene 'main' with 1 entities".into(),
+            "[WARN toile_assets] optional font missing, using fallback".into(),
+            "ERROR sample gameplay error at frame 42".into(),
+        ];
+        app.show_game_output = true;
+    }
+    h.run();
+    snapshot(&mut h, "demo-08-game-output");
+}
