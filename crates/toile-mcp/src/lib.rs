@@ -59,12 +59,49 @@ impl ToileMcpServer {
         Self { project_dir }
     }
 
-    fn resolve(&self, relative: &str) -> PathBuf {
-        self.project_dir.join(relative)
+    /// Join a client-supplied relative path under `project_dir`, rejecting
+    /// absolute paths and `..`/root/drive components so a tool cannot read or
+    /// write outside the project (audit S1: path-traversal containment).
+    fn safe_path(&self, relative: &str) -> Result<PathBuf, String> {
+        use std::path::Component;
+        let rel = Path::new(relative);
+        let mut has_normal = false;
+        for comp in rel.components() {
+            match comp {
+                Component::Normal(_) => has_normal = true,
+                Component::CurDir => {}
+                _ => {
+                    return Err(format!(
+                        "'{relative}': only project-relative paths are allowed (no '..', absolute or drive paths)"
+                    ));
+                }
+            }
+        }
+        if !has_normal {
+            return Err(format!("'{relative}': empty or invalid path"));
+        }
+        Ok(self.project_dir.join(rel))
+    }
+
+    /// Validate that `name` is a single plain filename (no directory parts), for
+    /// prefab/particle files that must stay inside their fixed subdirectory.
+    fn safe_filename(name: &str) -> Result<(), String> {
+        use std::path::Component;
+        let mut count = 0;
+        for comp in Path::new(name).components() {
+            match comp {
+                Component::Normal(_) => count += 1,
+                _ => return Err(format!("'{name}': must be a plain filename")),
+            }
+        }
+        if count != 1 {
+            return Err(format!("'{name}': must be a single filename with no directories"));
+        }
+        Ok(())
     }
 
     fn load(&self, path: &str) -> Result<(PathBuf, SceneData), String> {
-        let p = self.resolve(path);
+        let p = self.safe_path(path)?;
         toile_scene::load_scene(&p)
             .map(|s| (p, s))
             .map_err(|e| format!("{path}: {e}"))
@@ -117,7 +154,10 @@ impl ToileMcpServer {
             "create_scene" => {
                 let name = Self::get_str(args, "name").unwrap_or("untitled");
                 let filename = if name.ends_with(".json") { name.to_string() } else { format!("{name}.json") };
-                let path = self.resolve(&filename);
+                let path = match self.safe_path(&filename) {
+                    Ok(p) => p,
+                    Err(e) => return Ok(error_text("BAD_PATH", &e, Some("Use a project-relative name"))),
+                };
                 if path.exists() {
                     return Ok(error_text("SCENE_EXISTS", &format!("'{filename}' exists"), Some("Choose another name")));
                 }
@@ -207,8 +247,10 @@ impl ToileMcpServer {
 
             "create_tilemap" => {
                 let sp = Self::get_str(args, "scene_path").unwrap_or("scene.json");
-                let w = Self::get_u64(args, "width").unwrap_or(40) as u32;
-                let h = Self::get_u64(args, "height").unwrap_or(23) as u32;
+                // Clamp to a sane maximum so an AI-supplied width/height cannot
+                // request a giant allocation (audit S8: resource exhaustion).
+                let w = (Self::get_u64(args, "width").unwrap_or(40) as u32).clamp(1, 1024);
+                let h = (Self::get_u64(args, "height").unwrap_or(23) as u32).clamp(1, 1024);
                 let ts = Self::get_u64(args, "tile_size").unwrap_or(32) as u32;
                 let tileset = Self::get_str(args, "tileset_path").unwrap_or("assets/platformer/tileset.png");
                 let cols = Self::get_u64(args, "columns").unwrap_or(4) as u32;
@@ -362,7 +404,11 @@ impl ToileMcpServer {
                 let pname = Self::get_str(args, "prefab_name").unwrap_or("prefab");
                 let x = Self::get_f32(args, "x").unwrap_or(0.0);
                 let y = Self::get_f32(args, "y").unwrap_or(0.0);
-                let prefab_path = self.project_dir.join("prefabs").join(format!("{pname}.prefab.json"));
+                let prefab_file = format!("{pname}.prefab.json");
+                if let Err(e) = Self::safe_filename(&prefab_file) {
+                    return Ok(error_text("BAD_NAME", &e, Some("Use a plain prefab name")));
+                }
+                let prefab_path = self.project_dir.join("prefabs").join(&prefab_file);
                 match toile_scene::prefab::load_prefab(&prefab_path) {
                     Ok(prefab) => {
                         match self.load(sp) {
@@ -419,6 +465,9 @@ impl ToileMcpServer {
                 } else {
                     format!("{raw_name}.particles.json")
                 };
+                if let Err(e) = Self::safe_filename(&fname) {
+                    return Ok(error_text("BAD_NAME", &e, Some("Use a plain filename")));
+                }
                 let dir = self.project_dir.join("particles");
                 let path = dir.join(&fname);
                 if path.exists() {
@@ -455,6 +504,9 @@ impl ToileMcpServer {
                 } else {
                     format!("{raw_name}.particles.json")
                 };
+                if let Err(e) = Self::safe_filename(&fname) {
+                    return Ok(error_text("BAD_NAME", &e, Some("Use a plain filename")));
+                }
                 let path = self.project_dir.join("particles").join(&fname);
                 match std::fs::read_to_string(&path) {
                     Ok(s) => {
@@ -475,6 +527,9 @@ impl ToileMcpServer {
                 } else {
                     format!("{raw_name}.particles.json")
                 };
+                if let Err(e) = Self::safe_filename(&fname) {
+                    return Ok(error_text("BAD_NAME", &e, Some("Use a plain filename")));
+                }
                 let path = self.project_dir.join("particles").join(&fname);
                 let existing = std::fs::read_to_string(&path)
                     .unwrap_or_else(|_| serde_json::to_string(&ParticleEmitter::default()).unwrap());
@@ -575,6 +630,40 @@ impl ServerHandler for ToileMcpServer {
         };
         async move {
             self.handle_tool(&name, &args).await
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn srv() -> ToileMcpServer {
+        ToileMcpServer::new(PathBuf::from("/tmp/toile-test-project"))
+    }
+
+    #[test]
+    fn safe_path_accepts_project_relative() {
+        let s = srv();
+        assert!(s.safe_path("scene.json").is_ok());
+        assert!(s.safe_path("levels/level1.json").is_ok());
+        assert!(s.safe_path("./scene.json").is_ok());
+        assert!(s.safe_path("levels/x.json").unwrap().starts_with("/tmp/toile-test-project"));
+    }
+
+    #[test]
+    fn safe_path_rejects_traversal_and_absolute() {
+        let s = srv();
+        for bad in ["../secret.json", "../../etc/passwd", "/etc/passwd", "a/../../b", ""] {
+            assert!(s.safe_path(bad).is_err(), "should reject {bad:?}");
+        }
+    }
+
+    #[test]
+    fn safe_filename_requires_plain_name() {
+        assert!(ToileMcpServer::safe_filename("fire.particles.json").is_ok());
+        for bad in ["../evil.json", "sub/dir.json", "/abs.json", ""] {
+            assert!(ToileMcpServer::safe_filename(bad).is_err(), "should reject {bad:?}");
         }
     }
 }
