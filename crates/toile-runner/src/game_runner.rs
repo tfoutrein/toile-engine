@@ -63,6 +63,9 @@ struct RuntimeEntity {
     current_anim: Option<String>,
     anim_frame: f32, // fractional frame index (advances by fps*dt)
     facing_left: bool,
+    // Previous fixed-update transform, for render interpolation (audit P1).
+    prev_position: Vec2,
+    prev_rotation: f32,
 }
 
 fn collider_from_data(data: &EntityData) -> Collider {
@@ -112,6 +115,10 @@ pub struct GameRunner {
     camera_pos: Vec2,
     /// Font for HUD text.
     hud_font: Option<toile_app::FontHandle>,
+    /// Reused per-frame collision scratch (broad-phase pairs + tag map) to avoid
+    /// allocating a fresh HashSet/Vec/HashMap every frame (audit P3).
+    collision_pairs: Vec<(u32, u32)>,
+    collision_map: HashMap<u64, Vec<String>>,
 }
 
 impl GameRunner {
@@ -132,6 +139,8 @@ impl GameRunner {
             scene_settings: Default::default(),
             camera_pos: Vec2::ZERO,
             hud_font: None,
+            collision_pairs: Vec::new(),
+            collision_map: HashMap::new(),
         })
     }
 
@@ -234,6 +243,8 @@ impl GameRunner {
             current_anim: data.default_animation.clone(),
             anim_frame: 0.0,
             facing_left: false,
+            prev_position: Vec2::new(data.x, data.y),
+            prev_rotation: data.rotation,
             data: data.clone(),
             behaviors,
             event_sheet,
@@ -281,7 +292,9 @@ impl GameRunner {
     }
 
     /// Build collision map: entity_id → set of tags it's colliding with.
-    fn compute_collisions(&mut self) -> HashMap<u64, Vec<String>> {
+    /// Recompute the per-frame collision map into `self.collision_map`, reusing
+    /// the persistent pair buffer and map (no per-frame allocation; audit P3).
+    fn compute_collisions(&mut self) {
         self.spatial_grid.clear();
         for (i, ent) in self.entities.iter().enumerate() {
             if !ent.alive { continue; }
@@ -289,25 +302,28 @@ impl GameRunner {
             self.spatial_grid.insert(i as u32, ent.es.position, half);
         }
 
-        let mut collision_map: HashMap<u64, Vec<String>> = HashMap::new();
-        let pairs = self.spatial_grid.query_pairs();
-        for (a_idx, b_idx) in pairs {
+        // Reuse persistent scratch: broad-phase pair buffer + the tag map.
+        let mut pairs = std::mem::take(&mut self.collision_pairs);
+        self.spatial_grid.query_pairs_into(&mut pairs);
+        self.collision_map.clear();
+
+        for &(a_idx, b_idx) in &pairs {
             let a = &self.entities[a_idx as usize];
             let b = &self.entities[b_idx as usize];
             if !a.alive || !b.alive { continue; }
 
             if overlap_test_rotated(a.es.position, &a.collider, a.es.rotation, b.es.position, &b.collider, b.es.rotation).is_some() {
-                // A collides with B's tags
+                let (a_id, b_id) = (a.data.id, b.data.id);
+                // A collides with B's tags, and vice-versa.
                 for tag in &b.data.tags {
-                    collision_map.entry(a.data.id).or_default().push(tag.clone());
+                    self.collision_map.entry(a_id).or_default().push(tag.clone());
                 }
-                // B collides with A's tags
                 for tag in &a.data.tags {
-                    collision_map.entry(b.data.id).or_default().push(tag.clone());
+                    self.collision_map.entry(b_id).or_default().push(tag.clone());
                 }
             }
         }
-        collision_map
+        self.collision_pairs = pairs;
     }
 
     /// Check if a position+half_extents overlaps any Solid entity.
@@ -373,6 +389,13 @@ impl Game for GameRunner {
     }
 
     fn update(&mut self, ctx: &mut GameContext, dt: f64) {
+        // Snapshot each entity's transform before integrating this tick, so draw()
+        // can render lerp(prev, current, alpha) for smooth motion (audit P1).
+        for ent in &mut self.entities {
+            ent.prev_position = ent.es.position;
+            ent.prev_rotation = ent.es.rotation;
+        }
+
         // Apply camera settings from scene — adapt zoom to window size to keep
         // the designed viewport visible regardless of actual window dimensions.
         let s = &self.scene_settings;
@@ -533,7 +556,7 @@ impl Game for GameRunner {
         }
 
         // ── 2. Collision detection ───────────────────────────────────────
-        let collision_map = self.compute_collisions();
+        self.compute_collisions();
 
         // ── 3. Evaluate event sheets ─────────────────────────────────────
         let mut commands: Vec<EventCommand> = Vec::new();
@@ -558,7 +581,7 @@ impl Game for GameRunner {
             if !ent.alive { continue; }
             if let Some(sheet) = &ent.event_sheet {
                 let eid = ent.data.id;
-                let tags_colliding = collision_map.get(&eid);
+                let tags_colliding = self.collision_map.get(&eid);
                 let is_colliding_with = |tag: &str| -> bool {
                     tags_colliding.is_some_and(|tags| tags.iter().any(|t| t == tag))
                 };
@@ -739,6 +762,8 @@ impl Game for GameRunner {
             Some(t) => t,
             None => return,
         };
+        // Render interpolation factor for this frame (audit P1).
+        let render_alpha = ctx.alpha;
 
         // ── Apply lighting from scene settings + entity lights ───────────
         let ls = &self.scene_settings.lighting;
@@ -887,9 +912,9 @@ impl Game for GameRunner {
 
             ctx.draw_sprite(DrawSprite {
                 texture: anim_tex.unwrap_or(tex),
-                position: ent.es.position,
+                position: ent.prev_position.lerp(ent.es.position, render_alpha),
                 size: render_size,
-                rotation: ent.es.rotation,
+                rotation: ent.prev_rotation + (ent.es.rotation - ent.prev_rotation) * render_alpha,
                 color,
                 layer: ent.data.layer,
                 uv_min,

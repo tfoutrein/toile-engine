@@ -80,6 +80,13 @@ pub struct SpriteRenderer {
     vertex_capacity: usize,
     index_capacity: usize,
     sort_order: Vec<usize>,
+    // Persistent CPU scratch, reused each frame to avoid per-frame allocation.
+    vertices: Vec<SpriteVertex>,
+    indices: Vec<u32>,
+    // How many quads' indices the GPU index buffer currently holds. The index
+    // pattern is a deterministic positional sequence, so it is only ever grown
+    // and re-uploaded, never rebuilt per frame.
+    index_buffer_quads: usize,
 }
 
 impl SpriteRenderer {
@@ -212,6 +219,9 @@ impl SpriteRenderer {
             vertex_capacity: cap * 4,
             index_capacity: cap * 6,
             sort_order: Vec::new(),
+            vertices: Vec::new(),
+            indices: Vec::new(),
+            index_buffer_quads: 0,
         }
     }
 
@@ -277,7 +287,7 @@ impl SpriteRenderer {
         handle
     }
 
-    fn build_quad(sprite: &DrawSprite, base_vertex: u32) -> ([SpriteVertex; 4], [u32; 6]) {
+    fn build_quad(sprite: &DrawSprite) -> [SpriteVertex; 4] {
         let half = sprite.size * 0.5;
         let (sin, cos) = sprite.rotation.sin_cos();
 
@@ -311,9 +321,7 @@ impl SpriteRenderer {
             };
         }
 
-        let b = base_vertex;
-        let indices = [b, b + 1, b + 2, b, b + 2, b + 3];
-        (verts, indices)
+        verts
     }
 
     /// Render all sprites with sort-and-batch. Returns render statistics.
@@ -367,19 +375,28 @@ impl SpriteRenderer {
                 .then(sa.texture.0.cmp(&sb.texture.0))
         });
 
-        // Build vertex/index data in sorted order
-        let total_verts = sprites.len() * 4;
-        let total_indices = sprites.len() * 6;
-        let mut vertices: Vec<SpriteVertex> = Vec::with_capacity(total_verts);
-        let mut indices: Vec<u32> = Vec::with_capacity(total_indices);
-
-        for (quad_idx, &sprite_idx) in self.sort_order.iter().enumerate() {
-            let (verts, idx) = Self::build_quad(&sprites[sprite_idx], (quad_idx * 4) as u32);
-            vertices.extend_from_slice(&verts);
-            indices.extend_from_slice(&idx);
+        // Build vertex data into the persistent scratch buffer (reused — no
+        // per-frame heap allocation). Vertices must be rebuilt every frame
+        // because sprite positions change.
+        let num_quads = sprites.len();
+        let total_verts = num_quads * 4;
+        self.vertices.clear();
+        for &sprite_idx in &self.sort_order {
+            self.vertices.extend_from_slice(&Self::build_quad(&sprites[sprite_idx]));
         }
 
-        // Grow buffers if needed
+        // Indices are a deterministic positional pattern (depend only on quad
+        // ordinal), so grow them once and never rebuild per frame.
+        let total_indices = num_quads * 6;
+        if self.indices.len() < total_indices {
+            let start_quad = self.indices.len() / 6;
+            for q in start_quad..num_quads {
+                let b = (q * 4) as u32;
+                self.indices.extend_from_slice(&[b, b + 1, b + 2, b, b + 2, b + 3]);
+            }
+        }
+
+        // Grow GPU buffers if needed.
         if total_verts > self.vertex_capacity {
             self.vertex_buffer = device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("sprite_vbo"),
@@ -389,19 +406,26 @@ impl SpriteRenderer {
             });
             self.vertex_capacity = total_verts;
         }
+        let mut index_buffer_grew = false;
         if total_indices > self.index_capacity {
             self.index_buffer = device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("sprite_ibo"),
-                size: (total_indices * std::mem::size_of::<u32>()) as u64,
+                size: (self.indices.len() * std::mem::size_of::<u32>()) as u64,
                 usage: wgpu::BufferUsages::INDEX | wgpu::BufferUsages::COPY_DST,
                 mapped_at_creation: false,
             });
-            self.index_capacity = total_indices;
+            self.index_capacity = self.indices.len();
+            self.index_buffer_quads = 0; // new buffer: force a re-upload below
+            index_buffer_grew = true;
         }
 
-        // Upload
-        queue.write_buffer(&self.vertex_buffer, 0, bytemuck::cast_slice(&vertices));
-        queue.write_buffer(&self.index_buffer, 0, bytemuck::cast_slice(&indices));
+        // Upload vertices every frame; upload indices only when the buffer grew
+        // or now needs to cover more quads than it currently holds.
+        queue.write_buffer(&self.vertex_buffer, 0, bytemuck::cast_slice(&self.vertices));
+        if index_buffer_grew || num_quads > self.index_buffer_quads {
+            queue.write_buffer(&self.index_buffer, 0, bytemuck::cast_slice(&self.indices));
+            self.index_buffer_quads = self.indices.len() / 6;
+        }
 
         // Render pass with batched draw calls
         {
