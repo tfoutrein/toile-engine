@@ -231,14 +231,15 @@ impl EditorApp {
                         if total_frames > 1 {
                             ui.horizontal(|ui| {
                                 ui.label(egui::RichText::new("Preview frame:").size(11.0));
-                                let mut frame = entity.preview_frame.unwrap_or(0) as i32;
-                                if ui.add(egui::DragValue::new(&mut frame)
-                                    .range(0..=(total_frames as i32 - 1))
+                                // Display 1-based ("3 / 3") while storing the 0-based index.
+                                let mut frame_1 = entity.preview_frame.unwrap_or(0) as i32 + 1;
+                                if ui.add(egui::DragValue::new(&mut frame_1)
+                                    .range(1..=total_frames as i32)
                                     .speed(0.2)
                                 ).changed() {
-                                    entity.preview_frame = Some(frame.max(0) as u32);
+                                    entity.preview_frame = Some((frame_1 - 1).max(0) as u32);
                                 }
-                                ui.label(egui::RichText::new(format!("/ {}", total_frames - 1)).size(10.0).color(egui::Color32::from_gray(130)));
+                                ui.label(egui::RichText::new(format!("/ {}", total_frames)).size(10.0).color(egui::Color32::from_gray(130)));
                                 if ui.small_button("Edit Sprite").on_hover_text("Open Sprite & Animation Editor").clicked() {
                                     self.show_sprite_editor = true;
                                 }
