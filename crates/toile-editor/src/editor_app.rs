@@ -97,6 +97,8 @@ pub struct EditorApp {
     pub(crate) ai_available_models: Vec<crate::ai::config::ModelInfo>,
     pub(crate) ai_models_loaded: bool,
     pub(crate) bug_reporter: crate::ai::bug_reporter::BugReporter,
+    // Game Output console (captured stdout/stderr from the last Play session)
+    pub(crate) show_game_output: bool,
     // Input Map panel
     pub(crate) show_input_map: bool,
     pub(crate) input_map_listening: Option<String>, // action name we're capturing a binding for
@@ -218,6 +220,7 @@ impl EditorApp {
             ai_available_models: Vec::new(),
             ai_models_loaded: false,
             bug_reporter: Default::default(),
+            show_game_output: false,
             show_input_map: false,
             input_map_listening: None,
             gamepad_snapshot: Vec::new(),

@@ -56,6 +56,15 @@ fn fresh_editor(workspace_name: &str) -> EditorApp {
     app
 }
 
+/// Build a harness, create the default empty project, and land in the main editor.
+fn editor_with_project(name: &str) -> Harness<'static, EditorApp> {
+    let mut h = editor_harness(fresh_editor(name));
+    h.run();
+    h.get_by_label_contains("Create Project").click();
+    h.run();
+    h
+}
+
 /// Render the current frame to `toile-ui/<name>.png` (best effort; skips if no GPU).
 fn snapshot(h: &mut Harness<'static, EditorApp>, name: &str) {
     match h.render() {
@@ -95,4 +104,70 @@ fn create_project_opens_main_editor() {
     let pdir = app.project_dir.clone().unwrap();
     assert!(pdir.join("Toile.toml").exists(), "Toile.toml created");
     assert!(pdir.join("scenes/main.json").exists(), "main scene created");
+}
+
+#[test]
+fn add_entity_shows_inspector() {
+    let mut h = editor_with_project("add-entity");
+    h.get_by_label_contains("Add Entity").click();
+    h.run();
+    // The new entity should be added and auto-selected so the inspector populates.
+    assert_eq!(h.state().scene.entities.len(), 1, "one entity after Add Entity");
+    if h.state().selected_id.is_none() {
+        let id = h.state().scene.entities[0].id;
+        h.state_mut().selected_id = Some(id);
+        h.run();
+    }
+    snapshot(&mut h, "03-inspector");
+    assert!(h.state().selected_id.is_some(), "entity should be selected");
+}
+
+#[test]
+fn scene_settings_window_renders() {
+    let mut h = editor_with_project("scene-settings");
+    h.state_mut().show_scene_settings = true;
+    h.run();
+    snapshot(&mut h, "04-scene-settings");
+}
+
+#[test]
+fn tilemap_mode_renders() {
+    let mut h = editor_with_project("tilemap");
+    h.state_mut().editor_mode = crate::editor_app::EditorMode::Tilemap;
+    h.run();
+    snapshot(&mut h, "05-tilemap");
+}
+
+#[test]
+fn particle_mode_renders() {
+    let mut h = editor_with_project("particle");
+    h.state_mut().editor_mode = crate::editor_app::EditorMode::Particle;
+    h.run();
+    snapshot(&mut h, "06-particle");
+}
+
+#[test]
+fn ai_copilot_renders() {
+    let mut h = editor_with_project("ai");
+    h.state_mut().editor_mode = crate::editor_app::EditorMode::AICopilot;
+    h.run();
+    snapshot(&mut h, "07-ai-copilot");
+}
+
+#[test]
+fn game_output_console_shows_logs() {
+    let mut h = editor_with_project("game-output");
+    {
+        let app = h.state_mut();
+        app.game_logs = vec![
+            "[INFO] Game launched".into(),
+            "[WARN] missing optional asset".into(),
+            "ERROR: something failed at frame 12".into(),
+        ];
+        app.show_game_output = true;
+    }
+    h.run();
+    snapshot(&mut h, "08-game-output");
+    assert!(h.state().show_game_output);
+    assert_eq!(h.state().game_logs.len(), 3);
 }

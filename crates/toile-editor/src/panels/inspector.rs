@@ -191,9 +191,11 @@ impl EditorApp {
                         .spacing([4.0, 6.0])
                         .show(ui, |ui| {
                             ui.label("W");
-                            ui.add(egui::DragValue::new(&mut entity.width).speed(1.0).min_decimals(0));
+                            // Clamp to >= 1 so an entity can't be given a zero/negative
+                            // size (which renders as nothing / breaks collision).
+                            ui.add(egui::DragValue::new(&mut entity.width).speed(1.0).min_decimals(0).range(1.0..=100_000.0));
                             ui.label("H");
-                            ui.add(egui::DragValue::new(&mut entity.height).speed(1.0).min_decimals(0));
+                            ui.add(egui::DragValue::new(&mut entity.height).speed(1.0).min_decimals(0).range(1.0..=100_000.0));
                             ui.end_row();
 
                             ui.label("Layer");

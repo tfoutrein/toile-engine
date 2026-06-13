@@ -331,7 +331,7 @@ impl EditorApp {
                     let response = ui.add_sized(
                         [ui.available_width() - 50.0, 28.0],
                         egui::TextEdit::singleline(&mut self.ai_input)
-                            .hint_text("Message Claude...")
+                            .hint_text("Message the AI…")
                     );
                     if response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
                         send = true;

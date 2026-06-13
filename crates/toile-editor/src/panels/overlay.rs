@@ -33,6 +33,8 @@ impl EditorApp {
         if logs_ready {
             self.game_log_receiver = None;
             self.status_msg = format!("Game finished — {} log lines captured", self.game_logs.len());
+            // Surface the captured output so the Play → logs loop is actually usable.
+            self.show_game_output = true;
         }
 
         // Set grab cursor while panning
@@ -306,6 +308,10 @@ impl EditorApp {
                     }
                     if ui.button("Input Map...").clicked() {
                         self.show_input_map = !self.show_input_map;
+                        ui.close_menu();
+                    }
+                    if ui.button(format!("Game Output ({})", self.game_logs.len())).clicked() {
+                        self.show_game_output = !self.show_game_output;
                         ui.close_menu();
                     }
                     if ui.button("Reset Camera").clicked() {
@@ -806,6 +812,47 @@ impl EditorApp {
                 self.scene.remove_entity(id);
                 self.status_msg = format!("Deleted entity {id}");
             }
+        }
+
+        // ── Game Output console ──────────────────────────────────────────
+        // Shows stdout/stderr captured from the last `Play` run (auto-opened when
+        // a run finishes). Previously the logs were captured but never displayed.
+        if self.show_game_output {
+            let mut open = true;
+            egui::Window::new("Game Output")
+                .open(&mut open)
+                .default_size([640.0, 320.0])
+                .show(ctx, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.label(egui::RichText::new(format!("{} lines", self.game_logs.len()))
+                            .color(egui::Color32::from_gray(160)));
+                        if ui.button("Clear").clicked() {
+                            self.game_logs.clear();
+                        }
+                    });
+                    ui.separator();
+                    if self.game_logs.is_empty() {
+                        ui.label(egui::RichText::new("No output yet. Press ▶ Play to run the game.")
+                            .color(egui::Color32::from_gray(130)));
+                    } else {
+                        egui::ScrollArea::vertical()
+                            .auto_shrink([false, false])
+                            .stick_to_bottom(true)
+                            .show(ui, |ui| {
+                                for line in &self.game_logs {
+                                    let color = if line.contains("ERROR") || line.contains("error") || line.contains("panicked") {
+                                        egui::Color32::from_rgb(240, 120, 120)
+                                    } else if line.contains("WARN") || line.contains("warning") {
+                                        egui::Color32::from_rgb(230, 200, 120)
+                                    } else {
+                                        egui::Color32::from_gray(210)
+                                    };
+                                    ui.label(egui::RichText::new(line).monospace().size(11.0).color(color));
+                                }
+                            });
+                    }
+                });
+            self.show_game_output = open;
         }
 
         // ── Input Map panel ──────────────────────────────────────────────
