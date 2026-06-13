@@ -191,9 +191,11 @@ impl EditorApp {
                         .spacing([4.0, 6.0])
                         .show(ui, |ui| {
                             ui.label("W");
-                            ui.add(egui::DragValue::new(&mut entity.width).speed(1.0).min_decimals(0));
+                            // Clamp to >= 1 so an entity can't be given a zero/negative
+                            // size (which renders as nothing / breaks collision).
+                            ui.add(egui::DragValue::new(&mut entity.width).speed(1.0).min_decimals(0).range(1.0..=100_000.0));
                             ui.label("H");
-                            ui.add(egui::DragValue::new(&mut entity.height).speed(1.0).min_decimals(0));
+                            ui.add(egui::DragValue::new(&mut entity.height).speed(1.0).min_decimals(0).range(1.0..=100_000.0));
                             ui.end_row();
 
                             ui.label("Layer");
@@ -229,14 +231,15 @@ impl EditorApp {
                         if total_frames > 1 {
                             ui.horizontal(|ui| {
                                 ui.label(egui::RichText::new("Preview frame:").size(11.0));
-                                let mut frame = entity.preview_frame.unwrap_or(0) as i32;
-                                if ui.add(egui::DragValue::new(&mut frame)
-                                    .range(0..=(total_frames as i32 - 1))
+                                // Display 1-based ("3 / 3") while storing the 0-based index.
+                                let mut frame_1 = entity.preview_frame.unwrap_or(0) as i32 + 1;
+                                if ui.add(egui::DragValue::new(&mut frame_1)
+                                    .range(1..=total_frames as i32)
                                     .speed(0.2)
                                 ).changed() {
-                                    entity.preview_frame = Some(frame.max(0) as u32);
+                                    entity.preview_frame = Some((frame_1 - 1).max(0) as u32);
                                 }
-                                ui.label(egui::RichText::new(format!("/ {}", total_frames - 1)).size(10.0).color(egui::Color32::from_gray(130)));
+                                ui.label(egui::RichText::new(format!("/ {}", total_frames)).size(10.0).color(egui::Color32::from_gray(130)));
                                 if ui.small_button("Edit Sprite").on_hover_text("Open Sprite & Animation Editor").clicked() {
                                     self.show_sprite_editor = true;
                                 }
@@ -552,14 +555,8 @@ impl EditorApp {
                                     ui.label("Intensity");
                                     ui.add(egui::DragValue::new(&mut light.intensity).speed(0.05).range(0.0..=10.0));
                                     ui.end_row();
-                                    ui.label("Color R");
-                                    ui.add(egui::Slider::new(&mut light.color[0], 0.0..=1.0));
-                                    ui.end_row();
-                                    ui.label("Color G");
-                                    ui.add(egui::Slider::new(&mut light.color[1], 0.0..=1.0));
-                                    ui.end_row();
-                                    ui.label("Color B");
-                                    ui.add(egui::Slider::new(&mut light.color[2], 0.0..=1.0));
+                                    ui.label("Color");
+                                    ui.color_edit_button_rgb(&mut light.color);
                                     ui.end_row();
                                     ui.label("Shadows");
                                     ui.checkbox(&mut light.cast_shadow, "Cast shadow");

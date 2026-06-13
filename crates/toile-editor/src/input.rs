@@ -79,6 +79,7 @@ impl EditorApp {
             // Cmd+V / Ctrl+V — Paste entity (offset by 20px)
             if ctx.input.is_key_just_pressed(Key::KeyV) {
                 if let Some(ref source) = self.clipboard_entity.clone() {
+                    self.push_undo();
                     let id = self.scene.next_id;
                     self.scene.next_id += 1;
                     let mut new_entity = source.clone();
@@ -96,6 +97,7 @@ impl EditorApp {
             if ctx.input.is_key_just_pressed(Key::KeyD) {
                 if let Some(sel_id) = self.selected_id {
                     if let Some(source) = self.scene.entities.iter().find(|e| e.id == sel_id).cloned() {
+                        self.push_undo();
                         let id = self.scene.next_id;
                         self.scene.next_id += 1;
                         let mut new_entity = source.clone();
@@ -126,11 +128,18 @@ impl EditorApp {
             }
         }
 
+        // Undo / Redo (all modes): Cmd/Ctrl+Z and Cmd/Ctrl+Shift+Z
+        if modifier && ctx.input.is_key_just_pressed(Key::KeyZ) {
+            let shift = ctx.input.is_key_down(Key::ShiftLeft) || ctx.input.is_key_down(Key::ShiftRight);
+            if shift { self.redo(); } else { self.undo(); }
+        }
+
         // Delete key — delete selected entity
         if (ctx.input.is_key_just_pressed(Key::Delete) || ctx.input.is_key_just_pressed(Key::Backspace))
             && self.editor_mode == EditorMode::Entity
         {
             if let Some(id) = self.selected_id.take() {
+                self.push_undo();
                 self.scene.remove_entity(id);
                 self.status_msg = format!("Deleted entity {id}");
             }
@@ -224,6 +233,7 @@ impl EditorApp {
 
                 if hit_rotate {
                     // Start rotation
+                    self.push_undo();
                     self.rotating = true;
                     if let Some(sel_id) = self.selected_id {
                         if let Some(entity) = self.scene.entities.iter().find(|e| e.id == sel_id) {
@@ -234,6 +244,7 @@ impl EditorApp {
                     }
                 } else if let Some(handle) = hit_handle {
                     // Start resize
+                    self.push_undo();
                     self.resizing = Some(handle);
                     self.resize_start_mouse = world_pos;
                     if let Some(sel_id) = self.selected_id {
@@ -260,6 +271,7 @@ impl EditorApp {
                     }
 
                     if let Some(id) = clicked_id {
+                        self.push_undo();
                         self.selected_id = Some(id);
                         if let Some(entity) = self.scene.entities.iter().find(|e| e.id == id) {
                             self.drag_offset =
@@ -379,6 +391,14 @@ impl EditorApp {
 
             // End drag/resize/rotate on mouse release
             if !ctx.input.is_mouse_down(toile_app::MouseButton::Left) {
+                // Drop the gesture's undo snapshot if nothing actually changed
+                // (e.g. a click that only selected an entity).
+                let was_real_gesture = self.rotating
+                    || self.resizing.is_some()
+                    || self.dragging.is_some_and(|d| d != u64::MAX);
+                if was_real_gesture {
+                    self.discard_undo_if_unchanged();
+                }
                 self.dragging = None;
                 self.resizing = None;
                 self.rotating = false;
@@ -387,6 +407,10 @@ impl EditorApp {
 
         // Tilemap painting with mouse
         if self.editor_mode == EditorMode::Tilemap {
+            // Snapshot once at the start of a paint/fill stroke for undo.
+            if ctx.input.is_mouse_just_pressed(toile_app::MouseButton::Left) {
+                self.push_undo();
+            }
             if ctx.input.is_mouse_down(toile_app::MouseButton::Left) {
                 let world_pos = ctx.camera.screen_to_world(ctx.input.mouse_position());
                 if let Some(tilemap) = &mut self.scene.tilemap {

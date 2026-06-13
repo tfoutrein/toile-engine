@@ -33,6 +33,8 @@ impl EditorApp {
         if logs_ready {
             self.game_log_receiver = None;
             self.status_msg = format!("Game finished — {} log lines captured", self.game_logs.len());
+            // Surface the captured output so the Play → logs loop is actually usable.
+            self.show_game_output = true;
         }
 
         // Set grab cursor while panning
@@ -213,6 +215,17 @@ impl EditorApp {
         let mut add_entity = false;
         let mut delete_selected = false;
         let mut play_game = false;
+        let mut stop_game = false;
+        let mut do_undo = false;
+        let mut do_redo = false;
+
+        // Drop the handle if the game exited on its own, so the button flips back to Play.
+        if let Some(child) = &mut self.running_game {
+            if !matches!(child.try_wait(), Ok(None)) {
+                self.running_game = None;
+            }
+        }
+        let game_running = self.running_game.is_some();
 
         egui::TopBottomPanel::top("menu").show(ctx, |ui| {
             egui::menu::bar(ui, |ui| {
@@ -265,6 +278,15 @@ impl EditorApp {
                     }
                 });
                 ui.menu_button("Edit", |ui| {
+                    // Use the platform-native modifier name in the labels (⌘ on macOS).
+                    let m = if cfg!(target_os = "macos") { "Cmd" } else { "Ctrl" };
+                    if ui.add_enabled(!self.undo_stack.is_empty(), egui::Button::new(format!("Undo  ({m}+Z)"))).clicked() {
+                        do_undo = true; ui.close_menu();
+                    }
+                    if ui.add_enabled(!self.redo_stack.is_empty(), egui::Button::new(format!("Redo  ({m}+Shift+Z)"))).clicked() {
+                        do_redo = true; ui.close_menu();
+                    }
+                    ui.separator();
                     if ui.button("Add Entity").clicked() { add_entity = true; ui.close_menu(); }
                     if ui.button("Delete Selected").clicked() { delete_selected = true; ui.close_menu(); }
                 });
@@ -308,15 +330,23 @@ impl EditorApp {
                         self.show_input_map = !self.show_input_map;
                         ui.close_menu();
                     }
+                    if ui.button(format!("Game Output ({})", self.game_logs.len())).clicked() {
+                        self.show_game_output = !self.show_game_output;
+                        ui.close_menu();
+                    }
                     if ui.button("Reset Camera").clicked() {
                         self.camera_pos = Vec2::ZERO;
                         self.camera_zoom = 1.0;
                         ui.close_menu();
                     }
                 });
-                // Play button — pushed to the right
+                // Play / Stop button — pushed to the right (toggles while a game is running)
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui.button(egui::RichText::new("▶ Play").color(egui::Color32::from_rgb(80, 220, 80)).strong()).clicked() {
+                    if game_running {
+                        if ui.button(egui::RichText::new("\u{25A0} Stop").color(egui::Color32::from_rgb(230, 90, 90)).strong()).clicked() {
+                            stop_game = true;
+                        }
+                    } else if ui.button(egui::RichText::new("▶ Play").color(egui::Color32::from_rgb(80, 220, 80)).strong()).clicked() {
                         play_game = true;
                     }
                 });
@@ -447,7 +477,10 @@ impl EditorApp {
                 });
             if !open { self.show_save_dialog = false; }
         }
+        if do_undo { self.undo(); }
+        if do_redo { self.redo(); }
         if add_entity {
+            self.push_undo();
             let id = self.scene.add_entity(
                 &format!("Entity_{}", self.scene.next_id),
                 self.camera_pos.x, self.camera_pos.y,
@@ -457,9 +490,17 @@ impl EditorApp {
         }
         if delete_selected {
             if let Some(id) = self.selected_id.take() {
+                self.push_undo();
                 self.scene.remove_entity(id);
                 self.status_msg = format!("Deleted entity {id}");
             }
+        }
+        if stop_game {
+            if let Some(mut child) = self.running_game.take() {
+                let _ = child.kill();
+                let _ = child.wait();
+            }
+            self.status_msg = "Game stopped".to_string();
         }
         if play_game {
             if let Some(dir) = pdir {
@@ -470,9 +511,8 @@ impl EditorApp {
                         let _ = std::fs::write(&save_path, &json);
                     }
                 }
-                // Spawn toile run as a child process, capture logs
+                // Spawn `toile run` as a child process; keep the handle so we can Stop it.
                 self.game_logs.clear();
-                let dir_clone = dir.clone();
                 match std::process::Command::new("toile")
                     .arg("run")
                     .arg(&dir)
@@ -481,31 +521,30 @@ impl EditorApp {
                     .stdout(std::process::Stdio::piped())
                     .spawn()
                 {
-                    Ok(child) => {
-                        self.status_msg = "Game launched!".to_string();
-                        // Capture logs in background thread
+                    Ok(mut child) => {
+                        self.status_msg = "Game launched! (press \u{25A0} Stop to end)".to_string();
+                        // Stream stdout+stderr into a shared buffer WITHOUT consuming the child
+                        // handle (wait_with_output would move it, leaving nothing to kill).
+                        use std::io::{BufRead, BufReader};
                         let logs = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
-                        let logs_clone = logs.clone();
-                        std::thread::spawn(move || {
-                            if let Ok(output) = child.wait_with_output() {
-                                let mut captured = Vec::new();
-                                if let Ok(stderr) = String::from_utf8(output.stderr) {
-                                    for line in stderr.lines() {
-                                        captured.push(line.to_string());
+                        for pipe in [
+                            child.stdout.take().map(|p| Box::new(p) as Box<dyn std::io::Read + Send>),
+                            child.stderr.take().map(|p| Box::new(p) as Box<dyn std::io::Read + Send>),
+                        ]
+                        .into_iter()
+                        .flatten()
+                        {
+                            let l = logs.clone();
+                            std::thread::spawn(move || {
+                                for line in BufReader::new(pipe).lines().map_while(Result::ok) {
+                                    if let Ok(mut g) = l.lock() {
+                                        g.push(line);
                                     }
                                 }
-                                if let Ok(stdout) = String::from_utf8(output.stdout) {
-                                    for line in stdout.lines() {
-                                        captured.push(line.to_string());
-                                    }
-                                }
-                                if let Ok(mut logs) = logs_clone.lock() {
-                                    *logs = captured;
-                                }
-                            }
-                        });
-                        // Store the Arc so we can read it later
+                            });
+                        }
                         self.game_log_receiver = Some(logs);
+                        self.running_game = Some(child);
                     }
                     Err(e) => self.status_msg = format!("Failed to launch: {e}. Is `toile` in PATH?"),
                 }
@@ -683,6 +722,13 @@ impl EditorApp {
                                         if is_current {
                                             // Show entities of the current scene with sub-components
                                             let mut click_id = None;
+                                            // Inline hierarchy rename (double-click): take the edit
+                                            // buffer out so we can &mut it without re-borrowing self.
+                                            let mut start_rename: Option<u64> = None;
+                                            let mut commit_rename: Option<(u64, String)> = None;
+                                            let mut rename_buf = self.hierarchy_rename.take();
+                                            let renaming_id = rename_buf.as_ref().map(|(id, _)| *id);
+                                            let needs_focus = self.hierarchy_rename_focus;
                                             for entity in &self.scene.entities {
                                                 let selected = self.selected_id == Some(entity.id);
                                                 let icon = entity_icon(entity);
@@ -697,8 +743,16 @@ impl EditorApp {
                                                     egui::collapsing_header::CollapsingState::load_with_default_open(ui.ctx(), ent_node_id, false)
                                                         .show_header(ui, |ui| {
                                                             let color = if selected { egui::Color32::YELLOW } else { egui::Color32::WHITE };
-                                                            if ui.selectable_label(selected, egui::RichText::new(format!("{icon} {}", entity.name)).color(color)).clicked() {
-                                                                click_id = Some(entity.id);
+                                                            if renaming_id == Some(entity.id) {
+                                                                if let Some((_, buf)) = rename_buf.as_mut() {
+                                                                    let r = ui.text_edit_singleline(buf);
+                                                                    if needs_focus { if needs_focus { r.request_focus(); } }
+                                                                    if r.lost_focus() { commit_rename = Some((entity.id, buf.clone())); }
+                                                                }
+                                                            } else {
+                                                                let r = ui.selectable_label(selected, egui::RichText::new(format!("{icon} {}", entity.name)).color(color));
+                                                                if r.clicked() { click_id = Some(entity.id); }
+                                                                if r.double_clicked() { start_rename = Some(entity.id); }
                                                             }
                                                         })
                                                         .body(|ui| {
@@ -728,13 +782,40 @@ impl EditorApp {
                                                 } else {
                                                     // Simple leaf — no children
                                                     let color = if selected { egui::Color32::YELLOW } else { egui::Color32::WHITE };
-                                                    if ui.selectable_label(selected, egui::RichText::new(format!("  {icon} {}", entity.name)).color(color)).clicked() {
-                                                        click_id = Some(entity.id);
+                                                    if renaming_id == Some(entity.id) {
+                                                        if let Some((_, buf)) = rename_buf.as_mut() {
+                                                            let r = ui.text_edit_singleline(buf);
+                                                            if needs_focus { if needs_focus { r.request_focus(); } }
+                                                            if r.lost_focus() { commit_rename = Some((entity.id, buf.clone())); }
+                                                        }
+                                                    } else {
+                                                        let r = ui.selectable_label(selected, egui::RichText::new(format!("  {icon} {}", entity.name)).color(color));
+                                                        if r.clicked() { click_id = Some(entity.id); }
+                                                        if r.double_clicked() { start_rename = Some(entity.id); }
                                                     }
                                                 }
                                             }
                                             if let Some(id) = click_id {
                                                 self.selected_id = Some(id);
+                                            }
+                                            // Apply hierarchy rename state changes.
+                                            self.hierarchy_rename = rename_buf;
+                                            self.hierarchy_rename_focus = false; // focus only the first frame
+                                            if let Some(id) = start_rename {
+                                                if let Some(e) = self.scene.entities.iter().find(|e| e.id == id) {
+                                                    self.hierarchy_rename = Some((id, e.name.clone()));
+                                                    self.hierarchy_rename_focus = true;
+                                                    self.selected_id = Some(id);
+                                                }
+                                            }
+                                            if let Some((id, name)) = commit_rename {
+                                                let name = name.trim();
+                                                if !name.is_empty() {
+                                                    if let Some(e) = self.scene.entities.iter_mut().find(|e| e.id == id) {
+                                                        e.name = name.to_string();
+                                                    }
+                                                }
+                                                self.hierarchy_rename = None;
                                             }
                                         } else {
                                             ui.label(egui::RichText::new("(click to open)").size(10.0).color(egui::Color32::from_gray(120)));
@@ -743,6 +824,7 @@ impl EditorApp {
                             }
                             // Switch scene if clicked
                             if let Some(scene_file) = switch_scene {
+                                self.autosave_current_scene(); // don't lose in-progress edits
                                 let path = pdir.as_ref().map(|d| d.join(&scene_file)).unwrap_or_else(|| PathBuf::from(&scene_file));
                                 match toile_scene::load_scene(&path) {
                                     Ok(scene) => {
@@ -751,6 +833,7 @@ impl EditorApp {
                                         self.scene = scene;
                                         self.current_file = scene_file;
                                         self.selected_id = None;
+                                        self.clear_history();
                                         self.status_msg = "Scene loaded".to_string();
                                     }
                                     Err(e) => self.status_msg = format!("Error: {e}"),
@@ -759,6 +842,7 @@ impl EditorApp {
 
                             // New scene button
                             if ui.small_button("+ New Scene").clicked() {
+                                self.autosave_current_scene(); // don't lose in-progress edits
                                 let name = format!("scene_{}", project_scenes.len() + 1);
                                 let path_str = format!("scenes/{name}.json");
                                 let new_scene = SceneData::new(&name);
@@ -769,6 +853,7 @@ impl EditorApp {
                                 self.scene = new_scene;
                                 self.current_file = path_str;
                                 self.selected_id = None;
+                                self.clear_history();
                                 self.status_msg = format!("Created scene '{name}'");
                             }
                         });
@@ -777,6 +862,7 @@ impl EditorApp {
                     ui.separator();
                     ui.label(egui::RichText::new("Entities").size(11.0).color(egui::Color32::from_gray(150)));
                     if ui.button("+ Add Entity").clicked() {
+                        self.push_undo();
                         let id = self.scene.add_entity(
                             &format!("Entity_{}", self.scene.next_id),
                             self.camera_pos.x, self.camera_pos.y,
@@ -803,9 +889,51 @@ impl EditorApp {
         delete_selected |= self.show_inspector(ctx, pdir, project_scripts, project_particles);
         if delete_selected {
             if let Some(id) = self.selected_id.take() {
+                self.push_undo();
                 self.scene.remove_entity(id);
                 self.status_msg = format!("Deleted entity {id}");
             }
+        }
+
+        // ── Game Output console ──────────────────────────────────────────
+        // Shows stdout/stderr captured from the last `Play` run (auto-opened when
+        // a run finishes). Previously the logs were captured but never displayed.
+        if self.show_game_output {
+            let mut open = true;
+            egui::Window::new("Game Output")
+                .open(&mut open)
+                .default_size([640.0, 320.0])
+                .show(ctx, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.label(egui::RichText::new(format!("{} lines", self.game_logs.len()))
+                            .color(egui::Color32::from_gray(160)));
+                        if ui.button("Clear").clicked() {
+                            self.game_logs.clear();
+                        }
+                    });
+                    ui.separator();
+                    if self.game_logs.is_empty() {
+                        ui.label(egui::RichText::new("No output yet. Press ▶ Play to run the game.")
+                            .color(egui::Color32::from_gray(130)));
+                    } else {
+                        egui::ScrollArea::vertical()
+                            .auto_shrink([false, false])
+                            .stick_to_bottom(true)
+                            .show(ui, |ui| {
+                                for line in &self.game_logs {
+                                    let color = if line.contains("ERROR") || line.contains("error") || line.contains("panicked") {
+                                        egui::Color32::from_rgb(240, 120, 120)
+                                    } else if line.contains("WARN") || line.contains("warning") {
+                                        egui::Color32::from_rgb(230, 200, 120)
+                                    } else {
+                                        egui::Color32::from_gray(210)
+                                    };
+                                    ui.label(egui::RichText::new(line).monospace().size(11.0).color(color));
+                                }
+                            });
+                    }
+                });
+            self.show_game_output = open;
         }
 
         // ── Input Map panel ──────────────────────────────────────────────
@@ -827,7 +955,7 @@ impl EditorApp {
                     let s = &mut self.scene.settings;
                     egui::Grid::new("scene_settings_grid").num_columns(2).show(ui, |ui| {
                         ui.label("Gravity");
-                        ui.add(egui::DragValue::new(&mut s.gravity).speed(1.0));
+                        ui.add(egui::DragValue::new(&mut s.gravity).speed(1.0).range(-10000.0..=10000.0));
                         ui.end_row();
 
                         ui.label("Viewport W");
@@ -869,14 +997,13 @@ impl EditorApp {
                         if let Some(m) = new_mode { s.camera_mode = m; }
                         ui.end_row();
 
-                        ui.label("Clear R");
-                        ui.add(egui::Slider::new(&mut s.clear_color[0], 0.0..=1.0));
-                        ui.end_row();
-                        ui.label("Clear G");
-                        ui.add(egui::Slider::new(&mut s.clear_color[1], 0.0..=1.0));
-                        ui.end_row();
-                        ui.label("Clear B");
-                        ui.add(egui::Slider::new(&mut s.clear_color[2], 0.0..=1.0));
+                        ui.label("Clear Color");
+                        let mut rgb = [s.clear_color[0], s.clear_color[1], s.clear_color[2]];
+                        if ui.color_edit_button_rgb(&mut rgb).changed() {
+                            s.clear_color[0] = rgb[0];
+                            s.clear_color[1] = rgb[1];
+                            s.clear_color[2] = rgb[2];
+                        }
                         ui.end_row();
                     });
 

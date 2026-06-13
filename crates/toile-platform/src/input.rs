@@ -241,6 +241,25 @@ impl Input {
         }
     }
 
+    /// Sync modifier state from a winit `ModifiersChanged` event. macOS (and some setups) deliver
+    /// modifier keys via `ModifiersChanged` rather than (or in addition to) `KeyboardInput`, so
+    /// without this `is_key_down(ControlLeft/SuperLeft/…)` would stay false and every modifier
+    /// shortcut (Cmd/Ctrl + Z/C/V/D/S) would silently never fire.
+    pub fn handle_modifiers(&mut self, mods: winit::keyboard::ModifiersState) {
+        for (code, on) in [
+            (KeyCode::ControlLeft, mods.control_key()),
+            (KeyCode::ShiftLeft, mods.shift_key()),
+            (KeyCode::AltLeft, mods.alt_key()),
+            (KeyCode::SuperLeft, mods.super_key()),
+        ] {
+            if on {
+                self.keys_down.insert(code);
+            } else {
+                self.keys_down.remove(&code);
+            }
+        }
+    }
+
     // --- Mouse event handlers ---
 
     pub fn handle_mouse_button(&mut self, button: WinitMouseButton, state: ElementState) {
