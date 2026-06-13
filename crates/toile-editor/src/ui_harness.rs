@@ -171,3 +171,21 @@ fn game_output_console_shows_logs() {
     assert!(h.state().show_game_output);
     assert_eq!(h.state().game_logs.len(), 3);
 }
+
+#[test]
+fn undo_redo_add_entity() {
+    let mut h = editor_with_project("undo");
+    h.get_by_label_contains("Add Entity").click();
+    h.run();
+    assert_eq!(h.state().scene.entities.len(), 1, "entity added");
+    assert_eq!(h.state().undo_stack.len(), 1, "add pushed an undo snapshot");
+
+    h.state_mut().undo();
+    h.run();
+    assert_eq!(h.state().scene.entities.len(), 0, "undo removes the entity");
+    assert_eq!(h.state().redo_stack.len(), 1, "undo populated redo");
+
+    h.state_mut().redo();
+    h.run();
+    assert_eq!(h.state().scene.entities.len(), 1, "redo restores the entity");
+}

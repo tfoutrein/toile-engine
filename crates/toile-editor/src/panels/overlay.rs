@@ -215,6 +215,8 @@ impl EditorApp {
         let mut add_entity = false;
         let mut delete_selected = false;
         let mut play_game = false;
+        let mut do_undo = false;
+        let mut do_redo = false;
 
         egui::TopBottomPanel::top("menu").show(ctx, |ui| {
             egui::menu::bar(ui, |ui| {
@@ -267,6 +269,13 @@ impl EditorApp {
                     }
                 });
                 ui.menu_button("Edit", |ui| {
+                    if ui.add_enabled(!self.undo_stack.is_empty(), egui::Button::new("Undo  (Ctrl+Z)")).clicked() {
+                        do_undo = true; ui.close_menu();
+                    }
+                    if ui.add_enabled(!self.redo_stack.is_empty(), egui::Button::new("Redo  (Ctrl+Shift+Z)")).clicked() {
+                        do_redo = true; ui.close_menu();
+                    }
+                    ui.separator();
                     if ui.button("Add Entity").clicked() { add_entity = true; ui.close_menu(); }
                     if ui.button("Delete Selected").clicked() { delete_selected = true; ui.close_menu(); }
                 });
@@ -453,7 +462,10 @@ impl EditorApp {
                 });
             if !open { self.show_save_dialog = false; }
         }
+        if do_undo { self.undo(); }
+        if do_redo { self.redo(); }
         if add_entity {
+            self.push_undo();
             let id = self.scene.add_entity(
                 &format!("Entity_{}", self.scene.next_id),
                 self.camera_pos.x, self.camera_pos.y,
@@ -463,6 +475,7 @@ impl EditorApp {
         }
         if delete_selected {
             if let Some(id) = self.selected_id.take() {
+                self.push_undo();
                 self.scene.remove_entity(id);
                 self.status_msg = format!("Deleted entity {id}");
             }
@@ -783,6 +796,7 @@ impl EditorApp {
                     ui.separator();
                     ui.label(egui::RichText::new("Entities").size(11.0).color(egui::Color32::from_gray(150)));
                     if ui.button("+ Add Entity").clicked() {
+                        self.push_undo();
                         let id = self.scene.add_entity(
                             &format!("Entity_{}", self.scene.next_id),
                             self.camera_pos.x, self.camera_pos.y,
@@ -809,6 +823,7 @@ impl EditorApp {
         delete_selected |= self.show_inspector(ctx, pdir, project_scripts, project_particles);
         if delete_selected {
             if let Some(id) = self.selected_id.take() {
+                self.push_undo();
                 self.scene.remove_entity(id);
                 self.status_msg = format!("Deleted entity {id}");
             }

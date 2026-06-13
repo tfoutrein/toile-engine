@@ -112,6 +112,9 @@ pub struct EditorApp {
     pub(crate) input_map_pending_add_action: Option<toile_app::platform::input_actions::InputAction>,
     pub(crate) input_map_pending_remove_action: Option<String>,
     pub(crate) input_map_save_requested: bool,
+    // Undo/redo history (scene snapshots).
+    pub(crate) undo_stack: Vec<SceneData>,
+    pub(crate) redo_stack: Vec<SceneData>,
 }
 
 /// What field the file picker is targeting.
@@ -231,7 +234,67 @@ impl EditorApp {
             input_map_pending_add_action: None,
             input_map_pending_remove_action: None,
             input_map_save_requested: false,
+            undo_stack: Vec::new(),
+            redo_stack: Vec::new(),
         }
+    }
+
+    /// Snapshot the current scene onto the undo stack BEFORE a mutating action.
+    /// Skips no-op snapshots (identical to the last one) and clears the redo stack.
+    pub(crate) fn push_undo(&mut self) {
+        const MAX_HISTORY: usize = 64;
+        if let Some(top) = self.undo_stack.last() {
+            if scenes_equal(top, &self.scene) {
+                self.redo_stack.clear();
+                return;
+            }
+        }
+        self.undo_stack.push(self.scene.clone());
+        if self.undo_stack.len() > MAX_HISTORY {
+            self.undo_stack.remove(0);
+        }
+        self.redo_stack.clear();
+    }
+
+    /// If the most recent snapshot equals the current scene, drop it (used after a
+    /// gesture that ended up changing nothing, e.g. a click that only selected).
+    pub(crate) fn discard_undo_if_unchanged(&mut self) {
+        if let Some(top) = self.undo_stack.last() {
+            if scenes_equal(top, &self.scene) {
+                self.undo_stack.pop();
+            }
+        }
+    }
+
+    pub(crate) fn undo(&mut self) {
+        if let Some(prev) = self.undo_stack.pop() {
+            self.redo_stack.push(std::mem::replace(&mut self.scene, prev));
+            self.after_history_restore();
+            self.status_msg = format!("Undo ({} left)", self.undo_stack.len());
+        } else {
+            self.status_msg = "Nothing to undo".to_string();
+        }
+    }
+
+    pub(crate) fn redo(&mut self) {
+        if let Some(next) = self.redo_stack.pop() {
+            self.undo_stack.push(std::mem::replace(&mut self.scene, next));
+            self.after_history_restore();
+            self.status_msg = "Redo".to_string();
+        } else {
+            self.status_msg = "Nothing to redo".to_string();
+        }
+    }
+
+    /// Fix up editor state after restoring a scene snapshot.
+    fn after_history_restore(&mut self) {
+        if let Some(id) = self.selected_id {
+            if !self.scene.entities.iter().any(|e| e.id == id) {
+                self.selected_id = None;
+            }
+        }
+        // Sprite textures may now refer to different paths; rebuild lazily.
+        self.sprite_cache.clear();
     }
 
     /// Resolve a path relative to the project directory.
@@ -456,6 +519,14 @@ pub fn run_editor() {
         .with_size(1280, 720)
         .with_clear_color(Color::rgb(0.12, 0.12, 0.16))
         .run(EditorApp::new());
+}
+
+/// Cheap structural equality for undo/redo dedup (compares serialized form).
+fn scenes_equal(a: &SceneData, b: &SceneData) -> bool {
+    match (serde_json::to_string(a), serde_json::to_string(b)) {
+        (Ok(x), Ok(y)) => x == y,
+        _ => false,
+    }
 }
 
 // ── Workspace config persistence ────────────────────────────────────
