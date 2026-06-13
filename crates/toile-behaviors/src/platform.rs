@@ -116,9 +116,12 @@ pub fn update(
         entity.velocity.y = config.jump_force;
         state.coyote_timer = 0.0;
         state.jump_buffer_timer = 0.0;
-        if !entity.on_ground {
-            state.jumps_remaining = state.jumps_remaining.saturating_sub(1);
-        }
+        // Consume a jump on EVERY jump (ground, coyote, or air) so `max_jumps` is
+        // the true total jump count. Previously the ground jump skipped the
+        // decrement (it was gated on `!on_ground`), which left jumps_remaining at
+        // max_jumps and granted one extra air jump — e.g. an unintended double
+        // jump with the default max_jumps = 1.
+        state.jumps_remaining = state.jumps_remaining.saturating_sub(1);
         entity.on_ground = false;
     }
 
@@ -230,5 +233,48 @@ mod tests {
         }
         assert!(entity.position.x > 0.0, "Entity should move right");
         assert!(entity.velocity.x > 0.0, "Velocity should be positive");
+    }
+
+    #[test]
+    fn single_jump_config_does_not_double_jump() {
+        // Regression: with max_jumps = 1, a ground jump must consume the only
+        // jump so a subsequent mid-air press cannot launch a second time.
+        let config = PlatformConfig::default(); // max_jumps == 1
+        let mut state = PlatformState::default();
+        let mut entity = EntityState {
+            position: Vec2::new(0.0, 100.0),
+            velocity: Vec2::ZERO,
+            rotation: 0.0,
+            on_ground: true,
+            size: Vec2::new(32.0, 32.0),
+            opacity: 1.0,
+            alive: true,
+        };
+        let press = BehaviorInput {
+            left: false, right: false, up: false, down: false,
+            jump_pressed: true, jump_down: true,
+        };
+        let release = BehaviorInput {
+            left: false, right: false, up: false, down: false,
+            jump_pressed: false, jump_down: false,
+        };
+        let dt = 1.0 / 60.0;
+
+        // Ground jump: launches upward and consumes the single jump.
+        update(&config, &mut state, &mut entity, &press, &no_solid, dt);
+        assert!(entity.velocity.y > 0.0, "ground jump should launch upward");
+        assert_eq!(state.jumps_remaining, 0, "ground jump must consume the only jump");
+
+        // Release in the air so a fresh press can register.
+        update(&config, &mut state, &mut entity, &release, &no_solid, dt);
+
+        // Second press while airborne must NOT re-launch (no double jump).
+        let vy_before = entity.velocity.y;
+        update(&config, &mut state, &mut entity, &press, &no_solid, dt);
+        assert!(
+            entity.velocity.y < vy_before,
+            "second jump must be blocked: velocity should keep falling, got {} (was {})",
+            entity.velocity.y, vy_before
+        );
     }
 }

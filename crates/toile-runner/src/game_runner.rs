@@ -853,19 +853,22 @@ impl Game for GameRunner {
                             anim_tex = Some(t);
                         }
                     } else if let Some(ref sheet) = ent.data.sprite_sheet {
-                        // Sprite sheet grid
-                        let col = frame_idx % sheet.columns;
-                        let row = frame_idx / sheet.columns;
-                        let u_step = 1.0 / sheet.columns as f32;
-                        let v_step = 1.0 / sheet.rows as f32;
+                        // Sprite sheet grid. Guard against a malformed scene with
+                        // columns/rows == 0 (integer modulo/division by zero panics).
+                        let cols = sheet.columns.max(1);
+                        let rows = sheet.rows.max(1);
+                        let col = frame_idx % cols;
+                        let row = frame_idx / cols;
+                        let u_step = 1.0 / cols as f32;
+                        let v_step = 1.0 / rows as f32;
                         uv_min = Vec2::new(col as f32 * u_step, row as f32 * v_step);
                         uv_max = Vec2::new((col + 1) as f32 * u_step, (row + 1) as f32 * v_step);
                     }
                 }
             } else if let Some(ref sheet) = ent.data.sprite_sheet {
-                // No animation playing — show frame 0
-                let u_step = 1.0 / sheet.columns as f32;
-                let v_step = 1.0 / sheet.rows as f32;
+                // No animation playing — show frame 0 (guard against zero cols/rows).
+                let u_step = 1.0 / sheet.columns.max(1) as f32;
+                let v_step = 1.0 / sheet.rows.max(1) as f32;
                 uv_max = Vec2::new(u_step, v_step);
             }
 

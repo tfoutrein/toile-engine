@@ -405,6 +405,11 @@ impl Game for EditorApp {
             return;
         }
 
+        // Poll the AI worker every frame — NOT only while the Copilot panel is
+        // open — so closing the panel mid-request cannot leave `ai_loading` stuck
+        // true and permanently lock the Copilot for the session (audit C1).
+        self.check_ai_response();
+
         // Pre-collect data before borrowing overlay (avoids self borrow conflicts)
         let project_scenes = self.list_project_scenes();
         let project_scripts = self.list_project_files("scripts", "json");

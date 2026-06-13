@@ -504,8 +504,10 @@ pub fn ase_to_sprite_sheet(ase: &AseFile, texture: TextureHandle) -> SpriteSheet
         );
     } else {
         for tag in &ase.tags {
-            let from = tag.from as usize;
             let to = (tag.to as usize).min(all_frames.len().saturating_sub(1));
+            // Clamp `from` too (it was previously raw): a tag with from > frame
+            // count would otherwise panic the inclusive slice (start > end).
+            let from = (tag.from as usize).min(to);
             let mode = match tag.direction {
                 1 => PlaybackMode::Loop, // reverse — frames would need reversing
                 2 | 3 => PlaybackMode::PingPong,

@@ -39,6 +39,22 @@ impl Prefab {
     /// Create an instance of this prefab with a new ID and optional overrides.
     pub fn instantiate(&self, id: u64, overrides: &HashMap<String, serde_json::Value>) -> EntityData {
         let mut entity = self.entity.clone();
+
+        // Migrate legacy top-level behaviors/event_sheet onto the entity when the
+        // entity's own are empty. Older prefabs — and the CLI template generator —
+        // store these only at the top level; without this, instantiated entities
+        // silently lose their behaviors and event sheet (audit X1).
+        if entity.behaviors.is_empty() && !self.behaviors.is_empty() {
+            entity.behaviors = self
+                .behaviors
+                .iter()
+                .filter_map(|v| serde_json::from_value(v.clone()).ok())
+                .collect();
+        }
+        if entity.event_sheet.is_none() {
+            entity.event_sheet = self.event_sheet.clone();
+        }
+
         entity.id = id;
         entity.name = format!("{}_{}", self.name, id);
 
@@ -177,5 +193,25 @@ mod tests {
         let loaded: Prefab = serde_json::from_str(&json).unwrap();
         assert_eq!(loaded.name, "Coin");
         assert_eq!(loaded.entity.width, 16.0);
+    }
+
+    #[test]
+    fn instantiate_migrates_legacy_top_level_fields() {
+        // A legacy / CLI-template prefab stores behaviors + event_sheet only at
+        // the top level (entity's own are empty). instantiate() must migrate them.
+        let prefab = Prefab {
+            name: "Solid".into(),
+            entity: EntityData {
+                id: 0, name: "Solid".into(), width: 32.0, height: 32.0,
+                ..Default::default()
+            },
+            behaviors: vec![serde_json::json!({ "type": "Solid" })],
+            event_sheet: Some("logic.event.json".into()),
+        };
+        assert!(prefab.entity.behaviors.is_empty(), "precondition: entity has no behaviors");
+
+        let inst = prefab.instantiate(7, &HashMap::new());
+        assert_eq!(inst.behaviors.len(), 1, "legacy behaviors must migrate onto the entity");
+        assert_eq!(inst.event_sheet.as_deref(), Some("logic.event.json"));
     }
 }
