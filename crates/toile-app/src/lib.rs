@@ -584,6 +584,12 @@ impl ApplicationHandler for AppHandler {
             | WindowEvent::CursorMoved { .. }
             | WindowEvent::MouseWheel { .. }
             | WindowEvent::ModifiersChanged { .. }) => {
+                // Always keep the editor input's modifier state in sync — egui consumes
+                // ModifiersChanged, so gating this on `!consumed` would leave is_key_down(Ctrl/Cmd)
+                // permanently false and silently break every modifier shortcut.
+                if let WindowEvent::ModifiersChanged(mods) = e {
+                    self.input.handle_modifiers(mods.state());
+                }
                 let consumed = if let Some(window) = &self.window {
                     self.game.handle_window_event(window, e)
                 } else {
