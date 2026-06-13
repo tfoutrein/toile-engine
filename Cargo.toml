@@ -84,7 +84,10 @@ notify = "8"
 # Editor UI
 egui = "0.33"
 egui-wgpu = "0.33"
-egui-winit = { version = "0.33", features = ["wayland", "x11"] }
+# `accesskit` enables screen-reader accessibility, and is required so egui-winit
+# matches egui's PlatformOutput when the accesskit feature is on (e.g. under the
+# egui_kittest UI-test harness, which needs egui/accesskit).
+egui-winit = { version = "0.33", features = ["wayland", "x11", "accesskit"] }
 
 toile-editor = { path = "crates/toile-editor" }
 toile-scene = { path = "crates/toile-scene" }

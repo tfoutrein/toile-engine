@@ -30,3 +30,8 @@ toile-assets = { workspace = true }
 toile-asset-library = { workspace = true }
 reqwest = { workspace = true }
 egui_commonmark = { workspace = true }
+
+[dev-dependencies]
+# default-features=false drops the optional `eframe` dep, which would otherwise
+# enable egui-winit/accesskit and conflict with egui 0.33's accesskit version.
+egui_kittest = { version = "0.33", default-features = false, features = ["wgpu"] }

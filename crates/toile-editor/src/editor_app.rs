@@ -306,7 +306,7 @@ impl EditorApp {
     }
 
     /// List scene files in the project's scenes/ directory.
-    fn list_project_scenes(&self) -> Vec<String> {
+    pub(crate) fn list_project_scenes(&self) -> Vec<String> {
         let dir = self.project_path("scenes");
         let mut scenes = Vec::new();
         if let Ok(entries) = std::fs::read_dir(&dir) {
@@ -324,7 +324,7 @@ impl EditorApp {
     }
 
     /// List files in a project subdirectory matching an extension.
-    fn list_project_files(&self, subdir: &str, ext: &str) -> Vec<String> {
+    pub(crate) fn list_project_files(&self, subdir: &str, ext: &str) -> Vec<String> {
         let dir = self.project_path(subdir);
         let mut files = Vec::new();
         if let Ok(entries) = std::fs::read_dir(&dir) {
