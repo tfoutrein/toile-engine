@@ -526,14 +526,18 @@ impl EditorApp {
                                 }
                             }
 
-                            // Show current sequence
+                            // Show current sequence — each frame is a button that
+                            // removes itself on click (so a misclick is easy to fix).
                             ui.separator();
+                            let mut remove_seq_idx: Option<usize> = None;
                             if let Some(entity) = self.scene.entities.iter().find(|e| e.id == id) {
                                 if let Some(anim) = entity.animations.iter().find(|a| a.name == anim_name) {
                                     ui.horizontal_wrapped(|ui| {
                                         ui.label(egui::RichText::new(format!("{anim_name}:")).strong());
-                                        for f in &anim.frames {
-                                            ui.label(format!("{f}"));
+                                        for (i, f) in anim.frames.iter().enumerate() {
+                                            if ui.small_button(format!("{f} ✕")).on_hover_text("Remove this frame").clicked() {
+                                                remove_seq_idx = Some(i);
+                                            }
                                         }
                                         if anim.frames.is_empty() {
                                             ui.label(egui::RichText::new("(empty — click frames above)").color(egui::Color32::from_gray(130)));
@@ -541,8 +545,22 @@ impl EditorApp {
                                     });
                                 }
                             }
+                            if let Some(i) = remove_seq_idx {
+                                if let Some(entity) = self.scene.entities.iter_mut().find(|e| e.id == id) {
+                                    if let Some(anim) = entity.animations.iter_mut().find(|a| a.name == anim_name) {
+                                        if i < anim.frames.len() { anim.frames.remove(i); }
+                                    }
+                                }
+                            }
 
                             ui.horizontal(|ui| {
+                                if ui.button("Remove last").clicked() {
+                                    if let Some(entity) = self.scene.entities.iter_mut().find(|e| e.id == id) {
+                                        if let Some(anim) = entity.animations.iter_mut().find(|a| a.name == anim_name) {
+                                            anim.frames.pop();
+                                        }
+                                    }
+                                }
                                 if ui.button("Clear frames").clicked() {
                                     if let Some(entity) = self.scene.entities.iter_mut().find(|e| e.id == id) {
                                         if let Some(anim) = entity.animations.iter_mut().find(|a| a.name == anim_name) {

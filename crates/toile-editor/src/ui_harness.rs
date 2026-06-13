@@ -231,3 +231,49 @@ fn switching_scene_autosaves_current() {
     assert_eq!(scene.entities.len(), 1, "current scene must be autosaved before switching");
     assert!(h.state().undo_stack.is_empty(), "undo history cleared on scene switch");
 }
+
+#[test]
+fn frame_picker_renders_spritesheet_grid() {
+    let Some(mut h) = editor_with_project("framepick") else { return };
+    let pdir = h.state().project_dir.clone().unwrap();
+
+    // Generate a 4×1 sprite sheet (four 16×16 coloured frames).
+    let mut img = image::RgbaImage::new(64, 16);
+    let colors = [[230u8, 60, 60, 255], [60, 200, 90, 255], [70, 120, 240, 255], [240, 210, 60, 255]];
+    for (i, c) in colors.iter().enumerate() {
+        for y in 0..16 {
+            for x in 0..16 {
+                img.put_pixel((i * 16 + x) as u32, y as u32, image::Rgba(*c));
+            }
+        }
+    }
+    img.save(pdir.join("assets/sheet.png")).unwrap();
+
+    // Entity with the sheet + an empty "idle" animation; open the frame picker on it.
+    {
+        let app = h.state_mut();
+        let id = app.scene.add_entity("Hero", 0.0, 0.0);
+        let e = app.scene.entities.iter_mut().find(|e| e.id == id).unwrap();
+        e.sprite_path = "assets/sheet.png".into();
+        e.sprite_sheet = Some(toile_scene::SpriteSheetData { frame_width: 16, frame_height: 16, columns: 4, rows: 1 });
+        e.animations.push(toile_scene::AnimationData {
+            name: "idle".into(), frames: vec![0, 1, 2], fps: 8.0, looping: true,
+            sprite_file: None, strip_frames: None,
+        });
+        app.selected_id = Some(id);
+        app.frame_picker_anim = "idle".into();
+        app.show_frame_picker = true;
+    }
+    h.run();
+    snapshot(&mut h, "09-frame-picker");
+
+    assert!(h.state().show_frame_picker, "frame picker open");
+    assert!(h.state().frame_picker_egui_tex.is_some(), "spritesheet texture loaded into the picker");
+
+    // "Remove last" trims the sequence (new UX: a misclick is recoverable
+    // without clearing the whole sequence).
+    assert_eq!(h.state().scene.entities[0].animations[0].frames.len(), 3);
+    h.get_by_label_contains("Remove last").click();
+    h.run();
+    assert_eq!(h.state().scene.entities[0].animations[0].frames.len(), 2, "Remove last drops one frame");
+}
