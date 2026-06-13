@@ -37,9 +37,17 @@ impl EditorApp {
             self.show_game_output = true;
         }
 
-        // Set grab cursor while panning
+        // Hand-pan cursor feedback: closed hand while dragging, open hand when the pan tool is
+        // armed (Space held or the Pan toggle on) and the pointer is over the central viewport.
         if self.panning {
             ctx.set_cursor_icon(egui::CursorIcon::Grabbing);
+        } else if self.dragging_guide || self.hovering_guide {
+            // Hovering/dragging the starting-screen guide frame border.
+            ctx.set_cursor_icon(egui::CursorIcon::Move);
+        } else if (ctx.input(|i| i.key_down(egui::Key::Space)) || self.pan_tool_active)
+            && !ctx.is_pointer_over_area()
+        {
+            ctx.set_cursor_icon(egui::CursorIcon::Grab);
         }
 
         // ── Welcome / Project dialog ─────────────────────────────────────
@@ -318,6 +326,15 @@ impl EditorApp {
                 let ai_label = if self.editor_mode == EditorMode::AICopilot { "[ 🤖 AI ]" } else { "🤖 AI" };
                 if ui.button(ai_label).clicked() {
                     self.editor_mode = EditorMode::AICopilot;
+                }
+                ui.separator();
+                // Hand/pan tool — a toggle (not a mode), so the user can pan then select again.
+                if ui
+                    .selectable_label(self.pan_tool_active, "✋ Pan")
+                    .on_hover_text("Hand tool — left-drag to pan the view (or hold Space, or middle-drag)")
+                    .clicked()
+                {
+                    self.pan_tool_active = !self.pan_tool_active;
                 }
                 ui.menu_button("View", |ui| {
                     ui.checkbox(&mut self.show_grid, "Show Grid");
