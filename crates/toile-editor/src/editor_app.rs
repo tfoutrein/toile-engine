@@ -32,6 +32,10 @@ pub struct EditorApp {
     // Scene state
     pub(crate) scene: SceneData,
     pub(crate) selected_id: Option<u64>,
+    /// Entity being renamed inline in the hierarchy (double-click), with its edit buffer.
+    pub(crate) hierarchy_rename: Option<(u64, String)>,
+    /// Request keyboard focus for the rename field on the next frame only (so Enter commits).
+    pub(crate) hierarchy_rename_focus: bool,
     pub(crate) hovered_id: Option<u64>,
     pub(crate) white_tex: Option<TextureHandle>,
     pub(crate) logo_tex: Option<TextureHandle>,
@@ -171,6 +175,8 @@ impl EditorApp {
             show_file_picker: None,
             scene,
             selected_id: None,
+            hierarchy_rename: None,
+            hierarchy_rename_focus: false,
             hovered_id: None,
             white_tex: None,
             camera_pos: Vec2::ZERO,

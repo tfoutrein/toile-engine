@@ -722,6 +722,13 @@ impl EditorApp {
                                         if is_current {
                                             // Show entities of the current scene with sub-components
                                             let mut click_id = None;
+                                            // Inline hierarchy rename (double-click): take the edit
+                                            // buffer out so we can &mut it without re-borrowing self.
+                                            let mut start_rename: Option<u64> = None;
+                                            let mut commit_rename: Option<(u64, String)> = None;
+                                            let mut rename_buf = self.hierarchy_rename.take();
+                                            let renaming_id = rename_buf.as_ref().map(|(id, _)| *id);
+                                            let needs_focus = self.hierarchy_rename_focus;
                                             for entity in &self.scene.entities {
                                                 let selected = self.selected_id == Some(entity.id);
                                                 let icon = entity_icon(entity);
@@ -736,8 +743,16 @@ impl EditorApp {
                                                     egui::collapsing_header::CollapsingState::load_with_default_open(ui.ctx(), ent_node_id, false)
                                                         .show_header(ui, |ui| {
                                                             let color = if selected { egui::Color32::YELLOW } else { egui::Color32::WHITE };
-                                                            if ui.selectable_label(selected, egui::RichText::new(format!("{icon} {}", entity.name)).color(color)).clicked() {
-                                                                click_id = Some(entity.id);
+                                                            if renaming_id == Some(entity.id) {
+                                                                if let Some((_, buf)) = rename_buf.as_mut() {
+                                                                    let r = ui.text_edit_singleline(buf);
+                                                                    if needs_focus { if needs_focus { r.request_focus(); } }
+                                                                    if r.lost_focus() { commit_rename = Some((entity.id, buf.clone())); }
+                                                                }
+                                                            } else {
+                                                                let r = ui.selectable_label(selected, egui::RichText::new(format!("{icon} {}", entity.name)).color(color));
+                                                                if r.clicked() { click_id = Some(entity.id); }
+                                                                if r.double_clicked() { start_rename = Some(entity.id); }
                                                             }
                                                         })
                                                         .body(|ui| {
@@ -767,13 +782,40 @@ impl EditorApp {
                                                 } else {
                                                     // Simple leaf — no children
                                                     let color = if selected { egui::Color32::YELLOW } else { egui::Color32::WHITE };
-                                                    if ui.selectable_label(selected, egui::RichText::new(format!("  {icon} {}", entity.name)).color(color)).clicked() {
-                                                        click_id = Some(entity.id);
+                                                    if renaming_id == Some(entity.id) {
+                                                        if let Some((_, buf)) = rename_buf.as_mut() {
+                                                            let r = ui.text_edit_singleline(buf);
+                                                            if needs_focus { if needs_focus { r.request_focus(); } }
+                                                            if r.lost_focus() { commit_rename = Some((entity.id, buf.clone())); }
+                                                        }
+                                                    } else {
+                                                        let r = ui.selectable_label(selected, egui::RichText::new(format!("  {icon} {}", entity.name)).color(color));
+                                                        if r.clicked() { click_id = Some(entity.id); }
+                                                        if r.double_clicked() { start_rename = Some(entity.id); }
                                                     }
                                                 }
                                             }
                                             if let Some(id) = click_id {
                                                 self.selected_id = Some(id);
+                                            }
+                                            // Apply hierarchy rename state changes.
+                                            self.hierarchy_rename = rename_buf;
+                                            self.hierarchy_rename_focus = false; // focus only the first frame
+                                            if let Some(id) = start_rename {
+                                                if let Some(e) = self.scene.entities.iter().find(|e| e.id == id) {
+                                                    self.hierarchy_rename = Some((id, e.name.clone()));
+                                                    self.hierarchy_rename_focus = true;
+                                                    self.selected_id = Some(id);
+                                                }
+                                            }
+                                            if let Some((id, name)) = commit_rename {
+                                                let name = name.trim();
+                                                if !name.is_empty() {
+                                                    if let Some(e) = self.scene.entities.iter_mut().find(|e| e.id == id) {
+                                                        e.name = name.to_string();
+                                                    }
+                                                }
+                                                self.hierarchy_rename = None;
                                             }
                                         } else {
                                             ui.label(egui::RichText::new("(click to open)").size(10.0).color(egui::Color32::from_gray(120)));
