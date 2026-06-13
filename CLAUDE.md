@@ -57,6 +57,22 @@ cargo run -p toile-harness -- scene examples/run-demo/scenes/main.json --out lev
 
 For visual/UI verification see **`docs/TESTING.md`**: `toile-harness` is a headless GPU renderer (Playwright-style off-screen screenshots, CI-friendly) and `tools/screenshot-app.sh` captures the real windowed editor/examples. A full code/security/perf audit lives in `docs/AUDIT-2026-06-13.md`.
 
+### Driving the REAL editor window — `macpilot` (macOS)
+
+Three testing tiers, pick the lowest that can see what you need:
+1. **`egui_kittest`** (`crates/toile-editor/src/ui_harness.rs`, `#[cfg(test)]`) — headless egui UI, permission-free, deterministic. Tests panels/menus/widgets but **not** the wgpu viewport (sprites, grid, collider preview render outside egui → blank here). Skips when no GPU.
+2. **`toile-harness`** — headless scene/sprite → PNG. For rendered content, not interaction.
+3. **`macpilot`** — a self-contained Swift CLI (`~/.claude/tools/macpilot/`, binary on PATH as `macpilot`, full docs in its `README.md`) that drives and screenshots the **real** editor/game window — the only way to verify viewport visuals, the live game (`▶ Play`), real input, and end-to-end flows. Several editor bugs (keyboard-modifier shortcuts, Play/Stop, hierarchy rename) were found this way and were invisible to `egui_kittest` because it bypasses the winit event routing.
+
+Closed loop (act → capture → read PNG → act):
+```bash
+osascript -e 'tell application "System Events" to set frontmost of (first process whose name is "toile") to true'   # raise FIRST, every click
+WID=$(macpilot windows --app toile | python3 -c "import sys,json;print(json.load(sys.stdin)['windows'][0]['window_id'])")
+macpilot shot-window --window-id "$WID" --out /tmp/s.png   # → origin, scale; then Read /tmp/s.png
+macpilot click-xy --x <pt> --y <pt>     # global logical POINTS, never ×scale; also: type / key / drag / scroll / activate
+```
+Needs **Screen Recording** granted once to `macpilot` (`macpilot setup-permissions --screen`; `doctor` checks). Gotchas: raise the app in the *same* shell call as the click; the editor window **resizes** between welcome (≈1152×678) and project-open (1280×752) — re-read bounds after state changes; this Mac is **AZERTY** so `key --code` is by physical position (logical 'z' = keycode 13, but winit shortcuts read the physical QWERTY-Z = 6); keyboard **modifier shortcuts via synthetic input are timing-flaky** (use the menu); a menu item needs a frame between opening and clicking; for small targets detect by color or overlay a labeled grid (see the README) rather than eyeballing downscaled PNGs.
+
 ## Architecture
 
 ### Dependency flow
