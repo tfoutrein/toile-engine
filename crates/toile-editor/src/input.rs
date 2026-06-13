@@ -25,9 +25,13 @@ impl EditorApp {
             self.camera_zoom = self.camera_zoom.clamp(0.2, 5.0);
         }
 
-        // Camera pan with middle mouse button drag
+        // Camera pan: middle-mouse drag (always), or the hand tool — hold Space or toggle the
+        // Pan button — then left-drag. Space = temporary hand (Photoshop/Figma/Aseprite standard).
         let mouse_pos = ctx.input.mouse_position();
-        if ctx.input.is_mouse_down(toile_app::MouseButton::Middle) {
+        let pan_armed = ctx.input.is_key_down(Key::Space) || self.pan_tool_active;
+        let pan_drag = ctx.input.is_mouse_down(toile_app::MouseButton::Middle)
+            || (pan_armed && ctx.input.is_mouse_down(toile_app::MouseButton::Left));
+        if pan_drag {
             let delta = mouse_pos - self.last_mouse_pos;
             self.camera_pos.x -= delta.x / self.camera_zoom;
             self.camera_pos.y += delta.y / self.camera_zoom; // y-up
@@ -147,6 +151,7 @@ impl EditorApp {
 
         // Hover detection — find entity under mouse cursor
         self.hovered_id = None;
+        self.hovering_guide = false;
         if self.editor_mode == EditorMode::Entity && !self.panning {
             let world_mouse = ctx.camera.screen_to_world(ctx.input.mouse_position());
             // Check entities in reverse order (top-most first)
@@ -160,12 +165,36 @@ impl EditorApp {
                     break;
                 }
             }
+            // Guide-frame border hover → move cursor (so the frame reads as draggable).
+            if self.show_viewport_guide {
+                let s = &self.scene.settings;
+                let hw = (s.viewport_width as f32 / s.camera_zoom) * 0.5;
+                let hh = (s.viewport_height as f32 / s.camera_zoom) * 0.5;
+                let dx = (world_mouse.x - s.camera_position[0]).abs();
+                let dy = (world_mouse.y - s.camera_position[1]).abs();
+                let tol = 8.0 / self.camera_zoom;
+                self.hovering_guide =
+                    dx <= hw + tol && dy <= hh + tol && (dx >= hw - tol || dy >= hh - tol);
+            }
         }
 
-        // Entity selection, drag, and resize in Entity mode
-        if self.editor_mode == EditorMode::Entity {
+        // Entity selection, drag, and resize in Entity mode (suppressed while panning, so the
+        // hand tool's left-drag pans the view instead of grabbing/moving an entity).
+        if self.editor_mode == EditorMode::Entity && !self.panning {
             let world_pos = ctx.camera.screen_to_world(ctx.input.mouse_position());
             let handle_size = 8.0 / self.camera_zoom; // handle size in world units
+
+            // Hit-test the starting-screen guide-frame BORDER (with a grab tolerance so it's
+            // easy to grab the thin outline). Lets the user drag the frame to set the start camera.
+            let near_guide_border = self.show_viewport_guide && {
+                let s = &self.scene.settings;
+                let hw = (s.viewport_width as f32 / s.camera_zoom) * 0.5;
+                let hh = (s.viewport_height as f32 / s.camera_zoom) * 0.5;
+                let dx = (world_pos.x - s.camera_position[0]).abs();
+                let dy = (world_pos.y - s.camera_position[1]).abs();
+                let tol = 8.0 / self.camera_zoom;
+                dx <= hw + tol && dy <= hh + tol && (dx >= hw - tol || dy >= hh - tol)
+            };
 
             // Start interaction: detect transition from mouse-up to mouse-down
             if ctx.input.is_mouse_down(toile_app::MouseButton::Left)
@@ -254,6 +283,14 @@ impl EditorApp {
                             self.resize_start_rot = entity.rotation;
                         }
                     }
+                } else if near_guide_border {
+                    // Start dragging the starting-screen guide frame (moves the start camera).
+                    self.push_undo();
+                    self.dragging_guide = true;
+                    let s = &self.scene.settings;
+                    self.guide_drag_offset =
+                        Vec2::new(s.camera_position[0], s.camera_position[1]) - world_pos;
+                    self.status_msg = "Moving start camera".to_string();
                 } else {
                     // Try to pick an entity for drag (rotation-aware hit test)
                     let mut clicked_id = None;
@@ -288,6 +325,10 @@ impl EditorApp {
 
             // Continue drag
             if ctx.input.is_mouse_down(toile_app::MouseButton::Left) {
+                if self.dragging_guide {
+                    self.scene.settings.camera_position[0] = world_pos.x + self.guide_drag_offset.x;
+                    self.scene.settings.camera_position[1] = world_pos.y + self.guide_drag_offset.y;
+                }
                 if let Some(drag_id) = self.dragging {
                     if drag_id != u64::MAX {
                         if let Some(entity) = self.scene.find_entity_mut(drag_id) {
@@ -395,6 +436,7 @@ impl EditorApp {
                 // (e.g. a click that only selected an entity).
                 let was_real_gesture = self.rotating
                     || self.resizing.is_some()
+                    || self.dragging_guide
                     || self.dragging.is_some_and(|d| d != u64::MAX);
                 if was_real_gesture {
                     self.discard_undo_if_unchanged();
@@ -402,6 +444,7 @@ impl EditorApp {
                 self.dragging = None;
                 self.resizing = None;
                 self.rotating = false;
+                self.dragging_guide = false;
             }
         }
 

@@ -84,6 +84,14 @@ pub struct EditorApp {
     pub(crate) show_viewport_guide: bool,
     pub(crate) last_mouse_pos: Vec2,
     pub(crate) panning: bool,
+    /// Hand/pan tool toggle: when on, left-drag pans the viewport (like holding Space).
+    pub(crate) pan_tool_active: bool,
+    /// Dragging the starting-screen guide frame (grab its border to move the start camera).
+    pub(crate) dragging_guide: bool,
+    /// Pointer is over the guide-frame border (shows a move cursor).
+    pub(crate) hovering_guide: bool,
+    /// Offset between the guide center (camera_position) and the cursor at drag start.
+    pub(crate) guide_drag_offset: Vec2,
     pub(crate) editor_mode: EditorMode,
     // Asset browser (embedded from toile-asset-library)
     pub(crate) asset_browser: AssetBrowserApp,
@@ -218,6 +226,10 @@ impl EditorApp {
             show_viewport_guide: true,
             last_mouse_pos: Vec2::ZERO,
             panning: false,
+            pan_tool_active: false,
+            dragging_guide: false,
+            hovering_guide: false,
+            guide_drag_offset: Vec2::ZERO,
             editor_mode: EditorMode::Entity,
             asset_browser: AssetBrowserApp::new(),
             ai_config: AiConfig::load(),
