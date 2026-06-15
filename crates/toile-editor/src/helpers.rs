@@ -11,6 +11,47 @@ pub(crate) fn get_image_dimensions(sprite_path: &str, pdir: &Option<PathBuf>) ->
     image::image_dimensions(&full).ok()
 }
 
+/// Clean display name for an animation state (avoids `Custom("attack")` debug form).
+pub(crate) fn anim_state_label(s: &toile_scene::AnimState) -> String {
+    use toile_scene::AnimState::*;
+    match s {
+        Idle => "Idle".into(),
+        Walk => "Walk".into(),
+        Run => "Run".into(),
+        Jump => "Jump".into(),
+        Fall => "Fall".into(),
+        Custom(n) => n.clone(),
+    }
+}
+
+/// "grid" (shares the entity sprite sheet) or "strip" (own sprite_file).
+pub(crate) fn anim_source_tag(anim: &toile_scene::AnimationData) -> &'static str {
+    if anim.sprite_file.is_some() { "strip" } else { "grid" }
+}
+
+/// Human-readable trigger condition for a canonical state (ADR-039).
+/// KEEP IN SYNC with `select_states` in toile-runner/src/game_runner.rs — a future
+/// refactor (ADR-039 Phase 0.5) will derive both from one shared source.
+pub(crate) fn state_condition_label(state: &toile_scene::AnimState, move_threshold: f32, topdown: bool) -> String {
+    use toile_scene::AnimState::*;
+    if topdown {
+        return match state {
+            Walk | Run => "en mouvement".into(),
+            Idle => "immobile".into(),
+            Custom(_) => "scripté (event sheet)".into(),
+            _ => "—".into(),
+        };
+    }
+    match state {
+        Idle => "au sol, immobile".into(),
+        Walk => format!("au sol, |vx| > {:.0}", move_threshold),
+        Run => format!("au sol, |vx| > {:.0}", move_threshold * 24.0),
+        Jump => "en l'air, monte".into(),
+        Fall => "en l'air, descend".into(),
+        Custom(_) => "scripté (event sheet)".into(),
+    }
+}
+
 /// Auto-populate `animation_states` bindings from the entity's animation names, so
 /// the editor state slots reflect what will actually play (ADR-038 Phase 4). Only
 /// fills states that aren't already bound; matches names case-insensitively via a
@@ -311,5 +352,35 @@ mod auto_bind_tests {
         let mut e = EntityData::default();
         auto_bind_animation_states(&mut e);
         assert_eq!(e.animation_states, None);
+    }
+
+    #[test]
+    fn source_tag_distinguishes_grid_from_strip() {
+        let grid = anim("g"); // sprite_file None -> grid
+        let mut strip = anim("s");
+        strip.sprite_file = Some("walk_strip.png".into());
+        assert_eq!(anim_source_tag(&grid), "grid");
+        assert_eq!(anim_source_tag(&strip), "strip");
+    }
+
+    #[test]
+    fn state_label_uses_custom_name() {
+        assert_eq!(anim_state_label(&AnimState::Idle), "Idle");
+        assert_eq!(anim_state_label(&AnimState::Custom("dash".into())), "dash");
+    }
+
+    #[test]
+    fn condition_labels_match_runtime_intent() {
+        // Platformer reads velocity Y for air states; topdown collapses to moving/idle.
+        assert_eq!(state_condition_label(&AnimState::Idle, 5.0, false), "au sol, immobile");
+        assert_eq!(state_condition_label(&AnimState::Walk, 5.0, false), "au sol, |vx| > 5");
+        assert_eq!(state_condition_label(&AnimState::Jump, 5.0, false), "en l'air, monte");
+        assert_eq!(state_condition_label(&AnimState::Fall, 5.0, false), "en l'air, descend");
+        assert_eq!(state_condition_label(&AnimState::Walk, 5.0, true), "en mouvement");
+        assert_eq!(state_condition_label(&AnimState::Idle, 5.0, true), "immobile");
+        assert_eq!(
+            state_condition_label(&AnimState::Custom("x".into()), 5.0, false),
+            "scripté (event sheet)"
+        );
     }
 }

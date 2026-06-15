@@ -240,7 +240,13 @@ impl EditorApp {
                                 clone.name = format!("{}_copy", clone.name);
                                 entity.animations.push(clone);
                             }
-                            if let Some(idx) = remove_anim { entity.animations.remove(idx); }
+                            if let Some(idx) = remove_anim {
+                                // Drop the anim and any state binding that pointed to it (ADR-039).
+                                let removed = entity.animations.remove(idx).name;
+                                if let Some(ref mut map) = entity.animation_states {
+                                    map.bindings.retain(|b| b.anim != removed);
+                                }
+                            }
                             if let Some(name) = set_default_anim { entity.default_animation = Some(name); }
 
                             // Quick-add
@@ -473,7 +479,13 @@ impl EditorApp {
                                     }
                                     ui.separator();
                                 }
-                                if let Some(idx) = remove_anim { entity.animations.remove(idx); }
+                                if let Some(idx) = remove_anim {
+                                // Drop the anim and any state binding that pointed to it (ADR-039).
+                                let removed = entity.animations.remove(idx).name;
+                                if let Some(ref mut map) = entity.animation_states {
+                                    map.bindings.retain(|b| b.anim != removed);
+                                }
+                            }
 
                                 // Quick-add
                                 ui.horizontal(|ui| {
