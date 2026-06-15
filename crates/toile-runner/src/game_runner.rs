@@ -19,6 +19,8 @@ use toile_events::executor::{EventCommand, EventContext, EventSheetState, evalua
 use toile_events::model::EventSheet;
 use toile_graphics::sprite_renderer::{DrawSprite, pack_color};
 use toile_scene::{ColliderData, EntityData, SceneData};
+// Animation state machine — single source of truth shared with the editor (ADR-039 Phase 0.5).
+use toile_scene::{MotionSnapshot, motion_kind, resolve_state_to_anim, select_states};
 
 use crate::manifest::ProjectManifest;
 
@@ -99,184 +101,6 @@ fn is_player(data: &EntityData) -> bool {
     data.tags.iter().any(|t| t.eq_ignore_ascii_case("player"))
 }
 
-/// Movement behavior that can drive automatic idle/walk/jump animations (ADR-038).
-#[derive(Clone, Copy, PartialEq)]
-enum MotionKind { Platform, TopDown }
-
-fn motion_kind(data: &EntityData) -> Option<MotionKind> {
-    for b in &data.behaviors {
-        match b {
-            toile_behaviors::BehaviorConfig::Platform(_) => return Some(MotionKind::Platform),
-            toile_behaviors::BehaviorConfig::TopDown(_) => return Some(MotionKind::TopDown),
-            _ => {}
-        }
-    }
-    None
-}
-
-/// Synonyms for a canonical animation state — matched case-insensitively, so an
-/// anim named "Idle", "marche" or "course" still maps to its state (ADR-038).
-fn state_synonyms(state: &str) -> &'static [&'static str] {
-    match state {
-        "idle" => &["idle", "repos", "stand", "default", "wait"],
-        "walk" => &["walk", "marche", "move", "moving"],
-        "run" => &["run", "course", "sprint"],
-        "jump" => &["jump", "saut", "sauter", "rise"],
-        "fall" => &["fall", "chute", "tomber"],
-        _ => &[],
-    }
-}
-
-/// First state in `wanted` (priority order) that maps to an existing animation.
-fn pick_state_anim(anims: &[toile_scene::AnimationData], wanted: &[&str]) -> Option<String> {
-    wanted.iter().find_map(|state| {
-        let syns = state_synonyms(state);
-        anims
-            .iter()
-            .find(|a| syns.iter().any(|s| a.name.eq_ignore_ascii_case(s)))
-            .map(|a| a.name.clone())
-    })
-}
-
-/// Snapshot of an entity's motion, used to drive the animation state machine (ADR-038).
-struct MotionSnapshot {
-    on_ground: bool,
-    #[allow(dead_code)]
-    was_on_ground: bool,
-    vx: f32,
-    vy: f32,
-}
-
-/// Canonical lowercase name for a state (used for the name-synonym fallback).
-fn anim_state_canonical(s: &toile_scene::AnimState) -> &str {
-    use toile_scene::AnimState::*;
-    match s {
-        Idle => "idle",
-        Walk => "walk",
-        Run => "run",
-        Jump => "jump",
-        Fall => "fall",
-        Custom(name) => name.as_str(),
-    }
-}
-
-/// States to try, in priority order, for the current motion (first that resolves wins).
-/// World +y is up: velocity.y >= 0 means rising (jump), < 0 means falling (fall).
-fn select_states(kind: MotionKind, snap: &MotionSnapshot, move_threshold: f32) -> Vec<toile_scene::AnimState> {
-    use toile_scene::AnimState as S;
-    match kind {
-        MotionKind::Platform => {
-            if !snap.on_ground && snap.vy >= 0.0 { vec![S::Jump] }
-            else if !snap.on_ground { vec![S::Fall, S::Jump] }
-            else if snap.vx.abs() > move_threshold * 24.0 { vec![S::Run, S::Walk] }
-            else if snap.vx.abs() > move_threshold { vec![S::Walk] }
-            else { vec![S::Idle] }
-        }
-        MotionKind::TopDown => {
-            if snap.vx != 0.0 || snap.vy != 0.0 { vec![S::Walk] } else { vec![S::Idle] }
-        }
-    }
-}
-
-/// Resolve the first state that maps to an existing animation: explicit binding
-/// (`animation_states`) first, then the case-insensitive name-synonym fallback.
-fn resolve_state_to_anim(
-    states: &[toile_scene::AnimState],
-    anims: &[toile_scene::AnimationData],
-    map: Option<&toile_scene::AnimationStateMap>,
-) -> Option<String> {
-    for st in states {
-        if let Some(m) = map {
-            if let Some(bound) = m.anim_for(st) {
-                if anims.iter().any(|a| a.name == bound) {
-                    return Some(bound.to_string());
-                }
-            }
-        }
-        if let Some(name) = pick_state_anim(anims, &[anim_state_canonical(st)]) {
-            return Some(name);
-        }
-    }
-    None
-}
-
-#[cfg(test)]
-mod anim_state_tests {
-    use super::*;
-
-    fn anim(name: &str) -> toile_scene::AnimationData {
-        toile_scene::AnimationData {
-            name: name.into(),
-            frames: vec![0, 1],
-            fps: 8.0,
-            looping: true,
-            sprite_file: None,
-            strip_frames: None,
-        }
-    }
-
-    #[test]
-    fn resolves_case_insensitively_and_via_synonyms() {
-        let anims = vec![anim("Idle"), anim("Marche"), anim("JUMP")];
-        assert_eq!(pick_state_anim(&anims, &["idle"]).as_deref(), Some("Idle"));
-        // "marche" is a synonym of walk, matched case-insensitively.
-        assert_eq!(pick_state_anim(&anims, &["walk"]).as_deref(), Some("Marche"));
-        assert_eq!(pick_state_anim(&anims, &["jump"]).as_deref(), Some("JUMP"));
-        // No "run" (nor synonym) present.
-        assert_eq!(pick_state_anim(&anims, &["run"]), None);
-    }
-
-    #[test]
-    fn falls_back_through_priority_list() {
-        let anims = vec![anim("jump"), anim("walk")];
-        // No "fall" anim → falls back to "jump".
-        assert_eq!(pick_state_anim(&anims, &["fall", "jump"]).as_deref(), Some("jump"));
-        // No "run" anim → falls back to "walk".
-        assert_eq!(pick_state_anim(&anims, &["run", "walk"]).as_deref(), Some("walk"));
-    }
-
-    #[test]
-    fn legacy_exact_names_still_match() {
-        // Non-regression: the classic idle/walk/jump names still resolve.
-        let anims = vec![anim("idle"), anim("walk"), anim("jump")];
-        assert_eq!(pick_state_anim(&anims, &["idle"]).as_deref(), Some("idle"));
-        assert_eq!(pick_state_anim(&anims, &["walk"]).as_deref(), Some("walk"));
-        assert_eq!(pick_state_anim(&anims, &["jump"]).as_deref(), Some("jump"));
-    }
-
-    fn snap(on_ground: bool, vx: f32, vy: f32) -> MotionSnapshot {
-        MotionSnapshot { on_ground, was_on_ground: on_ground, vx, vy }
-    }
-
-    #[test]
-    fn select_states_reproduces_legacy_platform_behaviour() {
-        use toile_scene::AnimState as S;
-        // Airborne rising → Jump (matches legacy "!on_ground → jump").
-        assert_eq!(select_states(MotionKind::Platform, &snap(false, 0.0, 10.0), 5.0), vec![S::Jump]);
-        // Airborne falling → Fall, then Jump as fallback.
-        assert_eq!(select_states(MotionKind::Platform, &snap(false, 0.0, -10.0), 5.0), vec![S::Fall, S::Jump]);
-        // Grounded, |vx| > threshold → Walk (legacy vx.abs() > 5.0).
-        assert_eq!(select_states(MotionKind::Platform, &snap(true, 10.0, 0.0), 5.0), vec![S::Walk]);
-        // Grounded, still → Idle.
-        assert_eq!(select_states(MotionKind::Platform, &snap(true, 0.0, 0.0), 5.0), vec![S::Idle]);
-        // Fast → Run then Walk fallback.
-        assert_eq!(select_states(MotionKind::Platform, &snap(true, 300.0, 0.0), 5.0), vec![S::Run, S::Walk]);
-    }
-
-    #[test]
-    fn resolve_prefers_explicit_binding_then_name_fallback() {
-        use toile_scene::{AnimState, AnimationStateMap};
-        let anims = vec![anim("course"), anim("idle")];
-        let mut map = AnimationStateMap::default();
-        map.set_binding(AnimState::Walk, "course".into());
-        // Walk → explicit binding "course" (even though "course" is a Run synonym, not Walk).
-        assert_eq!(resolve_state_to_anim(&[AnimState::Walk], &anims, Some(&map)).as_deref(), Some("course"));
-        // Idle → no binding, resolves by name fallback.
-        assert_eq!(resolve_state_to_anim(&[AnimState::Idle], &anims, Some(&map)).as_deref(), Some("idle"));
-        // Without a map, Walk has no name/synonym match here → None.
-        assert_eq!(resolve_state_to_anim(&[AnimState::Walk], &anims, None), None);
-    }
-}
 
 fn has_solid_behavior(ent: &RuntimeEntity) -> bool {
     ent.behaviors.iter().any(|b| matches!(b, BehaviorRuntime::Solid))
@@ -943,7 +767,8 @@ impl Game for GameRunner {
             ent.prev_on_ground = ent.es.on_ground;
 
             let auto = ent.data.animation_states.as_ref().map_or(true, |m| m.auto);
-            let move_threshold = ent.data.animation_states.as_ref().map_or(5.0, |m| m.move_threshold);
+            let move_threshold = ent.data.animation_states.as_ref()
+                .map_or(toile_scene::DEFAULT_MOVE_THRESHOLD, |m| m.move_threshold);
             let facing_mode = ent.data.animation_states.as_ref()
                 .map(|m| m.facing)
                 .unwrap_or(toile_scene::FacingMode::VelocityX);
