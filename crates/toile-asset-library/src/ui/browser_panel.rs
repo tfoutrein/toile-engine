@@ -222,6 +222,21 @@ pub fn show_browser_panel(
                                 AssetType::Audio | AssetType::Font | AssetType::Data
                             );
                             if is_visual {
+                                // Entity-first default: add to the current selection without
+                                // destroying its existing clips (ADR-039). Disabled (greyed) when
+                                // nothing is selected, and labelled with the target entity's name.
+                                let add_label = match &app.selection_label {
+                                    Some(n) => format!("➕ Add as animation to «{n}»"),
+                                    None => "➕ Add as animation to selection".to_string(),
+                                };
+                                if ui
+                                    .add_enabled(app.selection_label.is_some(), egui::Button::new(add_label))
+                                    .on_hover_text("Adds this asset as an extra animation on the selected entity (additive — keeps existing ones). Select an entity first.")
+                                    .clicked()
+                                {
+                                    app.pending_add_animation_to_selection = Some(asset_id.clone());
+                                    ui.close_menu();
+                                }
                                 if ui.button("➕ Create new entity from asset").clicked() {
                                     app.pending_add_to_scene = Some(asset_id.clone());
                                     ui.close_menu();

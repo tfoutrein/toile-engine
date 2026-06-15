@@ -52,11 +52,86 @@ pub(crate) fn state_condition_label(state: &toile_scene::AnimState, move_thresho
     }
 }
 
+/// How [`add_animation_to_entity`] resolves a name collision (ADR-039). One rule
+/// replaces the three divergent importer behaviors that used to coexist
+/// (Aseprite = replace, Strip = silently skip, AI = replace).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) enum AnimConflict {
+    /// Keep the existing clip and store the new one under a suffixed name (`walk_2`).
+    /// Re-adding an *identical* clip (same name + source + frames) is a no-op.
+    KeepBoth,
+    /// Overwrite the existing clip of the same name in place (re-importable sources).
+    Replace,
+}
+
+/// Outcome of an additive add, for status reporting. The carried `String` is the
+/// name actually stored (may be suffixed under [`AnimConflict::KeepBoth`]).
+pub(crate) enum AnimAddResult {
+    Added(String),
+    Replaced(String),
+}
+
+/// Add ONE animation to an entity **additively** — never clears existing clips
+/// (ADR-039). The sourcing model is encoded in `anim` itself: a *strip* carries
+/// its own `sprite_file` + `strip_frames` (autonomous, renders from its own file);
+/// a *grid* leaves them `None` and indexes the entity's shared `sprite_sheet`. On a
+/// name collision the `policy` decides. Sets `default_animation` when the entity had
+/// none, then refreshes missing state bindings. Single source of truth shared by the
+/// asset browser, the inspector and the AI tool.
+pub(crate) fn add_animation_to_entity(
+    entity: &mut EntityData,
+    mut anim: toile_scene::AnimationData,
+    policy: AnimConflict,
+) -> AnimAddResult {
+    let collides = entity.animations.iter().any(|a| a.name == anim.name);
+    if collides {
+        match policy {
+            AnimConflict::Replace => {
+                let name = anim.name.clone();
+                if let Some(slot) = entity.animations.iter_mut().find(|a| a.name == name) {
+                    *slot = anim;
+                }
+                auto_populate_missing_bindings(entity);
+                return AnimAddResult::Replaced(name);
+            }
+            AnimConflict::KeepBoth => {
+                // Idempotent re-add: re-importing the exact same clip must not pile up
+                // dead `walk_2`, `walk_3`… copies — only genuine variants get suffixed.
+                if let Some(existing) = entity.animations.iter().find(|a| {
+                    a.name == anim.name && a.sprite_file == anim.sprite_file && a.frames == anim.frames
+                }) {
+                    return AnimAddResult::Added(existing.name.clone());
+                }
+                anim.name = unique_anim_name(entity, &anim.name);
+            }
+        }
+    }
+    let name = anim.name.clone();
+    if entity.default_animation.is_none() {
+        entity.default_animation = Some(name.clone());
+    }
+    entity.animations.push(anim);
+    auto_populate_missing_bindings(entity);
+    AnimAddResult::Added(name)
+}
+
+/// `base`, then `base_2`, `base_3`, … — first name not already used by a clip.
+fn unique_anim_name(entity: &EntityData, base: &str) -> String {
+    if !entity.animations.iter().any(|a| a.name == base) {
+        return base.to_string();
+    }
+    (2..)
+        .map(|i| format!("{base}_{i}"))
+        .find(|cand| !entity.animations.iter().any(|a| a.name == *cand))
+        .expect("infinite range yields a free name")
+}
+
 /// Auto-populate `animation_states` bindings from the entity's animation names, so
 /// the editor state slots reflect what will actually play (ADR-038 Phase 4). Only
-/// fills states that aren't already bound; matches names case-insensitively via a
-/// synonym table (mirrors the runtime fallback).
-pub(crate) fn auto_bind_animation_states(entity: &mut EntityData) {
+/// fills states that aren't already bound (never overwrites an explicit binding —
+/// hardened contract, ADR-039); matches names case-insensitively via a synonym
+/// table (mirrors the runtime fallback).
+pub(crate) fn auto_populate_missing_bindings(entity: &mut EntityData) {
     if entity.animations.is_empty() {
         return;
     }
@@ -323,11 +398,22 @@ mod auto_bind_tests {
         AnimationData { name: name.into(), frames: vec![0], fps: 8.0, looping: true, sprite_file: None, strip_frames: None }
     }
 
+    fn strip(name: &str, file: &str, frames: u32) -> AnimationData {
+        AnimationData {
+            name: name.into(),
+            frames: (0..frames).collect(),
+            fps: 10.0,
+            looping: true,
+            sprite_file: Some(file.into()),
+            strip_frames: Some(frames),
+        }
+    }
+
     #[test]
     fn maps_animation_names_to_states_case_insensitively() {
         let mut e = EntityData::default();
         e.animations = vec![anim("Idle"), anim("course"), anim("Walk")];
-        auto_bind_animation_states(&mut e);
+        auto_populate_missing_bindings(&mut e);
         let m = e.animation_states.expect("bindings created");
         assert_eq!(m.anim_for(&AnimState::Idle), Some("Idle"));
         assert_eq!(m.anim_for(&AnimState::Run), Some("course")); // synonym of run
@@ -342,7 +428,7 @@ mod auto_bind_tests {
         let mut map = toile_scene::AnimationStateMap::default();
         map.set_binding(AnimState::Walk, "custom_walk_anim".into());
         e.animation_states = Some(map);
-        auto_bind_animation_states(&mut e);
+        auto_populate_missing_bindings(&mut e);
         let m = e.animation_states.expect("kept");
         assert_eq!(m.anim_for(&AnimState::Walk), Some("custom_walk_anim")); // preserved
     }
@@ -350,8 +436,55 @@ mod auto_bind_tests {
     #[test]
     fn no_animations_clears_to_none() {
         let mut e = EntityData::default();
-        auto_bind_animation_states(&mut e);
+        auto_populate_missing_bindings(&mut e);
         assert_eq!(e.animation_states, None);
+    }
+
+    #[test]
+    fn add_is_additive_and_sets_first_default() {
+        let mut e = EntityData::default();
+        let r1 = add_animation_to_entity(&mut e, strip("idle", "idle.png", 4), AnimConflict::KeepBoth);
+        let r2 = add_animation_to_entity(&mut e, strip("walk", "walk.png", 6), AnimConflict::KeepBoth);
+        assert!(matches!(r1, AnimAddResult::Added(ref n) if n == "idle"));
+        assert!(matches!(r2, AnimAddResult::Added(ref n) if n == "walk"));
+        assert_eq!(e.animations.len(), 2); // additive — idle not clobbered
+        assert_eq!(e.default_animation.as_deref(), Some("idle")); // first becomes default
+        // Both bound to their states by name.
+        let m = e.animation_states.as_ref().expect("states");
+        assert_eq!(m.anim_for(&AnimState::Idle), Some("idle"));
+        assert_eq!(m.anim_for(&AnimState::Walk), Some("walk"));
+    }
+
+    #[test]
+    fn keep_both_suffixes_on_collision() {
+        let mut e = EntityData::default();
+        add_animation_to_entity(&mut e, strip("walk", "a.png", 6), AnimConflict::KeepBoth);
+        let r = add_animation_to_entity(&mut e, strip("walk", "b.png", 8), AnimConflict::KeepBoth);
+        assert!(matches!(r, AnimAddResult::Added(ref n) if n == "walk_2"));
+        assert_eq!(e.animations.len(), 2);
+        assert_eq!(e.animations[1].name, "walk_2");
+        assert_eq!(e.animations[1].sprite_file.as_deref(), Some("b.png"));
+    }
+
+    #[test]
+    fn replace_overwrites_in_place() {
+        let mut e = EntityData::default();
+        add_animation_to_entity(&mut e, strip("walk", "a.png", 6), AnimConflict::KeepBoth);
+        let r = add_animation_to_entity(&mut e, strip("walk", "b.png", 8), AnimConflict::Replace);
+        assert!(matches!(r, AnimAddResult::Replaced(ref n) if n == "walk"));
+        assert_eq!(e.animations.len(), 1);
+        assert_eq!(e.animations[0].sprite_file.as_deref(), Some("b.png"));
+        assert_eq!(e.animations[0].strip_frames, Some(8));
+    }
+
+    #[test]
+    fn keep_both_is_idempotent_on_identical_reimport() {
+        let mut e = EntityData::default();
+        add_animation_to_entity(&mut e, strip("walk", "a.png", 6), AnimConflict::KeepBoth);
+        // Same name + same source + same frames → no duplicate, no suffix.
+        let r = add_animation_to_entity(&mut e, strip("walk", "a.png", 6), AnimConflict::KeepBoth);
+        assert!(matches!(r, AnimAddResult::Added(ref n) if n == "walk"));
+        assert_eq!(e.animations.len(), 1);
     }
 
     #[test]

@@ -546,25 +546,26 @@ impl EditorApp {
                                                 entity.sprite_path = rel_path.clone();
                                             }
 
-                                            // Remove existing animation with same name
-                                            entity.animations.retain(|a| a.name != anim_name);
-
-                                            // Add strip animation
-                                            entity.animations.push(toile_scene::AnimationData {
+                                            // Go through the same additive helper as the human paths
+                                            // (ADR-039) — strip model, Replace on same-name re-add
+                                            // (helper sets default if none + refreshes bindings).
+                                            let anim = toile_scene::AnimationData {
                                                 name: anim_name.to_string(),
                                                 frames: (0..frame_count).collect(),
                                                 fps,
                                                 looping,
                                                 sprite_file: Some(rel_path.clone()),
                                                 strip_frames: Some(frame_count),
-                                            });
-
-                                            if set_default || entity.default_animation.is_none() {
-                                                entity.default_animation = Some(anim_name.to_string());
+                                            };
+                                            let stored = match crate::helpers::add_animation_to_entity(
+                                                entity, anim, crate::helpers::AnimConflict::Replace,
+                                            ) {
+                                                crate::helpers::AnimAddResult::Added(n)
+                                                | crate::helpers::AnimAddResult::Replaced(n) => n,
+                                            };
+                                            if set_default {
+                                                entity.default_animation = Some(stored);
                                             }
-
-                                            // Pre-fill any missing state bindings, like the human path (ADR-039).
-                                            crate::helpers::auto_bind_animation_states(entity);
 
                                             serde_json::json!({
                                                 "added": true,

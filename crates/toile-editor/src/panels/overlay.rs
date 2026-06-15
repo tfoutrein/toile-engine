@@ -674,6 +674,11 @@ impl EditorApp {
                 self.asset_browser.reload_registered_packs();
                 self.asset_browser.initialized = true;
             }
+            // Tell the browser which entity is selected so it can label/enable the
+            // "Add as animation to «X»" affordances (ADR-039).
+            self.asset_browser.selection_label = self.selected_id
+                .and_then(|id| self.scene.entities.iter().find(|e| e.id == id))
+                .map(|e| e.name.clone());
             self.asset_browser.show_ui(ctx);
 
             // Check if user clicked "AI Re-import" on a pack
@@ -779,13 +784,119 @@ impl EditorApp {
                     }
 
                     // Pre-fill state→anim bindings so the slots reflect what will play (ADR-038 Phase 4).
-                    crate::helpers::auto_bind_animation_states(&mut entity);
+                    crate::helpers::auto_populate_missing_bindings(&mut entity);
 
                     self.scene.entities.push(entity);
                     self.selected_id = Some(id);
                     self.editor_mode = EditorMode::Entity;
                     self.sprite_cache.clear();
                     self.status_msg = format!("Added '{}' to scene", asset.name);
+                }
+            }
+
+            // Add an asset as an ADDITIVE animation on the selected entity (ADR-039).
+            // Uses the autonomous "strip" model (sprite_file set) so it never touches the
+            // entity's base sprite/sheet/other clips — the whole point of "additive".
+            if let Some(asset_id) = self.asset_browser.pending_add_animation_to_selection.take() {
+                let asset = self.asset_browser.library.assets.iter().find(|a| a.id == asset_id).cloned();
+                match (asset, self.selected_id) {
+                    (Some(asset), Some(sel)) => {
+                        // The strip renderer slices a single horizontal row, so a multi-row grid
+                        // sheet would be mis-sliced. We know the layout from metadata → refuse and
+                        // steer to the grid-aware paths instead of silently producing garbage (ADR-039).
+                        let is_grid = matches!(&asset.metadata, toile_asset_library::AssetMetadata::Sprite(sm) if sm.rows > 1);
+                        if is_grid {
+                            self.status_msg = format!(
+                                "'{}' is a multi-row grid sheet — use 'Create new entity' or 'Replace sprite' (additive add only supports horizontal strips)",
+                                asset.name
+                            );
+                        } else {
+                            let abs_path = self.asset_browser.library.absolute_path(&asset);
+                            let sprite_path = match (&pdir, &abs_path) {
+                                (Some(pd), Some(abs)) => abs.strip_prefix(pd).map(|p| p.to_string_lossy().to_string()).unwrap_or_else(|_| abs.to_string_lossy().to_string()),
+                                _ => abs_path.as_ref().map(|p| p.to_string_lossy().to_string()).unwrap_or_default(),
+                            };
+                            // Frame count: trust horizontal-strip metadata, else derive from image (w/h).
+                            let frame_count = match &asset.metadata {
+                                toile_asset_library::AssetMetadata::Sprite(sm) if sm.frame_count > 1 => sm.frame_count,
+                                _ => abs_path.as_ref().and_then(|p| image::image_dimensions(p).ok())
+                                    .map(|(w, h)| if h > 0 && w > h { (w / h).max(1) } else { 1 })
+                                    .unwrap_or(1),
+                            };
+                            // Name from the asset, biased to a motion-state keyword so auto-binding can wire it.
+                            let raw = asset.name.to_lowercase();
+                            let name = ["idle", "run", "walk", "jump", "fall", "die", "dash", "slide", "attack", "hurt", "climb"]
+                                .iter().find(|k| raw.contains(**k)).map(|k| k.to_string())
+                                .unwrap_or_else(|| {
+                                    let cleaned: String = raw.chars().map(|c| if c.is_alphanumeric() { c } else { ' ' }).collect();
+                                    cleaned.split_whitespace().next().unwrap_or("anim").to_string()
+                                });
+                            let anim = toile_scene::AnimationData {
+                                name,
+                                frames: (0..frame_count).collect(),
+                                fps: 10.0,
+                                looping: true,
+                                sprite_file: Some(sprite_path.clone()),
+                                strip_frames: Some(frame_count),
+                            };
+                            self.push_undo();
+                            if let Some(e) = self.scene.find_entity_mut(sel) {
+                                // Give a brand-new entity a base sprite so it renders before any state plays.
+                                if e.sprite_path.is_empty() {
+                                    e.sprite_path = sprite_path;
+                                }
+                                let ename = e.name.clone();
+                                let result = crate::helpers::add_animation_to_entity(e, anim, crate::helpers::AnimConflict::KeepBoth);
+                                self.status_msg = match result {
+                                    crate::helpers::AnimAddResult::Added(n) => format!("Added animation '{}' to '{}'", n, ename),
+                                    crate::helpers::AnimAddResult::Replaced(n) => format!("Replaced animation '{}' on '{}'", n, ename),
+                                };
+                            }
+                            self.sprite_cache.clear();
+                            self.editor_mode = EditorMode::Entity;
+                        }
+                    }
+                    (Some(_), None) => {
+                        self.status_msg = "Select an entity first to add this animation".to_string();
+                    }
+                    _ => {}
+                }
+            }
+
+            // Inspector "+ Add Animation" file picker (deferred so it runs with push_undo
+            // outside the inspector's `&mut entity` borrow — ADR-039). Strip model, additive.
+            if let Some(file) = self.pending_add_anim_file.take() {
+                if let Some(sel) = self.selected_id {
+                    let rel = pdir.as_ref()
+                        .and_then(|pd| file.strip_prefix(pd).ok().map(|p| p.to_string_lossy().to_string()))
+                        .unwrap_or_else(|| file.to_string_lossy().to_string());
+                    let frame_count = image::image_dimensions(&file)
+                        .map(|(w, h)| if h > 0 && w > h { (w / h).max(1) } else { 1 })
+                        .unwrap_or(1);
+                    let stem = file.file_stem().unwrap_or_default().to_string_lossy().to_lowercase();
+                    let name = ["idle", "run", "walk", "jump", "fall", "die", "dash", "slide", "attack", "hurt", "climb"]
+                        .iter().find(|k| stem.contains(**k)).map(|k| k.to_string())
+                        .unwrap_or_else(|| stem.split(|c: char| !c.is_alphanumeric()).find(|s| !s.is_empty()).unwrap_or("anim").to_string());
+                    let anim = toile_scene::AnimationData {
+                        name,
+                        frames: (0..frame_count).collect(),
+                        fps: 10.0,
+                        looping: true,
+                        sprite_file: Some(rel.clone()),
+                        strip_frames: Some(frame_count),
+                    };
+                    self.push_undo();
+                    if let Some(e) = self.scene.find_entity_mut(sel) {
+                        if e.sprite_path.is_empty() {
+                            e.sprite_path = rel;
+                        }
+                        let result = crate::helpers::add_animation_to_entity(e, anim, crate::helpers::AnimConflict::KeepBoth);
+                        self.status_msg = match result {
+                            crate::helpers::AnimAddResult::Added(n) => format!("Added animation '{}'", n),
+                            crate::helpers::AnimAddResult::Replaced(n) => format!("Replaced animation '{}'", n),
+                        };
+                    }
+                    self.sprite_cache.clear();
                 }
             }
 
@@ -833,7 +944,7 @@ impl EditorApp {
                                 e.default_animation = e.animations.first().map(|a| a.name.clone());
                             }
                             // Rebuild state bindings from the new animations (None if none).
-                            crate::helpers::auto_bind_animation_states(e);
+                            crate::helpers::auto_populate_missing_bindings(e);
                         }
                         self.sprite_cache.clear();
                         self.editor_mode = EditorMode::Entity;
