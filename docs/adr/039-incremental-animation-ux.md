@@ -1,6 +1,6 @@
 # ADR-039 : Ajout incrémental d'animations à une entité (flux entité-d'abord, asset browser désambiguïsé, helper additif unique)
 
-- **Statut :** Acceptée — Phases 0, 1 & 2 livrées
+- **Statut :** Acceptée — Phases 0, 0.5, 1 & 2 livrées
 - **Date :** 2026-06-15
 - **Concerne :** v0.5+ (editeur)
 
@@ -81,7 +81,7 @@ une UI de règles qui n'existe pas encore.
 | Phase | Contenu | Effort |
 |---|---|---|
 | **0 — Lisibilité** ✅ | Renommages browser ; anims+états visibles dans la hiérarchie (groupes, tags grid/strip, badges conditions, `!` cassés) ; nettoyage des bindings à la suppression d'anim ; IA appelle auto_bind | S+M |
-| **0.5 — Conditions drift-proof** (option) | Refactor `select_states` → enum partagée dans `toile-scene` + label dérivé testé | L |
+| **0.5 — Conditions drift-proof** ✅ | State machine centralisée dans `toile-scene::anim_runtime` (`MotionKind`/`motion_kind`/`MotionSnapshot`/`select_states`/`state_synonyms`/`resolve_state_to_anim` + const `RUN_THRESHOLD_MULTIPLIER`) ; enum `ConditionDescription` + `condition_for` d'où l'éditeur dérive ses labels (plus de `state_condition_label` codé en dur ni de table de synonymes dupliquée) ; **test anti-dérive** liant `condition_for` ↔ `select_states` (seuils exacts `>`, bascule `vy>=0`) | L |
 | **1 — Ajout additif** (cœur) ✅ | `add_animation_to_entity` unifié (KeepBoth idempotent / Replace) ; action browser « Add as animation to «X» » (libellée + désactivée hors sélection) + drain ; bouton « + Add Animation » inspecteur (différé → push_undo) ; IA + importers Strip/Aseprite/quick-add routés sur le helper ; garde-fou grille `rows>1` (refus + message). Dialogue **modal** Add Animation (fps/loop/collision) reporté en Phase 2. | L |
 | **2 — Inspecteur Animation States** ✅ | Section binding + conditions (au rang de Behaviors/Collision) ; widget partagé `anim_states_ui::animation_states_editor` (Inspecteur ↔ Sprite editor, anti-drift) ; **dialogue modal Add Animation** (nom/fps/loop/bind-state/collision Keep-both·Replace) | M |
 | **3 — Replace sprite + garde-fou grille/strip** | Dialogue Keep/Replace unique (browser + Browse) ; `detect_sourcing_model` | M |
@@ -127,8 +127,9 @@ une UI de règles qui n'existe pas encore.
 
 ## Questions ouvertes
 
-- Placement de `select_states` refactorisée : `toile-scene` (à côté d'`AnimState`)
-  vs module helper partagé — vérifier ADR-009 (flux de dépendances).
+- ~~Placement de `select_states` refactorisée~~ → **résolu (Phase 0.5)** : dans
+  `toile-scene::anim_runtime` (à côté d'`AnimState`), conforme à ADR-009 — `toile-scene`
+  dépend déjà de `toile-behaviors` et est sous le runtime et l'éditeur.
 - États custom : garder lecture seule, ou ouvrir la création + condition basique
   plus tard ?
 - Aligner l'outil **MCP** (`toile-mcp`, round-trips JSON) sur la même règle de

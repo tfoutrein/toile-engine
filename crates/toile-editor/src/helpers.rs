@@ -29,26 +29,21 @@ pub(crate) fn anim_source_tag(anim: &toile_scene::AnimationData) -> &'static str
     if anim.sprite_file.is_some() { "strip" } else { "grid" }
 }
 
-/// Human-readable trigger condition for a canonical state (ADR-039).
-/// KEEP IN SYNC with `select_states` in toile-runner/src/game_runner.rs — a future
-/// refactor (ADR-039 Phase 0.5) will derive both from one shared source.
+/// Human-readable trigger condition for a canonical state (ADR-039 Phase 0.5).
+/// Derived from `toile_scene::condition_for` — the SAME source as the runtime's
+/// `select_states` — so the displayed condition can never drift from real behaviour.
 pub(crate) fn state_condition_label(state: &toile_scene::AnimState, move_threshold: f32, topdown: bool) -> String {
-    use toile_scene::AnimState::*;
-    if topdown {
-        return match state {
-            Walk | Run => "en mouvement".into(),
-            Idle => "immobile".into(),
-            Custom(_) => "scripté (event sheet)".into(),
-            _ => "—".into(),
-        };
-    }
-    match state {
-        Idle => "au sol, immobile".into(),
-        Walk => format!("au sol, |vx| > {:.0}", move_threshold),
-        Run => format!("au sol, |vx| > {:.0}", move_threshold * 24.0),
-        Jump => "en l'air, monte".into(),
-        Fall => "en l'air, descend".into(),
-        Custom(_) => "scripté (event sheet)".into(),
+    use toile_scene::ConditionDescription as C;
+    let kind = if topdown { toile_scene::MotionKind::TopDown } else { toile_scene::MotionKind::Platform };
+    match toile_scene::condition_for(state, kind, move_threshold) {
+        C::GroundedStill => "au sol, immobile".into(),
+        C::GroundedFasterThan { speed } => format!("au sol, |vx| > {speed:.0}"),
+        C::AirborneRising => "en l'air, monte".into(),
+        C::AirborneFalling => "en l'air, descend".into(),
+        C::Moving => "en mouvement".into(),
+        C::Still => "immobile".into(),
+        C::Scripted => "scripté (event sheet)".into(),
+        C::NotApplicable => "—".into(),
     }
 }
 
@@ -129,24 +124,20 @@ fn unique_anim_name(entity: &EntityData, base: &str) -> String {
 /// Auto-populate `animation_states` bindings from the entity's animation names, so
 /// the editor state slots reflect what will actually play (ADR-038 Phase 4). Only
 /// fills states that aren't already bound (never overwrites an explicit binding —
-/// hardened contract, ADR-039); matches names case-insensitively via a synonym
-/// table (mirrors the runtime fallback).
+/// hardened contract, ADR-039); matches names case-insensitively via the SAME synonym
+/// table the runtime uses (`toile_scene::state_synonyms`, ADR-039 Phase 0.5).
 pub(crate) fn auto_populate_missing_bindings(entity: &mut EntityData) {
     if entity.animations.is_empty() {
         return;
     }
-    let states: [(toile_scene::AnimState, &[&str]); 5] = [
-        (toile_scene::AnimState::Idle, &["idle", "repos", "stand", "default", "wait"]),
-        (toile_scene::AnimState::Walk, &["walk", "marche", "move", "moving"]),
-        (toile_scene::AnimState::Run, &["run", "course", "sprint"]),
-        (toile_scene::AnimState::Jump, &["jump", "saut", "sauter", "rise"]),
-        (toile_scene::AnimState::Fall, &["fall", "chute", "tomber"]),
-    ];
+    use toile_scene::AnimState;
+    let canonical = [AnimState::Idle, AnimState::Walk, AnimState::Run, AnimState::Jump, AnimState::Fall];
     let mut map = entity.animation_states.take().unwrap_or_default();
-    for (state, syns) in states {
+    for state in canonical {
         if map.anim_for(&state).is_some() {
             continue; // keep an existing explicit binding
         }
+        let syns = toile_scene::state_synonyms(&state);
         if let Some(a) = entity
             .animations
             .iter()
