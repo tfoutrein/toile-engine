@@ -74,9 +74,10 @@ pub struct EditorApp {
     pub(crate) show_splash: bool,
     /// Counts down from SPLASH_FADE after the splash ends; fades the app in over the bg color.
     pub(crate) splash_fade_in: f32,
-    /// Set by the inspector "+ Add Animation" picker — drained next frame so the add can
-    /// run with push_undo outside the inspector's `&mut entity` borrow (ADR-039).
-    pub(crate) pending_add_anim_file: Option<PathBuf>,
+    /// Modal "Add Animation" dialog state (ADR-039 Phase 2). The dialog runs its add
+    /// with push_undo outside the inspector's `&mut entity` borrow.
+    pub(crate) show_add_anim_dialog: bool,
+    pub(crate) add_anim_form: crate::panels::anim_states_ui::AddAnimForm,
     /// Open viewport context menu (right-click), rendered as an egui Area (ADR-037).
     pub(crate) pending_context_menu: Option<crate::context_menu::ContextMenuKind>,
     /// Anchor (egui points) captured the first frame the viewport menu opens.
@@ -238,7 +239,8 @@ impl EditorApp {
             splash_timer: SPLASH_DURATION,
             show_splash: true,
             splash_fade_in: 0.0,
-            pending_add_anim_file: None,
+            show_add_anim_dialog: false,
+            add_anim_form: crate::panels::anim_states_ui::AddAnimForm::default(),
             pending_context_menu: None,
             context_menu_anchor: None,
             egui_consumed_pointer: false,

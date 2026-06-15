@@ -1,3 +1,4 @@
+pub mod anim_states_ui;
 pub mod inspector;
 pub mod sprite_editor;
 pub mod overlay;

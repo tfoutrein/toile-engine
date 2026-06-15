@@ -1,6 +1,6 @@
 # ADR-039 : Ajout incrémental d'animations à une entité (flux entité-d'abord, asset browser désambiguïsé, helper additif unique)
 
-- **Statut :** Acceptée — Phases 0 & 1 livrées (dialogue modal Add Animation reporté en Phase 2)
+- **Statut :** Acceptée — Phases 0, 1 & 2 livrées
 - **Date :** 2026-06-15
 - **Concerne :** v0.5+ (editeur)
 
@@ -83,7 +83,7 @@ une UI de règles qui n'existe pas encore.
 | **0 — Lisibilité** ✅ | Renommages browser ; anims+états visibles dans la hiérarchie (groupes, tags grid/strip, badges conditions, `!` cassés) ; nettoyage des bindings à la suppression d'anim ; IA appelle auto_bind | S+M |
 | **0.5 — Conditions drift-proof** (option) | Refactor `select_states` → enum partagée dans `toile-scene` + label dérivé testé | L |
 | **1 — Ajout additif** (cœur) ✅ | `add_animation_to_entity` unifié (KeepBoth idempotent / Replace) ; action browser « Add as animation to «X» » (libellée + désactivée hors sélection) + drain ; bouton « + Add Animation » inspecteur (différé → push_undo) ; IA + importers Strip/Aseprite/quick-add routés sur le helper ; garde-fou grille `rows>1` (refus + message). Dialogue **modal** Add Animation (fps/loop/collision) reporté en Phase 2. | L |
-| **2 — Inspecteur Animation States** | Section binding + conditions + Add Animation | M |
+| **2 — Inspecteur Animation States** ✅ | Section binding + conditions (au rang de Behaviors/Collision) ; widget partagé `anim_states_ui::animation_states_editor` (Inspecteur ↔ Sprite editor, anti-drift) ; **dialogue modal Add Animation** (nom/fps/loop/bind-state/collision Keep-both·Replace) | M |
 | **3 — Replace sprite + garde-fou grille/strip** | Dialogue Keep/Replace unique (browser + Browse) ; `detect_sourcing_model` | M |
 | **4 — Arbre État>Anim>Frames** (option, reportée) | Jugé régressif par 2 revues → seulement si besoin confirmé ; nécessite d'extraire d'abord le frame picker en composant | L |
 

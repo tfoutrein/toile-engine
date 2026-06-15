@@ -590,6 +590,8 @@ impl EditorApp {
                 });
             if !open { self.show_save_dialog = false; }
         }
+        // Modal "Add Animation" dialog (ADR-039 Phase 2).
+        self.show_add_animation_dialog(ctx, pdir);
         if do_undo { self.undo(); }
         if do_redo { self.redo(); }
         if add_entity {
@@ -860,43 +862,6 @@ impl EditorApp {
                         self.status_msg = "Select an entity first to add this animation".to_string();
                     }
                     _ => {}
-                }
-            }
-
-            // Inspector "+ Add Animation" file picker (deferred so it runs with push_undo
-            // outside the inspector's `&mut entity` borrow — ADR-039). Strip model, additive.
-            if let Some(file) = self.pending_add_anim_file.take() {
-                if let Some(sel) = self.selected_id {
-                    let rel = pdir.as_ref()
-                        .and_then(|pd| file.strip_prefix(pd).ok().map(|p| p.to_string_lossy().to_string()))
-                        .unwrap_or_else(|| file.to_string_lossy().to_string());
-                    let frame_count = image::image_dimensions(&file)
-                        .map(|(w, h)| if h > 0 && w > h { (w / h).max(1) } else { 1 })
-                        .unwrap_or(1);
-                    let stem = file.file_stem().unwrap_or_default().to_string_lossy().to_lowercase();
-                    let name = ["idle", "run", "walk", "jump", "fall", "die", "dash", "slide", "attack", "hurt", "climb"]
-                        .iter().find(|k| stem.contains(**k)).map(|k| k.to_string())
-                        .unwrap_or_else(|| stem.split(|c: char| !c.is_alphanumeric()).find(|s| !s.is_empty()).unwrap_or("anim").to_string());
-                    let anim = toile_scene::AnimationData {
-                        name,
-                        frames: (0..frame_count).collect(),
-                        fps: 10.0,
-                        looping: true,
-                        sprite_file: Some(rel.clone()),
-                        strip_frames: Some(frame_count),
-                    };
-                    self.push_undo();
-                    if let Some(e) = self.scene.find_entity_mut(sel) {
-                        if e.sprite_path.is_empty() {
-                            e.sprite_path = rel;
-                        }
-                        let result = crate::helpers::add_animation_to_entity(e, anim, crate::helpers::AnimConflict::KeepBoth);
-                        self.status_msg = match result {
-                            crate::helpers::AnimAddResult::Added(n) => format!("Added animation '{}'", n),
-                            crate::helpers::AnimAddResult::Replaced(n) => format!("Replaced animation '{}'", n),
-                        };
-                    }
-                    self.sprite_cache.clear();
                 }
             }
 

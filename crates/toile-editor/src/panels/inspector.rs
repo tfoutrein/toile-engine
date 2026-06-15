@@ -485,17 +485,11 @@ impl EditorApp {
                                 }
                                 ui.add_space(4.0);
                                 ui.horizontal(|ui| {
-                                    // Additive add from the inspector (ADR-039). The actual mutation is
-                                    // deferred (pending_add_anim_file) so it runs with push_undo outside
-                                    // this `&mut entity` borrow — same unified helper as browser / AI.
-                                    if ui.button("➕ Add Animation").on_hover_text("Pick a horizontal strip / PNG to add as an extra animation (keeps existing ones)").clicked() {
-                                        if let Some(file) = rfd::FileDialog::new()
-                                            .set_title("Add Animation")
-                                            .add_filter("Images", &["png", "jpg", "jpeg", "bmp"])
-                                            .pick_file()
-                                        {
-                                            self.pending_add_anim_file = Some(file);
-                                        }
+                                    // Opens the modal Add Animation dialog (ADR-039 Phase 2): name /
+                                    // fps / loop / collision / state binding, then the unified helper.
+                                    if ui.button("➕ Add Animation").on_hover_text("Add an extra animation (keeps existing ones)").clicked() {
+                                        self.show_add_anim_dialog = true;
+                                        self.add_anim_form = Default::default();
                                     }
                                     if ui.button("Edit Sprite & Animations...").clicked() {
                                         self.editor_mode = EditorMode::SpriteAnim;
@@ -506,19 +500,31 @@ impl EditorApp {
                         ui.add_space(4.0);
                         ui.horizontal(|ui| {
                             // A blank entity can grow its first clip straight from here (ADR-039).
-                            if ui.button("➕ Add Animation").on_hover_text("Pick a horizontal strip / PNG — becomes this entity's first animation").clicked() {
-                                if let Some(file) = rfd::FileDialog::new()
-                                    .set_title("Add Animation")
-                                    .add_filter("Images", &["png", "jpg", "jpeg", "bmp"])
-                                    .pick_file()
-                                {
-                                    self.pending_add_anim_file = Some(file);
-                                }
+                            if ui.button("➕ Add Animation").on_hover_text("Add this entity's first animation").clicked() {
+                                self.show_add_anim_dialog = true;
+                                self.add_anim_form = Default::default();
                             }
                             if ui.button("Setup Sprite & Animations...").clicked() {
                                 self.editor_mode = EditorMode::SpriteAnim;
                             }
                         });
+                    }
+
+                    // ── Animation States ─────────────────────────────────
+                    // Editable state→clip bindings with their trigger conditions, at the
+                    // rank of Behaviors/Collision (ADR-039 Phase 2). Shown when the entity
+                    // has clips OR a movement behavior (mirrors the Sprite editor); the
+                    // shared widget then guides the user to add the missing piece.
+                    let has_movement = entity.behaviors.iter().any(|b| {
+                        matches!(b, BehaviorConfig::Platform(_) | BehaviorConfig::TopDown(_))
+                    });
+                    if !entity.animations.is_empty() || has_movement {
+                        ui.add_space(4.0);
+                        egui::CollapsingHeader::new(egui::RichText::new("Animation States").strong())
+                            .default_open(true)
+                            .show(ui, |ui| {
+                                crate::panels::anim_states_ui::animation_states_editor(ui, entity);
+                            });
                     }
 
                     egui::CollapsingHeader::new(egui::RichText::new("Event Sheet").strong())
