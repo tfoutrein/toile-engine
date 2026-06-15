@@ -2,6 +2,7 @@ use glam::Vec2;
 use toile_app::{GameContext, Key};
 use toile_core::particles::{ParticleEmitter, ParticlePool};
 
+use crate::context_menu::ContextMenuKind;
 use crate::editor_app::{EditorMode, EditorApp, ResizeHandle};
 use crate::tilemap_tool::TileTool;
 
@@ -298,20 +299,9 @@ impl EditorApp {
                         Vec2::new(s.camera_position[0], s.camera_position[1]) - world_pos;
                     self.status_msg = "Moving start camera".to_string();
                 } else {
-                    // Try to pick an entity for drag (rotation-aware hit test)
-                    let mut clicked_id = None;
-                    for entity in self.scene.entities.iter().rev() {
-                        let hw = entity.width * entity.scale_x * 0.5;
-                        let hh = entity.height * entity.scale_y * 0.5;
-                        // Transform mouse into entity's local space (undo rotation)
-                        let d = world_pos - Vec2::new(entity.x, entity.y);
-                        let (sin, cos) = (-entity.rotation).sin_cos();
-                        let local = Vec2::new(d.x * cos - d.y * sin, d.x * sin + d.y * cos);
-                        if local.x >= -hw && local.x <= hw && local.y >= -hh && local.y <= hh {
-                            clicked_id = Some(entity.id);
-                            break;
-                        }
-                    }
+                    // Try to pick an entity for drag (rotation-aware hit test, shared with the
+                    // right-click context menu).
+                    let clicked_id = self.hit_test_entity(world_pos);
 
                     if let Some(id) = clicked_id {
                         self.push_undo();
@@ -451,6 +441,33 @@ impl EditorApp {
                 self.resizing = None;
                 self.rotating = false;
                 self.dragging_guide = false;
+            }
+        }
+
+        // Right-click → open the viewport context menu (entity under cursor, else empty-space
+        // menu). Shift+right-click is reserved (future tilemap erase); skip when egui owns the
+        // pointer (over a panel/menu) or a gesture is in progress. The menu renders in
+        // render_overlay via show_viewport_context_menu (ADR-037).
+        if self.editor_mode == EditorMode::Entity
+            && !self.panning
+            && self.dragging.is_none()
+            && self.resizing.is_none()
+            && !self.rotating
+            && !self.egui_consumed_pointer
+            && ctx.input.is_mouse_just_pressed(toile_app::MouseButton::Right)
+        {
+            let shift = ctx.input.is_key_down(Key::ShiftLeft) || ctx.input.is_key_down(Key::ShiftRight);
+            if !shift {
+                let world = ctx.camera.screen_to_world(ctx.input.mouse_position());
+                let kind = match self.hit_test_entity(world) {
+                    Some(id) => {
+                        self.selected_id = Some(id);
+                        ContextMenuKind::Entity { id, world }
+                    }
+                    None => ContextMenuKind::Viewport { world },
+                };
+                self.pending_context_menu = Some(kind);
+                self.context_menu_anchor = None; // captured from egui pointer pos at render
             }
         }
 

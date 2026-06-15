@@ -74,6 +74,13 @@ pub struct EditorApp {
     pub(crate) show_splash: bool,
     /// Counts down from SPLASH_FADE after the splash ends; fades the app in over the bg color.
     pub(crate) splash_fade_in: f32,
+    /// Open viewport context menu (right-click), rendered as an egui Area (ADR-037).
+    pub(crate) pending_context_menu: Option<crate::context_menu::ContextMenuKind>,
+    /// Anchor (egui points) captured the first frame the viewport menu opens.
+    pub(crate) context_menu_anchor: Option<egui::Pos2>,
+    /// True when egui owns the pointer this frame (over a panel/menu); read next frame
+    /// in handle_update so a viewport right-click never opens under an egui panel.
+    pub(crate) egui_consumed_pointer: bool,
     /// Logo spiral sampled into fluid pixels (built once in init).
     pub(crate) splash_particles: Vec<SplashParticle>,
     // Tilemap editor
@@ -224,6 +231,9 @@ impl EditorApp {
             splash_timer: SPLASH_DURATION,
             show_splash: true,
             splash_fade_in: 0.0,
+            pending_context_menu: None,
+            context_menu_anchor: None,
+            egui_consumed_pointer: false,
             splash_particles: Vec::new(),
             tilemap_editor: TilemapEditor::new(),
             background_tex: None,
@@ -607,6 +617,12 @@ impl Game for EditorApp {
             painter.rect_filled(ctx.screen_rect(), 0.0, color);
             ctx.request_repaint();
         }
+
+        // Viewport right-click context menu (ADR-037): drawn as an egui Area over the wgpu
+        // viewport. Then record whether egui owns the pointer this frame, so next frame's
+        // handle_update won't open a viewport menu under a panel.
+        self.show_viewport_context_menu(&ctx);
+        self.egui_consumed_pointer = ctx.is_pointer_over_area() || ctx.wants_pointer_input();
 
         self.overlay.as_mut().unwrap().end_frame_and_render(device, queue, encoder, view, window, size);
     }
