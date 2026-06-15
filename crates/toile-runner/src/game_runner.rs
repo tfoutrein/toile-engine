@@ -63,6 +63,13 @@ struct RuntimeEntity {
     current_anim: Option<String>,
     anim_frame: f32, // fractional frame index (advances by fps*dt)
     facing_left: bool,
+    /// on_ground from the previous frame, to detect the ground→air transition (ADR-038).
+    prev_on_ground: bool,
+    /// True once a non-looping animation has reached its last frame.
+    anim_finished: bool,
+    /// Set when an event sheet PlayAnimation overrides the auto state machine; the
+    /// auto selection is suspended until the locked anim finishes (ADR-038).
+    anim_locked: bool,
     // Previous fixed-update transform, for render interpolation (audit P1).
     prev_position: Vec2,
     prev_rotation: f32,
@@ -131,6 +138,68 @@ fn pick_state_anim(anims: &[toile_scene::AnimationData], wanted: &[&str]) -> Opt
     })
 }
 
+/// Snapshot of an entity's motion, used to drive the animation state machine (ADR-038).
+struct MotionSnapshot {
+    on_ground: bool,
+    #[allow(dead_code)]
+    was_on_ground: bool,
+    vx: f32,
+    vy: f32,
+}
+
+/// Canonical lowercase name for a state (used for the name-synonym fallback).
+fn anim_state_canonical(s: &toile_scene::AnimState) -> &str {
+    use toile_scene::AnimState::*;
+    match s {
+        Idle => "idle",
+        Walk => "walk",
+        Run => "run",
+        Jump => "jump",
+        Fall => "fall",
+        Custom(name) => name.as_str(),
+    }
+}
+
+/// States to try, in priority order, for the current motion (first that resolves wins).
+/// World +y is up: velocity.y >= 0 means rising (jump), < 0 means falling (fall).
+fn select_states(kind: MotionKind, snap: &MotionSnapshot, move_threshold: f32) -> Vec<toile_scene::AnimState> {
+    use toile_scene::AnimState as S;
+    match kind {
+        MotionKind::Platform => {
+            if !snap.on_ground && snap.vy >= 0.0 { vec![S::Jump] }
+            else if !snap.on_ground { vec![S::Fall, S::Jump] }
+            else if snap.vx.abs() > move_threshold * 24.0 { vec![S::Run, S::Walk] }
+            else if snap.vx.abs() > move_threshold { vec![S::Walk] }
+            else { vec![S::Idle] }
+        }
+        MotionKind::TopDown => {
+            if snap.vx != 0.0 || snap.vy != 0.0 { vec![S::Walk] } else { vec![S::Idle] }
+        }
+    }
+}
+
+/// Resolve the first state that maps to an existing animation: explicit binding
+/// (`animation_states`) first, then the case-insensitive name-synonym fallback.
+fn resolve_state_to_anim(
+    states: &[toile_scene::AnimState],
+    anims: &[toile_scene::AnimationData],
+    map: Option<&toile_scene::AnimationStateMap>,
+) -> Option<String> {
+    for st in states {
+        if let Some(m) = map {
+            if let Some(bound) = m.anim_for(st) {
+                if anims.iter().any(|a| a.name == bound) {
+                    return Some(bound.to_string());
+                }
+            }
+        }
+        if let Some(name) = pick_state_anim(anims, &[anim_state_canonical(st)]) {
+            return Some(name);
+        }
+    }
+    None
+}
+
 #[cfg(test)]
 mod anim_state_tests {
     use super::*;
@@ -173,6 +242,39 @@ mod anim_state_tests {
         assert_eq!(pick_state_anim(&anims, &["idle"]).as_deref(), Some("idle"));
         assert_eq!(pick_state_anim(&anims, &["walk"]).as_deref(), Some("walk"));
         assert_eq!(pick_state_anim(&anims, &["jump"]).as_deref(), Some("jump"));
+    }
+
+    fn snap(on_ground: bool, vx: f32, vy: f32) -> MotionSnapshot {
+        MotionSnapshot { on_ground, was_on_ground: on_ground, vx, vy }
+    }
+
+    #[test]
+    fn select_states_reproduces_legacy_platform_behaviour() {
+        use toile_scene::AnimState as S;
+        // Airborne rising → Jump (matches legacy "!on_ground → jump").
+        assert_eq!(select_states(MotionKind::Platform, &snap(false, 0.0, 10.0), 5.0), vec![S::Jump]);
+        // Airborne falling → Fall, then Jump as fallback.
+        assert_eq!(select_states(MotionKind::Platform, &snap(false, 0.0, -10.0), 5.0), vec![S::Fall, S::Jump]);
+        // Grounded, |vx| > threshold → Walk (legacy vx.abs() > 5.0).
+        assert_eq!(select_states(MotionKind::Platform, &snap(true, 10.0, 0.0), 5.0), vec![S::Walk]);
+        // Grounded, still → Idle.
+        assert_eq!(select_states(MotionKind::Platform, &snap(true, 0.0, 0.0), 5.0), vec![S::Idle]);
+        // Fast → Run then Walk fallback.
+        assert_eq!(select_states(MotionKind::Platform, &snap(true, 300.0, 0.0), 5.0), vec![S::Run, S::Walk]);
+    }
+
+    #[test]
+    fn resolve_prefers_explicit_binding_then_name_fallback() {
+        use toile_scene::{AnimState, AnimationStateMap};
+        let anims = vec![anim("course"), anim("idle")];
+        let mut map = AnimationStateMap::default();
+        map.set_binding(AnimState::Walk, "course".into());
+        // Walk → explicit binding "course" (even though "course" is a Run synonym, not Walk).
+        assert_eq!(resolve_state_to_anim(&[AnimState::Walk], &anims, Some(&map)).as_deref(), Some("course"));
+        // Idle → no binding, resolves by name fallback.
+        assert_eq!(resolve_state_to_anim(&[AnimState::Idle], &anims, Some(&map)).as_deref(), Some("idle"));
+        // Without a map, Walk has no name/synonym match here → None.
+        assert_eq!(resolve_state_to_anim(&[AnimState::Walk], &anims, None), None);
     }
 }
 
@@ -331,6 +433,9 @@ impl GameRunner {
             current_anim: data.default_animation.clone(),
             anim_frame: 0.0,
             facing_left: false,
+            prev_on_ground: true,
+            anim_finished: false,
+            anim_locked: false,
             prev_position: Vec2::new(data.x, data.y),
             prev_rotation: data.rotation,
             data: data.clone(),
@@ -784,6 +889,10 @@ impl Game for GameRunner {
                             ent.current_anim = Some(anim.clone());
                             ent.anim_frame = 0.0;
                         }
+                        // A scripted PlayAnimation takes priority over the auto state machine
+                        // until the anim finishes (or another order) — ADR-038.
+                        ent.anim_locked = true;
+                        ent.anim_finished = false;
                     }
                 }
             }
@@ -808,69 +917,63 @@ impl Game for GameRunner {
         for ent in &mut self.entities {
             if !ent.alive || ent.data.animations.is_empty() { continue; }
 
-            // Auto-select the animation from motion state for ANY entity that has a
-            // movement behavior (Platform/TopDown) — not just the player (ADR-038 Phase 0).
-            // World +y is up: velocity.y > 0 means rising (jump), < 0 means falling (fall).
-            match motion_kind(&ent.data) {
-                Some(kind) => {
-                    let vx = ent.es.velocity.x;
-                    let vy = ent.es.velocity.y;
-                    let on_ground = ent.es.on_ground;
-                    // Canonical states to try in priority order; first that maps to an
-                    // existing anim (by name, case-insensitive + synonyms) wins.
-                    let wanted: &[&str] = match kind {
-                        MotionKind::Platform => {
-                            if !on_ground && vy >= 0.0 { &["jump"] }
-                            else if !on_ground { &["fall", "jump"] }
-                            else if vx.abs() > 120.0 { &["run", "walk"] }
-                            else if vx.abs() > 5.0 { &["walk"] }
-                            else { &["idle"] }
-                        }
-                        MotionKind::TopDown => {
-                            if vx != 0.0 || vy != 0.0 { &["walk"] } else { &["idle"] }
-                        }
-                    };
-                    // Track facing from horizontal velocity (generalised to all entities).
-                    if vx > 5.0 { ent.facing_left = false; }
-                    else if vx < -5.0 { ent.facing_left = true; }
+            // ── Animation state machine (ADR-038 Phase 2) ──
+            // Snapshot motion; auto-animate any entity with a movement behavior unless an
+            // explicit animation_states map opts out (auto = false) or a scripted anim is locked.
+            let snap = MotionSnapshot {
+                on_ground: ent.es.on_ground,
+                was_on_ground: ent.prev_on_ground,
+                vx: ent.es.velocity.x,
+                vy: ent.es.velocity.y,
+            };
+            ent.prev_on_ground = ent.es.on_ground;
 
-                    if let Some(new_anim) = pick_state_anim(&ent.data.animations, wanted) {
-                        if ent.current_anim.as_deref() != Some(new_anim.as_str()) {
-                            ent.current_anim = Some(new_anim);
-                            ent.anim_frame = 0.0;
-                        }
-                    } else if ent.current_anim.is_none() {
-                        // No state anim matched — fall back so something plays.
-                        if let Some(name) = ent.data.default_animation.clone()
-                            .or_else(|| ent.data.animations.first().map(|a| a.name.clone()))
-                        {
-                            ent.current_anim = Some(name);
-                            ent.anim_frame = 0.0;
-                        }
+            let auto = ent.data.animation_states.as_ref().map_or(true, |m| m.auto);
+            let move_threshold = ent.data.animation_states.as_ref().map_or(5.0, |m| m.move_threshold);
+            let facing_mode = ent.data.animation_states.as_ref()
+                .map(|m| m.facing)
+                .unwrap_or(toile_scene::FacingMode::VelocityX);
+
+            let selected: Option<String> = match motion_kind(&ent.data) {
+                Some(kind) if auto && !ent.anim_locked => {
+                    if facing_mode != toile_scene::FacingMode::None {
+                        if snap.vx > 5.0 { ent.facing_left = false; }
+                        else if snap.vx < -5.0 { ent.facing_left = true; }
                     }
+                    let states = select_states(kind, &snap, move_threshold);
+                    resolve_state_to_anim(&states, &ent.data.animations, ent.data.animation_states.as_ref())
                 }
-                None => {
-                    // No movement behavior: play the default (or first) animation, once.
-                    if ent.current_anim.is_none() {
-                        if let Some(name) = ent.data.default_animation.clone()
-                            .or_else(|| ent.data.animations.first().map(|a| a.name.clone()))
-                        {
-                            ent.current_anim = Some(name);
-                            ent.anim_frame = 0.0;
-                        }
-                    }
+                _ => None,
+            };
+
+            if let Some(name) = selected {
+                if ent.current_anim.as_deref() != Some(name.as_str()) {
+                    ent.current_anim = Some(name);
+                    ent.anim_frame = 0.0;
+                }
+            } else if ent.current_anim.is_none() {
+                // No state anim resolved (or auto off): make sure something plays.
+                if let Some(name) = ent.data.default_animation.clone()
+                    .or_else(|| ent.data.animations.first().map(|a| a.name.clone()))
+                {
+                    ent.current_anim = Some(name);
+                    ent.anim_frame = 0.0;
                 }
             }
 
-            // Advance animation frame
+            // Advance the frame; track completion of non-looping anims and release a
+            // scripted lock once its anim has finished.
             if let Some(ref anim_name) = ent.current_anim {
                 if let Some(anim) = ent.data.animations.iter().find(|a| a.name == *anim_name) {
                     if !anim.frames.is_empty() {
                         ent.anim_frame += anim.fps * dt_f;
                         if anim.looping {
                             ent.anim_frame %= anim.frames.len() as f32;
-                        } else {
-                            ent.anim_frame = ent.anim_frame.min(anim.frames.len() as f32 - 0.01);
+                            ent.anim_finished = false;
+                        } else if ent.anim_frame >= anim.frames.len() as f32 - 0.01 {
+                            ent.anim_frame = anim.frames.len() as f32 - 0.01;
+                            ent.anim_finished = true;
+                            ent.anim_locked = false; // let the auto state machine resume
                         }
                     }
                 }
