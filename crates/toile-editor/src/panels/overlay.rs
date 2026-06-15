@@ -778,6 +778,9 @@ impl EditorApp {
                         }
                     }
 
+                    // Pre-fill state→anim bindings so the slots reflect what will play (ADR-038 Phase 4).
+                    crate::helpers::auto_bind_animation_states(&mut entity);
+
                     self.scene.entities.push(entity);
                     self.selected_id = Some(id);
                     self.editor_mode = EditorMode::Entity;
@@ -799,6 +802,13 @@ impl EditorApp {
                         self.push_undo();
                         if let Some(e) = self.scene.find_entity_mut(sel) {
                             e.sprite_path = sprite_path;
+                            // Replacing the sprite invalidates the previous sheet/animations/
+                            // bindings → reset unconditionally (fresh start, like Add to Scene),
+                            // then repopulate from the new asset's metadata (ADR-038 Phase 4).
+                            e.sprite_sheet = None;
+                            e.animations.clear();
+                            e.default_animation = None;
+                            e.animation_states = None;
                             if let toile_asset_library::AssetMetadata::Sprite(ref sm) = asset.metadata {
                                 if sm.frame_count > 1 {
                                     e.sprite_sheet = Some(toile_scene::SpriteSheetData {
@@ -810,7 +820,20 @@ impl EditorApp {
                                 }
                                 e.width = sm.frame_width as f32;
                                 e.height = sm.frame_height as f32;
+                                for anim in &sm.animations {
+                                    e.animations.push(toile_scene::AnimationData {
+                                        name: anim.name.clone(),
+                                        frames: anim.frames.clone(),
+                                        fps: anim.fps,
+                                        looping: anim.looping,
+                                        sprite_file: None,
+                                        strip_frames: None,
+                                    });
+                                }
+                                e.default_animation = e.animations.first().map(|a| a.name.clone());
                             }
+                            // Rebuild state bindings from the new animations (None if none).
+                            crate::helpers::auto_bind_animation_states(e);
                         }
                         self.sprite_cache.clear();
                         self.editor_mode = EditorMode::Entity;
