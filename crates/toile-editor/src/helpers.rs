@@ -95,8 +95,8 @@ pub(crate) fn auto_detect_sprite_sheet(sprite_path: &str, pdir: &Option<PathBuf>
 pub(crate) fn entity_icon(entity: &EntityData) -> &'static str {
     if entity.light.is_some() { return "💡"; }
     if entity.particle_emitter.is_some() { return "✨"; }
-    if entity.tags.iter().any(|t| t.eq_ignore_ascii_case("player")) { return "🧑"; }
-    if entity.behaviors.iter().any(|b| matches!(b, BehaviorConfig::Solid)) { return "🧱"; }
+    if entity.tags.iter().any(|t| t.eq_ignore_ascii_case("player")) { return "👤"; }
+    if entity.behaviors.iter().any(|b| matches!(b, BehaviorConfig::Solid)) { return "⬛"; }
     if entity.behaviors.iter().any(|b| matches!(b, BehaviorConfig::Platform(_) | BehaviorConfig::TopDown(_))) { return "🏃"; }
     "📦"
 }

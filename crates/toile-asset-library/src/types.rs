@@ -43,8 +43,8 @@ impl AssetType {
 
     pub fn icon(&self) -> &'static str {
         match self {
-            Self::Sprite => "🧑",
-            Self::Tileset => "🧱",
+            Self::Sprite => "👤",
+            Self::Tileset => "⬛",
             Self::Tilemap => "🗺",
             Self::Background => "🌄",
             Self::Gui => "🖥",
@@ -53,7 +53,7 @@ impl AssetType {
             Self::Font => "🔤",
             Self::Vfx => "✨",
             Self::Prop => "📦",
-            Self::Skeleton => "🦴",
+            Self::Skeleton => "💀",
             Self::Data => "📄",
             Self::Unknown => "❓",
         }

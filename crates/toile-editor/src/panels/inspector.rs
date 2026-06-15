@@ -57,10 +57,10 @@ impl EditorApp {
                     } else { "object" };
 
                     let role_display = match current_role {
-                        "player_platformer" => "🧑 Player (Platformer)",
-                        "player_topdown"    => "🧑 Player (Top-Down)",
-                        "player_custom"     => "🧑 Player (Custom)",
-                        "solid"             => "🧱 Ground / Wall",
+                        "player_platformer" => "👤 Player (Platformer)",
+                        "player_topdown"    => "👤 Player (Top-Down)",
+                        "player_custom"     => "👤 Player (Custom)",
+                        "solid"             => "⬛ Ground / Wall",
                         "collectible"       => "⭐ Collectible",
                         "enemy"             => "👾 Enemy",
                         _                   => "📦 Object",
@@ -78,15 +78,15 @@ impl EditorApp {
                                 }
                                 ui.separator();
                                 ui.label(egui::RichText::new("Player").size(11.0).color(egui::Color32::from_gray(150)));
-                                if ui.selectable_label(current_role == "player_platformer", "🧑 Platformer — move + jump").clicked() {
+                                if ui.selectable_label(current_role == "player_platformer", "👤 Platformer — move + jump").clicked() {
                                     new_role = "player_platformer".to_string();
                                 }
-                                if ui.selectable_label(current_role == "player_topdown", "🧑 Top-Down — 4/8 directions").clicked() {
+                                if ui.selectable_label(current_role == "player_topdown", "👤 Top-Down — 4/8 directions").clicked() {
                                     new_role = "player_topdown".to_string();
                                 }
                                 ui.separator();
                                 ui.label(egui::RichText::new("Environment").size(11.0).color(egui::Color32::from_gray(150)));
-                                if ui.selectable_label(current_role == "solid", "🧱 Ground / Wall — blocks player").clicked() {
+                                if ui.selectable_label(current_role == "solid", "⬛ Ground / Wall — blocks player").clicked() {
                                     new_role = "solid".to_string();
                                 }
                                 ui.separator();

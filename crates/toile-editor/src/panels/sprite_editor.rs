@@ -632,7 +632,7 @@ impl EditorApp {
                                     ui.horizontal_wrapped(|ui| {
                                         ui.label(egui::RichText::new(format!("{anim_name}:")).strong());
                                         for (i, f) in anim.frames.iter().enumerate() {
-                                            if ui.small_button(format!("{f} ✕")).on_hover_text("Remove this frame").clicked() {
+                                            if ui.small_button(format!("{f} ✖")).on_hover_text("Remove this frame").clicked() {
                                                 remove_seq_idx = Some(i);
                                             }
                                         }
