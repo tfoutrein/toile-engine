@@ -224,6 +224,76 @@ pub struct TilemapLayerData {
     pub visible: bool,
 }
 
+/// A canonical motion-driven animation state (ADR-038). `Custom` covers
+/// attack/hurt/dash etc. without recompiling.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub enum AnimState {
+    Idle,
+    Walk,
+    Run,
+    Jump,
+    Fall,
+    Custom(String),
+}
+
+/// How an entity flips horizontally to face its movement direction.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Default)]
+pub enum FacingMode {
+    None,
+    #[default]
+    VelocityX,
+    InputX,
+}
+
+/// Binds a motion state to an animation by name (an existing `AnimationData.name`).
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct StateBinding {
+    pub state: AnimState,
+    pub anim: String,
+}
+
+/// Declarative state→animation map on an entity (ADR-038). Additive / opt-in:
+/// when absent, the legacy auto-animation path applies unchanged.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct AnimationStateMap {
+    #[serde(default)]
+    pub bindings: Vec<StateBinding>,
+    #[serde(default = "default_facing")]
+    pub facing: FacingMode,
+    #[serde(default = "default_true_val")]
+    pub auto: bool,
+    #[serde(default = "default_move_threshold")]
+    pub move_threshold: f32,
+}
+
+fn default_facing() -> FacingMode { FacingMode::VelocityX }
+fn default_move_threshold() -> f32 { 5.0 }
+
+impl Default for AnimationStateMap {
+    fn default() -> Self {
+        Self {
+            bindings: Vec::new(),
+            facing: FacingMode::VelocityX,
+            auto: true,
+            move_threshold: 5.0,
+        }
+    }
+}
+
+impl AnimationStateMap {
+    /// The animation bound to `state`, if any.
+    pub fn anim_for(&self, state: &AnimState) -> Option<&str> {
+        self.bindings.iter().find(|b| &b.state == state).map(|b| b.anim.as_str())
+    }
+    /// Set (or replace) the binding for `state`; an empty `anim` removes it.
+    pub fn set_binding(&mut self, state: AnimState, anim: String) {
+        self.bindings.retain(|b| b.state != state);
+        if !anim.is_empty() {
+            self.bindings.push(StateBinding { state, anim });
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct EntityData {
     pub id: u64,
@@ -277,6 +347,10 @@ pub struct EntityData {
     /// hierarchy). Additive field — defaults to false for older scenes (ADR-037).
     #[serde(default)]
     pub locked: bool,
+    /// Declarative state→animation bindings (ADR-038). `None` ⇒ legacy auto-anim
+    /// (player-by-name) is used unchanged. Additive / backward-compatible.
+    #[serde(default)]
+    pub animation_states: Option<AnimationStateMap>,
 }
 
 fn default_scale() -> f32 { 1.0 }
@@ -307,6 +381,7 @@ impl Default for EntityData {
             light: None,
             visible: true,
             locked: false,
+            animation_states: None,
         }
     }
 }
@@ -377,4 +452,48 @@ pub fn list_scene_files(dir: &Path) -> Result<Vec<PathBuf>, SceneError> {
     }
     scenes.sort();
     Ok(scenes)
+}
+
+#[cfg(test)]
+mod animation_states_tests {
+    use super::*;
+
+    #[test]
+    fn legacy_entity_without_field_deserializes_to_none() {
+        // A pre-ADR-038 entity JSON (no animation_states) must still load.
+        let json = r#"{ "id": 1, "name": "Hero", "x": 0, "y": 0 }"#;
+        let e: EntityData = serde_json::from_str(json).expect("legacy entity loads");
+        assert_eq!(e.animation_states, None);
+        assert!(!e.locked);
+        assert!(e.visible);
+    }
+
+    #[test]
+    fn animation_state_map_round_trips() {
+        let mut map = AnimationStateMap::default();
+        assert!(map.auto, "auto defaults to true (magic on)");
+        map.set_binding(AnimState::Walk, "course".to_string());
+        map.set_binding(AnimState::Custom("attack".into()), "swing".to_string());
+        let mut e = EntityData::default();
+        e.animation_states = Some(map);
+
+        let json = serde_json::to_string(&e).unwrap();
+        let back: EntityData = serde_json::from_str(&json).unwrap();
+        let m = back.animation_states.expect("present after round-trip");
+        assert_eq!(m.anim_for(&AnimState::Walk), Some("course"));
+        assert_eq!(m.anim_for(&AnimState::Custom("attack".into())), Some("swing"));
+        assert_eq!(m.anim_for(&AnimState::Idle), None);
+    }
+
+    #[test]
+    fn set_binding_replaces_and_removes() {
+        let mut map = AnimationStateMap::default();
+        map.set_binding(AnimState::Idle, "idle1".into());
+        map.set_binding(AnimState::Idle, "idle2".into()); // replace
+        assert_eq!(map.anim_for(&AnimState::Idle), Some("idle2"));
+        assert_eq!(map.bindings.len(), 1);
+        map.set_binding(AnimState::Idle, String::new()); // empty removes
+        assert_eq!(map.anim_for(&AnimState::Idle), None);
+        assert!(map.bindings.is_empty());
+    }
 }
