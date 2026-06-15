@@ -35,6 +35,9 @@ pub(crate) struct ContextMenuActions {
     pub rename: Option<u64>,
     pub focus_camera: Option<u64>,
     pub toggle_visibility: Option<u64>,
+    pub bring_to_front: Option<u64>,
+    pub send_to_back: Option<u64>,
+    pub reset_transform: Option<u64>,
     pub add_entity_at: Option<Vec2>,
     pub reset_camera: bool,
     pub toggle_grid: bool,
@@ -119,8 +122,29 @@ impl EditorApp {
             a.toggle_visibility = Some(id);
             a.close = true;
         }
-        if ui.button("Focus Camera").clicked() { a.focus_camera = Some(id); a.close = true; }
+        if menu_btn(ui, "Focus Camera", &format!("{m}+0")) { a.focus_camera = Some(id); a.close = true; }
         if ui.button("Copy Entity ID").clicked() { a.copy_text = Some(id.to_string()); a.close = true; }
+
+        // Z-order acts on `entity.layer` (the renderer sorts by layer); greyed at the extremes.
+        ui.separator();
+        let layer = entity.map(|e| e.layer).unwrap_or(0);
+        let at_front = !self.scene.entities.iter().any(|e| e.id != id && e.layer >= layer);
+        let at_back = !self.scene.entities.iter().any(|e| e.id != id && e.layer <= layer);
+        if ui.add_enabled(!at_front, egui::Button::new("Bring to Front").shortcut_text(format!("{m}+Shift+]"))).clicked() {
+            a.bring_to_front = Some(id);
+            a.close = true;
+        }
+        if ui.add_enabled(!at_back, egui::Button::new("Send to Back").shortcut_text(format!("{m}+Shift+["))).clicked() {
+            a.send_to_back = Some(id);
+            a.close = true;
+        }
+        let has_transform = entity
+            .map(|e| e.x != 0.0 || e.y != 0.0 || e.rotation != 0.0 || e.scale_x != 1.0 || e.scale_y != 1.0)
+            .unwrap_or(false);
+        if ui.add_enabled(has_transform, egui::Button::new("Reset Transform").shortcut_text(format!("{m}+R"))).clicked() {
+            a.reset_transform = Some(id);
+            a.close = true;
+        }
 
         ui.separator();
         let del = egui::Button::new(
@@ -203,6 +227,72 @@ impl EditorApp {
         }
     }
 
+    // ── Reusable entity actions (shared by the context menu and keyboard shortcuts) ──
+
+    /// Copy the entity to the clipboard then remove it (Cmd/Ctrl+X).
+    pub(crate) fn cut_entity(&mut self, id: u64) {
+        if let Some(e) = self.scene.entities.iter().find(|e| e.id == id).cloned() {
+            self.push_undo();
+            self.clipboard_entity = Some(e.clone());
+            self.scene.remove_entity(id);
+            if self.selected_id == Some(id) {
+                self.selected_id = None;
+            }
+            self.status_msg = format!("Cut '{}'", e.name);
+        }
+    }
+
+    /// Center the editor camera on the entity (Cmd/Ctrl+0).
+    pub(crate) fn focus_camera_on(&mut self, id: u64) {
+        if let Some(e) = self.scene.entities.iter().find(|e| e.id == id) {
+            self.camera_pos = Vec2::new(e.x, e.y);
+            self.status_msg = format!("Focused '{}'", e.name);
+        }
+    }
+
+    /// Reset position/rotation/scale to defaults (Cmd/Ctrl+R). No-op if already default.
+    pub(crate) fn reset_entity_transform(&mut self, id: u64) {
+        let needs = self
+            .scene
+            .entities
+            .iter()
+            .find(|e| e.id == id)
+            .map(|e| e.x != 0.0 || e.y != 0.0 || e.rotation != 0.0 || e.scale_x != 1.0 || e.scale_y != 1.0)
+            .unwrap_or(false);
+        if !needs {
+            return;
+        }
+        self.push_undo();
+        if let Some(e) = self.scene.find_entity_mut(id) {
+            e.x = 0.0;
+            e.y = 0.0;
+            e.rotation = 0.0;
+            e.scale_x = 1.0;
+            e.scale_y = 1.0;
+        }
+        self.status_msg = "Reset transform".to_string();
+    }
+
+    /// Raise the entity above every other (layer = max+1). Z-order is by `layer` (ADR-037).
+    pub(crate) fn bring_to_front(&mut self, id: u64) {
+        let max = self.scene.entities.iter().map(|e| e.layer).max().unwrap_or(0);
+        self.push_undo();
+        if let Some(e) = self.scene.find_entity_mut(id) {
+            e.layer = max.saturating_add(1);
+        }
+        self.status_msg = "Brought to front".to_string();
+    }
+
+    /// Lower the entity below every other (layer = min-1).
+    pub(crate) fn send_to_back(&mut self, id: u64) {
+        let min = self.scene.entities.iter().map(|e| e.layer).min().unwrap_or(0);
+        self.push_undo();
+        if let Some(e) = self.scene.find_entity_mut(id) {
+            e.layer = min.saturating_sub(1);
+        }
+        self.status_msg = "Sent to back".to_string();
+    }
+
     /// Single point of mutation for all context-menu actions (push_undo before scene edits).
     pub(crate) fn apply_context_actions(&mut self, ctx: &egui::Context, a: ContextMenuActions) {
         if let Some(id) = a.copy {
@@ -212,15 +302,7 @@ impl EditorApp {
             }
         }
         if let Some(id) = a.cut {
-            if let Some(e) = self.scene.entities.iter().find(|e| e.id == id).cloned() {
-                self.push_undo();
-                self.clipboard_entity = Some(e.clone());
-                self.scene.remove_entity(id);
-                if self.selected_id == Some(id) {
-                    self.selected_id = None;
-                }
-                self.status_msg = format!("Cut '{}'", e.name);
-            }
+            self.cut_entity(id);
         }
         if let Some(world) = a.paste_at {
             if let Some(src) = self.clipboard_entity.clone() {
@@ -268,10 +350,16 @@ impl EditorApp {
             }
         }
         if let Some(id) = a.focus_camera {
-            if let Some(e) = self.scene.entities.iter().find(|e| e.id == id) {
-                self.camera_pos = Vec2::new(e.x, e.y);
-                self.status_msg = format!("Focused '{}'", e.name);
-            }
+            self.focus_camera_on(id);
+        }
+        if let Some(id) = a.bring_to_front {
+            self.bring_to_front(id);
+        }
+        if let Some(id) = a.send_to_back {
+            self.send_to_back(id);
+        }
+        if let Some(id) = a.reset_transform {
+            self.reset_entity_transform(id);
         }
         if let Some(id) = a.toggle_visibility {
             self.push_undo();
