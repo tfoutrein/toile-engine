@@ -473,6 +473,26 @@ impl EditorApp {
 
         // Tilemap painting with mouse
         if self.editor_mode == EditorMode::Tilemap {
+            // Right-click = eyedropper: pick the tile under the cursor as the active tile.
+            // Shift+right-click stays reserved (erase, handled in viewport.rs).
+            if ctx.input.is_mouse_just_pressed(toile_app::MouseButton::Right) {
+                let shift = ctx.input.is_key_down(Key::ShiftLeft) || ctx.input.is_key_down(Key::ShiftRight);
+                if !shift {
+                    let world_pos = ctx.camera.screen_to_world(ctx.input.mouse_position());
+                    let mut picked = None;
+                    if let Some(tm) = &self.scene.tilemap {
+                        let (w, h) = (tm.width, tm.height);
+                        if let Some((col, row)) = self.tilemap_editor.world_to_tile(world_pos, w, h) {
+                            picked = self.tilemap_editor.pick(tm, col, row);
+                        }
+                    }
+                    if let Some(gid) = picked {
+                        self.tilemap_editor.selected_gid = gid;
+                        self.tilemap_editor.tool = TileTool::Brush;
+                        self.status_msg = format!("Picked tile {gid}");
+                    }
+                }
+            }
             // Snapshot once at the start of a paint/fill stroke for undo.
             if ctx.input.is_mouse_just_pressed(toile_app::MouseButton::Left) {
                 self.push_undo();

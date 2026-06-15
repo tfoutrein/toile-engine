@@ -128,12 +128,20 @@ impl EditorApp {
                                 ui.label(egui::RichText::new("No animations yet.\nUse Import on the left.").color(egui::Color32::from_gray(130)));
                             }
                             let mut remove_anim: Option<usize> = None;
+                            let mut duplicate_anim: Option<usize> = None;
+                            let mut set_default_anim: Option<String> = None;
                             for (i, anim) in entity.animations.iter_mut().enumerate() {
                                 let is_default = entity.default_animation.as_deref() == Some(&anim.name);
+                                let anim_name = anim.name.clone();
                                 ui.horizontal(|ui| {
-                                    if ui.selectable_label(is_default, egui::RichText::new(&anim.name).strong().size(13.0)).on_hover_text("Click = set as default").clicked() {
-                                        entity.default_animation = Some(anim.name.clone());
-                                    }
+                                    // Right-click an animation → Set as default / Duplicate / Delete (ADR-037).
+                                    let r = ui.selectable_label(is_default, egui::RichText::new(&anim.name).strong().size(13.0)).on_hover_text("Click = set as default");
+                                    if r.clicked() { set_default_anim = Some(anim_name.clone()); }
+                                    r.context_menu(|ui| {
+                                        if ui.button("Set as default").clicked() { set_default_anim = Some(anim_name.clone()); ui.close_menu(); }
+                                        if ui.button("Duplicate").clicked() { duplicate_anim = Some(i); ui.close_menu(); }
+                                        if ui.button(egui::RichText::new("Delete").color(egui::Color32::from_rgb(220, 90, 90))).clicked() { remove_anim = Some(i); ui.close_menu(); }
+                                    });
                                     if is_default { ui.label(egui::RichText::new("★").color(egui::Color32::YELLOW)); }
                                     if ui.small_button("x").clicked() { remove_anim = Some(i); }
                                 });
@@ -145,8 +153,18 @@ impl EditorApp {
                                 // Frame badges
                                 ui.horizontal_wrapped(|ui| {
                                     let mut remove_f: Option<usize> = None;
+                                    let mut duplicate_f: Option<usize> = None;
                                     for (fi, frame) in anim.frames.iter().enumerate() {
-                                        if ui.small_button(format!("{frame}")).clicked() { remove_f = Some(fi); }
+                                        let fr = ui.small_button(format!("{frame}"));
+                                        if fr.clicked() { remove_f = Some(fi); }
+                                        fr.context_menu(|ui| {
+                                            if ui.button("Duplicate frame").clicked() { duplicate_f = Some(fi); ui.close_menu(); }
+                                            if ui.button("Delete frame").clicked() { remove_f = Some(fi); ui.close_menu(); }
+                                        });
+                                    }
+                                    if let Some(fi) = duplicate_f {
+                                        let v = anim.frames[fi];
+                                        anim.frames.insert(fi + 1, v);
                                     }
                                     if let Some(fi) = remove_f { anim.frames.remove(fi); }
                                     if entity.sprite_sheet.is_some() {
@@ -162,7 +180,13 @@ impl EditorApp {
                                 }
                                 ui.separator();
                             }
+                            if let Some(idx) = duplicate_anim {
+                                let mut clone = entity.animations[idx].clone();
+                                clone.name = format!("{}_copy", clone.name);
+                                entity.animations.push(clone);
+                            }
                             if let Some(idx) = remove_anim { entity.animations.remove(idx); }
+                            if let Some(name) = set_default_anim { entity.default_animation = Some(name); }
 
                             // Quick-add
                             ui.horizontal(|ui| {
