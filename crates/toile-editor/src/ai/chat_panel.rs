@@ -586,6 +586,11 @@ impl EditorApp {
                                     }
 
                                 } else if tc.name == "set_entity_sprite" {
+                                    // Intentional scope boundary (ADR-039 Phase 3): the AI "set sprite"
+                                    // tool always does a full replace (clears + repopulates clips) —
+                                    // it has no modal to offer the human's Keep/Replace choice. The
+                                    // guarded Keep-animations flow lives in the editor UI
+                                    // (sprite_replace::apply_sprite_replacement).
                                     let eid = tc.input.get("entity_id").and_then(|v| v.as_u64()).unwrap_or(0);
                                     let asset_id = tc.input.get("asset_id").and_then(|v| v.as_str()).unwrap_or("");
                                     let default_anim = tc.input.get("default_animation").and_then(|v| v.as_str());
