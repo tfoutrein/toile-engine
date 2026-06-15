@@ -17,6 +17,19 @@ use crate::particle_editor::ParticleEditorPanel;
 use crate::scene_data::{EntityData, SceneData};
 use crate::tilemap_tool::TilemapEditor;
 
+/// Duration of the animated splash screen, in seconds.
+pub(crate) const SPLASH_DURATION: f32 = 2.8;
+/// Cross-fade duration after the splash, so the app reveals smoothly instead of popping in.
+pub(crate) const SPLASH_FADE: f32 = 0.5;
+
+/// One sampled pixel of the logo spiral, animated as a fluid particle on the splash.
+pub(crate) struct SplashParticle {
+    pub target: Vec2,   // logo-local position (centered, +y up) at base size 256
+    pub color: [u8; 3],
+    pub seed: f32,      // 0..1 per-particle, for stagger + shimmer jitter
+    pub is_text: bool,  // true for the "TOILE" pixels (vs the spiral)
+}
+
 pub struct EditorApp {
     pub(crate) overlay: Option<EguiOverlay>,
     pub(crate) surface_format: Option<wgpu::TextureFormat>,
@@ -38,7 +51,6 @@ pub struct EditorApp {
     pub(crate) hierarchy_rename_focus: bool,
     pub(crate) hovered_id: Option<u64>,
     pub(crate) white_tex: Option<TextureHandle>,
-    pub(crate) logo_tex: Option<TextureHandle>,
     pub(crate) camera_pos: Vec2,
     pub(crate) camera_zoom: f32,
     pub(crate) dragging: Option<u64>,
@@ -60,6 +72,10 @@ pub struct EditorApp {
     // Splash screen
     pub(crate) splash_timer: f32,
     pub(crate) show_splash: bool,
+    /// Counts down from SPLASH_FADE after the splash ends; fades the app in over the bg color.
+    pub(crate) splash_fade_in: f32,
+    /// Logo spiral sampled into fluid pixels (built once in init).
+    pub(crate) splash_particles: Vec<SplashParticle>,
     // Tilemap editor
     pub(crate) tilemap_editor: TilemapEditor,
     // Background
@@ -205,9 +221,10 @@ impl EditorApp {
             file_path_input: String::new(),
             show_load_dialog: false,
             show_save_dialog: false,
-            logo_tex: None,
-            splash_timer: 2.5,
+            splash_timer: SPLASH_DURATION,
             show_splash: true,
+            splash_fade_in: 0.0,
+            splash_particles: Vec::new(),
             tilemap_editor: TilemapEditor::new(),
             background_tex: None,
             background_path_loaded: String::new(),
@@ -480,8 +497,40 @@ impl EditorApp {
 impl Game for EditorApp {
     fn init(&mut self, ctx: &mut GameContext) {
         self.white_tex = Some(ctx.load_texture(Path::new("assets/white.png")));
-        self.logo_tex = Some(ctx.load_texture(Path::new("assets/toile-logo-transparent.png")));
         self.surface_format = Some(ctx.surface_format());
+
+        // Sample the WHOLE logo (spiral + "TOILE") into fluid pixels for the animated splash.
+        if self.splash_particles.is_empty() {
+            if let Ok(img) = image::open("assets/toile-logo-transparent.png") {
+                let img = img.to_rgba8();
+                let (iw, ih) = img.dimensions();
+                let base = 256.0_f32;
+                let split_py = (ih as f32 * 0.685) as u32; // spiral above, "TOILE" below
+                let step = 6u32;
+                let mut idx = 0u32;
+                let mut py = 0u32;
+                while py < ih {
+                    let mut px = 0u32;
+                    while px < iw {
+                        let p = img.get_pixel(px, py).0;
+                        if p[3] >= 60 {
+                            let lx = (px as f32 / iw as f32 - 0.5) * base;
+                            let ly = (0.5 - py as f32 / ih as f32) * base;
+                            self.splash_particles.push(SplashParticle {
+                                target: Vec2::new(lx, ly),
+                                color: [p[0], p[1], p[2]],
+                                seed: (idx as f32 * 0.6180339).fract(),
+                                is_text: py >= split_py,
+                            });
+                            idx += 1;
+                        }
+                        px += step;
+                    }
+                    py += step;
+                }
+                log::info!("Splash: sampled {} logo pixels", self.splash_particles.len());
+            }
+        }
 
         // Pre-load the platformer tileset for tilemap mode
         let tileset_path = Path::new("assets/platformer/tileset.png");
@@ -542,6 +591,22 @@ impl Game for EditorApp {
 
         // Delegate to extracted overlay panels
         self.show_overlay_panels(&ctx, &project_scenes, &project_scripts, &project_particles, &pdir);
+
+        // Cross-fade the app in over the next screen's bg color, so it reveals smoothly after the
+        // splash instead of popping in. A full-screen rect on the topmost layer fades from the
+        // panel fill color to transparent.
+        if self.splash_fade_in > 0.0 {
+            let t = (self.splash_fade_in / SPLASH_FADE).clamp(0.0, 1.0);
+            let a = t * t * (3.0 - 2.0 * t); // smoothstep
+            let bg = ctx.style().visuals.panel_fill;
+            let color = egui::Color32::from_rgba_unmultiplied(bg.r(), bg.g(), bg.b(), (a * 255.0) as u8);
+            let painter = ctx.layer_painter(egui::LayerId::new(
+                egui::Order::Foreground,
+                egui::Id::new("splash_fade_in"),
+            ));
+            painter.rect_filled(ctx.screen_rect(), 0.0, color);
+            ctx.request_repaint();
+        }
 
         self.overlay.as_mut().unwrap().end_frame_and_render(device, queue, encoder, view, window, size);
     }
