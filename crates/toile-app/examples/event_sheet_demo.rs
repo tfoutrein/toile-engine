@@ -176,6 +176,11 @@ impl Game for EventSheetDemo {
                     entity_x: entity.x,
                     entity_y: entity.y,
                     dt,
+                    // This demo has no physics — motion state is inert (ADR-038 Phase 5).
+                    on_ground: false,
+                    vx: 0.0,
+                    vy: 0.0,
+                    anim_finished: false,
                     keys_down: &keys_down,
                     keys_just_pressed: &keys_just_pressed,
                     keys_just_released: &no_fn,

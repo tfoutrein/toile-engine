@@ -1,6 +1,6 @@
 # ADR-038 : State machine état→animation pilotée par les behaviors + UX « Animation States »
 
-- **Statut :** Proposee — Phases 0-4 implementees (Phase 5 optionnelle restante)
+- **Statut :** Acceptee — implementee (Phases 0-5, PR #12 a #17)
 - **Date :** 2026-06-15
 - **Concerne :** v0.5+ (editeur + runner)
 
@@ -167,6 +167,20 @@ des frames). Aucune migration : les scenes v0.5 chargent et tournent a l'identiq
   derniere frame ; l'ancre est reinitialisee a l'ouverture du picker).
 - **Reporte** (acceptable, trace) : drag-drop asset→slot ; reorder des frames par
   glisser dans le picker ; auto-detection systematique strip vs grille au Browse.
+
+## Phase 5 — pont events (implementee)
+
+- `EventContext` expose l'etat mouvement : `on_ground`, `vx`, `vy`, `anim_finished`.
+- Nouvelles conditions : **`OnGrounded`** (au sol), **`OnAnimationFinished`**
+  (**edge-triggered** — une seule fois par fin d'anim, via `EventSheetState`),
+  **`IfVelocityX { op, value }`** (comparaison de la vitesse horizontale).
+- Nouvelle action : **`ResumeAutoAnimation`** (relache le verrou pose par
+  `PlayAnimation` pour que la state machine reprenne idle/walk/jump).
+- **Contrat d'ordre** : les event sheets voient `on_ground`/`velocity` de la frame
+  courante (behaviors en phase 2) mais `anim_finished` de la frame precedente
+  (animation en phase 6) — lag d'1 frame assume, sans danger pour les one-shots.
+- Debloque les etats scriptes propres : attack/hurt/dash (PlayAnimation +
+  OnAnimationFinished → ResumeAutoAnimation).
 
 ## Validation
 

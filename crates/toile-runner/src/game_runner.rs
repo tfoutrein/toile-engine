@@ -784,6 +784,14 @@ impl Game for GameRunner {
                     entity_x: ent.es.position.x,
                     entity_y: ent.es.position.y,
                     dt,
+                    // Motion state for OnGrounded / IfVelocityX / OnAnimationFinished (ADR-038
+                    // Phase 5). on_ground/velocity are current (behaviors ran this frame);
+                    // anim_finished reflects the previous frame's animation pass (events run in
+                    // phase 3, animation in phase 6) — a 1-frame lag, acceptable for one-shots.
+                    on_ground: ent.es.on_ground,
+                    vx: ent.es.velocity.x,
+                    vy: ent.es.velocity.y,
+                    anim_finished: ent.anim_finished,
                     keys_down: &keys_down,
                     keys_just_pressed: &keys_just_pressed,
                     keys_just_released: &keys_just_released,
@@ -893,6 +901,12 @@ impl Game for GameRunner {
                         // until the anim finishes (or another order) — ADR-038.
                         ent.anim_locked = true;
                         ent.anim_finished = false;
+                    }
+                }
+                EventCommand::ResumeAutoAnimation { entity_id } => {
+                    if let Some(ent) = self.entities.iter_mut().find(|e| e.data.id == *entity_id) {
+                        // Release the scripted lock so the auto state machine drives anims again.
+                        ent.anim_locked = false;
                     }
                 }
             }
