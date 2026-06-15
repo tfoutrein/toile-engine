@@ -50,19 +50,20 @@ impl EditorApp {
                                             let n = s.to_lowercase();
                                             ["idle","run","walk","jump","die","dash","slide"].iter().find(|k| n.contains(**k)).map(|k| k.to_string()).unwrap_or_else(|| n.split('_').next().unwrap_or("anim").to_string())
                                         };
+                                        // Re-importing the same .ase refreshes its clips → Replace (ADR-039 unified rule).
                                         if ase.tags.is_empty() {
                                             let name = guess_name(&stem);
                                             let avg = ase.frames.iter().map(|f| f.duration_ms as f32).sum::<f32>() / fc.max(1) as f32;
-                                            let a = toile_scene::AnimationData { name: name.clone(), frames: (0..fc).collect(), fps: (1000.0/avg.max(1.0)).round(), looping: true, sprite_file: Some(afn.clone()), strip_frames: Some(fc) };
-                                            if let Some(e) = entity.animations.iter_mut().find(|x| x.name == name) { *e = a; } else { entity.animations.push(a); }
+                                            let a = toile_scene::AnimationData { name, frames: (0..fc).collect(), fps: (1000.0/avg.max(1.0)).round(), looping: true, sprite_file: Some(afn.clone()), strip_frames: Some(fc) };
+                                            crate::helpers::add_animation_to_entity(entity, a, crate::helpers::AnimConflict::Replace);
                                         } else {
                                             for tag in &ase.tags {
                                                 let from = tag.from as u32; let to = tag.to.min(fc as u16 - 1) as u32;
                                                 let frames: Vec<u32> = (from..=to).collect();
                                                 let avg = ase.frames[from as usize..=to as usize].iter().map(|f| f.duration_ms as f32).sum::<f32>() / frames.len().max(1) as f32;
                                                 let name = tag.name.to_lowercase();
-                                                let a = toile_scene::AnimationData { name: name.clone(), frames, fps: (1000.0/avg.max(1.0)).round(), looping: tag.direction != 1, sprite_file: Some(afn.clone()), strip_frames: Some(fc) };
-                                                if let Some(e) = entity.animations.iter_mut().find(|x| x.name == name) { *e = a; } else { entity.animations.push(a); }
+                                                let a = toile_scene::AnimationData { name, frames, fps: (1000.0/avg.max(1.0)).round(), looping: tag.direction != 1, sprite_file: Some(afn.clone()), strip_frames: Some(fc) };
+                                                crate::helpers::add_animation_to_entity(entity, a, crate::helpers::AnimConflict::Replace);
                                             }
                                         }
                                         if entity.sprite_path.is_empty() { entity.sprite_path = afn; }
@@ -79,9 +80,8 @@ impl EditorApp {
                                         let fs = h; let nf = w / fs;
                                         let stem = file.file_stem().unwrap_or_default().to_string_lossy().to_string().to_lowercase().replace("-sheet","").replace("_sheet","");
                                         let name = ["idle","run","walk","jump","die","dash","slide"].iter().find(|k| stem.contains(**k)).map(|k| k.to_string()).unwrap_or(stem);
-                                        if !entity.animations.iter().any(|a| a.name == name) {
-                                            entity.animations.push(toile_scene::AnimationData { name, frames: (0..nf).collect(), fps: 10.0, looping: true, sprite_file: Some(rel), strip_frames: Some(nf) });
-                                        }
+                                        // Unified additive add (ADR-039): keeps existing clips, suffixes on collision.
+                                        crate::helpers::add_animation_to_entity(entity, toile_scene::AnimationData { name, frames: (0..nf).collect(), fps: 10.0, looping: true, sprite_file: Some(rel), strip_frames: Some(nf) }, crate::helpers::AnimConflict::KeepBoth);
                                     }
                                 }
                             }
@@ -255,7 +255,8 @@ impl EditorApp {
                                 for (name, fps, l) in &[("idle", 4.0f32, true), ("walk", 7.0, true), ("run", 10.0, true), ("jump", 5.0, false)] {
                                     if !entity.animations.iter().any(|a| a.name == *name) {
                                         if ui.small_button(*name).clicked() {
-                                            entity.animations.push(toile_scene::AnimationData { name: name.to_string(), frames: vec![], fps: *fps, looping: *l, sprite_file: None, strip_frames: None });
+                                            // Grid blank via the unified helper (sets default + auto-binds the state).
+                                            crate::helpers::add_animation_to_entity(entity, toile_scene::AnimationData { name: name.to_string(), frames: vec![], fps: *fps, looping: *l, sprite_file: None, strip_frames: None }, crate::helpers::AnimConflict::KeepBoth);
                                         }
                                     }
                                 }
@@ -341,16 +342,16 @@ impl EditorApp {
                                                     else { n.split('_').next().unwrap_or("anim").to_string() }
                                                 };
 
+                                                // Re-importing the same .ase refreshes its clips → Replace (ADR-039 unified rule).
                                                 if ase.tags.is_empty() {
                                                     let name = anim_name_from_stem(&stem);
                                                     let avg_dur = ase.frames.iter().map(|f| f.duration_ms as f32).sum::<f32>() / frame_count.max(1) as f32;
                                                     let anim = toile_scene::AnimationData {
-                                                        name: name.clone(), frames: (0..frame_count).collect(),
+                                                        name, frames: (0..frame_count).collect(),
                                                         fps: (1000.0 / avg_dur.max(1.0)).round(), looping: true,
                                                         sprite_file: Some(atlas_filename.clone()), strip_frames: Some(frame_count),
                                                     };
-                                                    if let Some(existing) = entity.animations.iter_mut().find(|a| a.name == name) { *existing = anim; }
-                                                    else { entity.animations.push(anim); }
+                                                    crate::helpers::add_animation_to_entity(entity, anim, crate::helpers::AnimConflict::Replace);
                                                 } else {
                                                     for tag in &ase.tags {
                                                         let from = tag.from as u32;
@@ -359,12 +360,11 @@ impl EditorApp {
                                                         let avg_dur = ase.frames[from as usize..=to as usize].iter().map(|f| f.duration_ms as f32).sum::<f32>() / frames.len().max(1) as f32;
                                                         let name = tag.name.to_lowercase();
                                                         let anim = toile_scene::AnimationData {
-                                                            name: name.clone(), frames, fps: (1000.0 / avg_dur.max(1.0)).round(),
+                                                            name, frames, fps: (1000.0 / avg_dur.max(1.0)).round(),
                                                             looping: tag.direction != 1,
                                                             sprite_file: Some(atlas_filename.clone()), strip_frames: Some(frame_count),
                                                         };
-                                                        if let Some(existing) = entity.animations.iter_mut().find(|a| a.name == name) { *existing = anim; }
-                                                        else { entity.animations.push(anim); }
+                                                        crate::helpers::add_animation_to_entity(entity, anim, crate::helpers::AnimConflict::Replace);
                                                     }
                                                 }
                                                 if entity.sprite_path.is_empty() { entity.sprite_path = atlas_filename; }
@@ -392,12 +392,11 @@ impl EditorApp {
                                                 let anim_name = if n.contains("idle") { "idle" } else if n.contains("run") { "run" }
                                                     else if n.contains("walk") || n.contains("flow") { "walk" } else if n.contains("jump") { "jump" }
                                                     else { &n }.to_string();
-                                                if !entity.animations.iter().any(|a| a.name == anim_name) {
-                                                    entity.animations.push(toile_scene::AnimationData {
-                                                        name: anim_name, frames: (0..num_frames).collect(), fps: 10.0, looping: true,
-                                                        sprite_file: Some(rel_path), strip_frames: Some(num_frames),
-                                                    });
-                                                }
+                                                // Unified additive add (ADR-039): keeps existing clips, suffixes on collision.
+                                                crate::helpers::add_animation_to_entity(entity, toile_scene::AnimationData {
+                                                    name: anim_name, frames: (0..num_frames).collect(), fps: 10.0, looping: true,
+                                                    sprite_file: Some(rel_path), strip_frames: Some(num_frames),
+                                                }, crate::helpers::AnimConflict::KeepBoth);
                                             }
                                         }
                                     }
@@ -493,10 +492,11 @@ impl EditorApp {
                                     for (name, fps, looping) in &[("idle", 4.0f32, true), ("walk", 7.0, true), ("run", 10.0, true), ("jump", 5.0, false)] {
                                         if !entity.animations.iter().any(|a| a.name == *name) {
                                             if ui.small_button(*name).clicked() {
-                                                entity.animations.push(toile_scene::AnimationData {
+                                                // Grid blank via the unified helper (sets default + auto-binds the state).
+                                                crate::helpers::add_animation_to_entity(entity, toile_scene::AnimationData {
                                                     name: name.to_string(), frames: vec![], fps: *fps, looping: *looping,
                                                     sprite_file: None, strip_frames: None,
-                                                });
+                                                }, crate::helpers::AnimConflict::KeepBoth);
                                             }
                                         }
                                     }

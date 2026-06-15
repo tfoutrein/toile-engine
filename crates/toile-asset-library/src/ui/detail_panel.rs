@@ -61,10 +61,21 @@ pub fn show_detail_panel(
         });
     });
 
-    // Create-new-entity button (entity-first flow: to add an animation to an existing
-    // entity, use the thumbnail's right-click "Add as animation to selection" — ADR-039).
-    if ui.add_sized([ui.available_width(), 28.0],
-        egui::Button::new(egui::RichText::new("➕ Create new entity from asset").strong().color(egui::Color32::from_rgb(80, 220, 120)))
+    // Entity-first flow (ADR-039): the primary action is adding this asset as an
+    // animation to the currently-selected entity (additive — keeps existing clips).
+    // Creating a brand-new entity is the secondary action below.
+    let add_anim_label = match &app.selection_label {
+        Some(n) => format!("➕ Add as animation to «{n}»"),
+        None => "➕ Add as animation to selection".to_string(),
+    };
+    if ui.add_enabled(app.selection_label.is_some(), egui::Button::new(
+        egui::RichText::new(add_anim_label).strong().color(egui::Color32::from_rgb(80, 220, 120))
+    ).min_size(egui::vec2(ui.available_width(), 28.0)))
+    .on_hover_text("Adds this asset as an extra animation on the selected entity. Select an entity first.").clicked() {
+        app.pending_add_animation_to_selection = Some(selected_id.clone());
+    }
+    if ui.add_sized([ui.available_width(), 24.0],
+        egui::Button::new("➕ Create new entity from asset")
     ).clicked() {
         app.pending_add_to_scene = Some(selected_id.clone());
     }

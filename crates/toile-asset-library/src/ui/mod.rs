@@ -233,6 +233,12 @@ pub struct AssetBrowserApp {
     pub highlight_needs_scroll: bool,  // true only on first frame after "Go to file"
     /// Set by "Add to Scene" button — the editor picks this up and creates an entity.
     pub pending_add_to_scene: Option<String>, // asset ID to add
+    /// Set by "Add as animation to selection" — the editor adds it as an animation
+    /// to the selected entity, additively (ADR-039).
+    pub pending_add_animation_to_selection: Option<String>, // asset ID
+    /// Name of the currently-selected entity, pushed in by the editor each frame so the
+    /// browser can label/enable the "Add as animation to «X»" affordances (ADR-039).
+    pub selection_label: Option<String>,
     /// Set by "Set as sprite of selection" — the editor applies it to the selected entity.
     pub pending_set_sprite_of_selection: Option<String>, // asset ID
     /// Set by "Set as background" — the editor applies it to the current scene.
@@ -282,6 +288,8 @@ impl AssetBrowserApp {
             highlight_file: None,
             highlight_needs_scroll: false,
             pending_add_to_scene: None,
+            pending_add_animation_to_selection: None,
+            selection_label: None,
             pending_set_sprite_of_selection: None,
             pending_set_background: None,
             surface_format: None,

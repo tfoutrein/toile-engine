@@ -484,15 +484,41 @@ impl EditorApp {
                                     ui.label(egui::RichText::new(format!("  ▶ {} — {} frames, {}fps{}{}", anim.name, anim.frames.len(), anim.fps, file_hint, default_marker)).size(10.0).color(egui::Color32::from_gray(170)));
                                 }
                                 ui.add_space(4.0);
-                                if ui.button("Edit Sprite & Animations...").clicked() {
-                                    self.editor_mode = EditorMode::SpriteAnim;
-                                }
+                                ui.horizontal(|ui| {
+                                    // Additive add from the inspector (ADR-039). The actual mutation is
+                                    // deferred (pending_add_anim_file) so it runs with push_undo outside
+                                    // this `&mut entity` borrow — same unified helper as browser / AI.
+                                    if ui.button("➕ Add Animation").on_hover_text("Pick a horizontal strip / PNG to add as an extra animation (keeps existing ones)").clicked() {
+                                        if let Some(file) = rfd::FileDialog::new()
+                                            .set_title("Add Animation")
+                                            .add_filter("Images", &["png", "jpg", "jpeg", "bmp"])
+                                            .pick_file()
+                                        {
+                                            self.pending_add_anim_file = Some(file);
+                                        }
+                                    }
+                                    if ui.button("Edit Sprite & Animations...").clicked() {
+                                        self.editor_mode = EditorMode::SpriteAnim;
+                                    }
+                                });
                             });
                     } else {
                         ui.add_space(4.0);
-                        if ui.button("Setup Sprite & Animations...").clicked() {
-                            self.editor_mode = EditorMode::SpriteAnim;
-                        }
+                        ui.horizontal(|ui| {
+                            // A blank entity can grow its first clip straight from here (ADR-039).
+                            if ui.button("➕ Add Animation").on_hover_text("Pick a horizontal strip / PNG — becomes this entity's first animation").clicked() {
+                                if let Some(file) = rfd::FileDialog::new()
+                                    .set_title("Add Animation")
+                                    .add_filter("Images", &["png", "jpg", "jpeg", "bmp"])
+                                    .pick_file()
+                                {
+                                    self.pending_add_anim_file = Some(file);
+                                }
+                            }
+                            if ui.button("Setup Sprite & Animations...").clicked() {
+                                self.editor_mode = EditorMode::SpriteAnim;
+                            }
+                        });
                     }
 
                     egui::CollapsingHeader::new(egui::RichText::new("Event Sheet").strong())

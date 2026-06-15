@@ -1,6 +1,6 @@
 # ADR-039 : Ajout incrémental d'animations à une entité (flux entité-d'abord, asset browser désambiguïsé, helper additif unique)
 
-- **Statut :** Proposee — Phase 0 en cours
+- **Statut :** Acceptée — Phases 0 & 1 livrées (dialogue modal Add Animation reporté en Phase 2)
 - **Date :** 2026-06-15
 - **Concerne :** v0.5+ (editeur)
 
@@ -80,9 +80,9 @@ une UI de règles qui n'existe pas encore.
 
 | Phase | Contenu | Effort |
 |---|---|---|
-| **0 — Lisibilité** | Renommages browser ; anims+états visibles dans la hiérarchie (groupes, tags grid/strip, badges conditions, `!` cassés) ; nettoyage des bindings à la suppression d'anim ; IA appelle auto_bind | S+M |
+| **0 — Lisibilité** ✅ | Renommages browser ; anims+états visibles dans la hiérarchie (groupes, tags grid/strip, badges conditions, `!` cassés) ; nettoyage des bindings à la suppression d'anim ; IA appelle auto_bind | S+M |
 | **0.5 — Conditions drift-proof** (option) | Refactor `select_states` → enum partagée dans `toile-scene` + label dérivé testé | L |
-| **1 — Ajout additif** (cœur) | `add_animation_to_entity` unifié ; action browser « Add as animation » + drain + **dialogue Add Animation** ; « + Add Animation » inspecteur ; unifier importers + IA ; collision Keep both | L |
+| **1 — Ajout additif** (cœur) ✅ | `add_animation_to_entity` unifié (KeepBoth idempotent / Replace) ; action browser « Add as animation to «X» » (libellée + désactivée hors sélection) + drain ; bouton « + Add Animation » inspecteur (différé → push_undo) ; IA + importers Strip/Aseprite/quick-add routés sur le helper ; garde-fou grille `rows>1` (refus + message). Dialogue **modal** Add Animation (fps/loop/collision) reporté en Phase 2. | L |
 | **2 — Inspecteur Animation States** | Section binding + conditions + Add Animation | M |
 | **3 — Replace sprite + garde-fou grille/strip** | Dialogue Keep/Replace unique (browser + Browse) ; `detect_sourcing_model` | M |
 | **4 — Arbre État>Anim>Frames** (option, reportée) | Jugé régressif par 2 revues → seulement si besoin confirmé ; nécessite d'extraire d'abord le frame picker en composant | L |
@@ -136,6 +136,28 @@ une UI de règles qui n'existe pas encore.
   IA ?
 - Dialogue Add Animation cas GRID : embarquer le frame picker, ou importer la
   séquence complète puis renvoyer vers « + pick » ?
+
+## Suivi d'implémentation — Phase 1 (revue adversariale)
+
+Une revue multi-agents du diff Phase 1 (25 findings, 21 confirmés) a conduit à durcir
+l'implémentation **avant merge** :
+
+- **Garde-fou grille** (finding HIGH) : l'ajout additif utilise le modèle *strip*, que le
+  runtime découpe en **une seule ligne** ; un asset en grille `rows>1` serait silencieusement
+  mal découpé. Le drain refuse désormais ces assets (métadonnée connue) avec un message
+  orientant vers « Create new entity » / « Replace sprite » (chemins *grid*). Le bouton
+  inspecteur reste un importeur de **bandes horizontales** (fichier brut, pas de métadonnée).
+- **`KeepBoth` idempotent** : re-ajouter un clip identique (même nom + source + frames) est un
+  no-op — fini l'accumulation de `walk_2`, `walk_3`… au ré-import.
+- **`AnimConflict::Abort` supprimé** (code mort, aucun appelant) → règle réduite à
+  `KeepBoth | Replace`.
+- **Feedback sélection** : l'éditeur pousse le nom de l'entité sélectionnée dans le browser ;
+  l'action est **libellée « Add as animation to «X» »** et **désactivée** hors sélection.
+- **Undo inspecteur** : le bouton « + Add Animation » diffère la mutation (`pending_add_anim_file`)
+  pour passer par `push_undo` hors de l'emprunt `&mut entity`. Ajouté aussi à l'état vide.
+
+NITs acceptés (non bloquants, notés pour plus tard) : nommage opaque `walk`/`walk_2` ;
+exact-name vs synonyme dans `auto_populate` ; parité d'iconographie detail panel ↔ menu contextuel.
 
 ## Validation
 
