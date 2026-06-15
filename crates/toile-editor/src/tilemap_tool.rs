@@ -77,6 +77,14 @@ impl TilemapEditor {
         }
     }
 
+    /// Eyedropper: read the tile GID at (col, row) on the active layer (None if empty).
+    pub fn pick(&self, tilemap: &TilemapData, col: u32, row: u32) -> Option<u32> {
+        let layer = tilemap.layers.get(self.active_layer)?;
+        let idx = (row * tilemap.width + col) as usize;
+        let gid = *layer.tiles.get(idx)?;
+        if gid != 0 { Some(gid) } else { None }
+    }
+
     /// Flood fill from (col, row) with selected_gid.
     pub fn flood_fill(&self, tilemap: &mut TilemapData, start_col: u32, start_row: u32) {
         let Some(layer) = tilemap.layers.get_mut(self.active_layer) else {

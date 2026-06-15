@@ -328,16 +328,31 @@ impl ParticleEditorPanel {
         ui.heading("Particle Editor");
         ui.separator();
 
-        // Preset buttons
+        // Preset buttons. Right-click → Load / Reset-to-defaults (ADR-037).
         ui.label("Presets:");
+        let mut load_choice: Option<&'static str> = None;
         ui.horizontal_wrapped(|ui| {
             for name in PRESET_NAMES {
                 let active = self.current_preset == *name;
-                if ui.selectable_label(active, *name).clicked() {
-                    self.load_preset_by_name(name);
+                let resp = ui.selectable_label(active, *name);
+                if resp.clicked() {
+                    load_choice = Some(name);
                 }
+                resp.context_menu(|ui| {
+                    if ui.button("Load preset").clicked() { load_choice = Some(name); ui.close_menu(); }
+                    if active && ui.button("Reset to preset defaults")
+                        .on_hover_text("Reload this preset, discarding edits")
+                        .clicked()
+                    {
+                        load_choice = Some(name);
+                        ui.close_menu();
+                    }
+                });
             }
         });
+        if let Some(name) = load_choice {
+            self.load_preset_by_name(name);
+        }
         ui.separator();
 
         egui::CollapsingHeader::new("Emission").default_open(true).show(ui, |ui| {
