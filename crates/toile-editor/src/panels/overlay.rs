@@ -181,7 +181,7 @@ impl EditorApp {
                                             ui.close_menu();
                                         }
                                         ui.separator();
-                                        if ui.button("⧉ Duplicate").clicked() { action_duplicate = Some(path.clone()); ui.close_menu(); }
+                                        if ui.button("⎘ Duplicate").clicked() { action_duplicate = Some(path.clone()); ui.close_menu(); }
                                         if ui.button(egui::RichText::new("🗑 Delete").color(egui::Color32::from_rgb(220, 90, 90))).clicked() {
                                             action_delete = Some(path.clone());
                                             ui.close_menu();
@@ -412,7 +412,7 @@ impl EditorApp {
                 if ui.button(assets_label).clicked() {
                     self.editor_mode = EditorMode::AssetBrowser;
                 }
-                let ai_label = if self.editor_mode == EditorMode::AICopilot { "[ 🤖 AI ]" } else { "🤖 AI" };
+                let ai_label = if self.editor_mode == EditorMode::AICopilot { "[ ✨ AI ]" } else { "✨ AI" };
                 if ui.button(ai_label).clicked() {
                     self.editor_mode = EditorMode::AICopilot;
                 }

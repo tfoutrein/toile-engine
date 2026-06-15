@@ -205,7 +205,7 @@ impl EditorApp {
             .show(ctx, |ui| {
                 // Header
                 ui.horizontal(|ui| {
-                    ui.label(egui::RichText::new("🤖 AI Copilot").strong().size(14.0));
+                    ui.label(egui::RichText::new("✨ AI Copilot").strong().size(14.0));
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         if ui.small_button("✖").on_hover_text("Close AI panel").clicked() {
                             self.editor_mode = EditorMode::Entity;

@@ -31,7 +31,7 @@ impl EditorApp {
                 // ── The WHOLE logo (spiral + "TOILE") forms from fluid pixels streaming IN FROM
                 //    THE LEFT — no rotation. Spiral: right-first so the left trail arrives last
                 //    (the logo's fanned trail). Text: reveals left→right ("T"…"E"). Then every
-                //    pixel streams back off to the left on dissolve. ──
+                //    pixel is blown OFF TO THE RIGHT on dissolve (a natural rightward scatter). ──
                 for p in self.splash_particles.iter() {
                     let xn = ((p.target.x + 128.0) / 256.0).clamp(0.0, 1.0); // 0=left, 1=right
                     let (delay, in_dist, form_dur) = if p.is_text {
@@ -53,8 +53,9 @@ impl EditorApp {
                         -in_dist * (1.0 - pf),
                         (p.seed - 0.5) * 42.0 * (1.0 - pf),
                     );
-                    // Dissolve — stream back off to the left + vertical spread.
-                    let out = Vec2::new(-(260.0 + p.seed * 240.0), (p.seed - 0.5) * 150.0)
+                    // Dissolve — every pixel is blown OFF TO THE RIGHT + vertical spread, so the
+                    // logo scatters naturally rightward to reveal the app.
+                    let out = Vec2::new(260.0 + p.seed * 240.0, (p.seed - 0.5) * 150.0)
                         * ease_in_cubic(diss);
                     let settled = pf * (1.0 - diss);
                     let wob = settled * (e * 5.0 + p.seed * 25.0).sin() * 1.1; // alive shimmer
