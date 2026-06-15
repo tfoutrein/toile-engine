@@ -19,8 +19,12 @@ pub enum ActionKind {
     SpawnObject { prefab: String, x: f64, y: f64 },
     /// Play a sound effect.
     PlaySound { sound: String },
-    /// Play an animation clip.
+    /// Play an animation clip. Takes priority over the auto state machine until the
+    /// clip finishes (or ResumeAutoAnimation is called). ADR-038.
     PlayAnimation { anim: String },
+    /// Release a scripted PlayAnimation lock so the auto state machine resumes
+    /// driving idle/walk/jump. ADR-038 Phase 5.
+    ResumeAutoAnimation,
     /// Switch to another scene.
     GoToScene { scene: String },
     /// Log a message (for debugging).

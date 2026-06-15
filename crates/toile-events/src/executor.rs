@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::action::ActionKind;
 use crate::condition::ConditionKind;
-use crate::model::{Action, Condition, Event, EventSheet};
+use crate::model::{Event, EventSheet};
 
 /// Per-entity runtime state tracked across frames.
 #[derive(Debug, Default, Clone)]
@@ -10,6 +10,10 @@ pub struct EventSheetState {
     pub created: bool,
     pub timers: HashMap<usize, f64>,
     pub variables: HashMap<String, f64>,
+    /// True once OnAnimationFinished has fired for the current "finished" episode,
+    /// so it triggers only on the false→true edge (ADR-038 Phase 5). Reset when the
+    /// animation is no longer finished.
+    pub anim_finished_consumed: bool,
 }
 
 /// World context passed to the executor (read-only snapshot).
@@ -18,6 +22,13 @@ pub struct EventContext<'a> {
     pub entity_x: f32,
     pub entity_y: f32,
     pub dt: f64,
+    /// Motion state (ADR-038 Phase 5): on_ground + velocity, from the same source
+    /// that drives the animation state machine.
+    pub on_ground: bool,
+    pub vx: f32,
+    pub vy: f32,
+    /// True on the frame the entity's current non-looping animation finished.
+    pub anim_finished: bool,
     pub keys_down: &'a dyn Fn(&str) -> bool,
     pub keys_just_pressed: &'a dyn Fn(&str) -> bool,
     pub keys_just_released: &'a dyn Fn(&str) -> bool,
@@ -36,6 +47,7 @@ pub enum EventCommand {
     SpawnObject { entity_id: u64, prefab: String, x: f32, y: f32 },
     PlaySound { sound: String },
     PlayAnimation { entity_id: u64, anim: String },
+    ResumeAutoAnimation { entity_id: u64 },
     GoToScene { scene: String },
     Log { message: String },
 }
@@ -51,6 +63,9 @@ pub fn evaluate_event_sheet(
     if !state.created {
         state.created = true;
     }
+    // Edge-trigger OnAnimationFinished: mark consumed after firing this episode, and
+    // reset once the animation is no longer finished — so it fires once per finish.
+    state.anim_finished_consumed = ctx.anim_finished;
     commands
 }
 
@@ -118,6 +133,10 @@ fn eval_condition(
                 false
             }
         }
+        ConditionKind::OnGrounded => ctx.on_ground,
+        // Edge-triggered: fires only on the frame the animation first reports finished.
+        ConditionKind::OnAnimationFinished => ctx.anim_finished && !state.anim_finished_consumed,
+        ConditionKind::IfVelocityX { op, value } => op.test(ctx.vx as f64, *value),
     }
 }
 
@@ -175,6 +194,9 @@ fn exec_action(
             entity_id: ctx.entity_id,
             anim: anim.clone(),
         }),
+        ActionKind::ResumeAutoAnimation => Some(EventCommand::ResumeAutoAnimation {
+            entity_id: ctx.entity_id,
+        }),
         ActionKind::GoToScene { scene } => Some(EventCommand::GoToScene {
             scene: scene.clone(),
         }),
@@ -198,6 +220,10 @@ mod tests {
             entity_x: 0.0,
             entity_y: 0.0,
             dt: 1.0 / 60.0,
+            on_ground: false,
+            vx: 0.0,
+            vy: 0.0,
+            anim_finished: false,
             keys_down: &|_| false,
             keys_just_pressed: &|k| k == "Space",
             keys_just_released: &|_| false,
@@ -337,6 +363,49 @@ mod tests {
             total_fires += cmds.len();
         }
         assert_eq!(total_fires, 2); // fires at 0.5s and 1.0s
+    }
+
+    #[test]
+    fn motion_conditions_and_resume_action() {
+        use crate::condition::CompareOp;
+        let log = |m: &str| vec![Action::new(ActionKind::Log { message: m.into() })];
+
+        // OnGrounded reflects ctx.on_ground.
+        let g = EventSheet { name: "g".into(), events: vec![Event::new(
+            vec![Condition::new(ConditionKind::OnGrounded)], log("g"))] };
+        let mut st = EventSheetState::default();
+        let mut ctx = dummy_ctx(); ctx.on_ground = true;
+        assert_eq!(evaluate_event_sheet(&g, &mut st, &ctx).len(), 1);
+        let mut st = EventSheetState::default();
+        let mut ctx = dummy_ctx(); ctx.on_ground = false;
+        assert_eq!(evaluate_event_sheet(&g, &mut st, &ctx).len(), 0);
+
+        // IfVelocityX compares vx.
+        let v = EventSheet { name: "v".into(), events: vec![Event::new(
+            vec![Condition::new(ConditionKind::IfVelocityX { op: CompareOp::Greater, value: 5.0 })], log("v"))] };
+        let mut st = EventSheetState::default();
+        let mut ctx = dummy_ctx(); ctx.vx = 10.0;
+        assert_eq!(evaluate_event_sheet(&v, &mut st, &ctx).len(), 1);
+        let mut ctx = dummy_ctx(); ctx.vx = 0.0;
+        assert_eq!(evaluate_event_sheet(&v, &mut EventSheetState::default(), &ctx).len(), 0);
+
+        // OnAnimationFinished is EDGE-triggered: fires once per finish episode, then
+        // ResumeAutoAnimation yields the right command.
+        let a = EventSheet { name: "a".into(), events: vec![Event::new(
+            vec![Condition::new(ConditionKind::OnAnimationFinished)],
+            vec![Action::new(ActionKind::ResumeAutoAnimation)])] };
+        let mut st = EventSheetState::default();
+        let mut ctx = dummy_ctx(); ctx.anim_finished = true;
+        let f1 = evaluate_event_sheet(&a, &mut st, &ctx);
+        assert!(matches!(f1.as_slice(), [EventCommand::ResumeAutoAnimation { entity_id: 1 }]));
+        // Still finished next frame → must NOT fire again (one-shot).
+        assert!(evaluate_event_sheet(&a, &mut st, &ctx).is_empty());
+        // Animation no longer finished → state resets.
+        ctx.anim_finished = false;
+        assert!(evaluate_event_sheet(&a, &mut st, &ctx).is_empty());
+        // Finished again → fires once more.
+        ctx.anim_finished = true;
+        assert_eq!(evaluate_event_sheet(&a, &mut st, &ctx).len(), 1);
     }
 
     #[test]

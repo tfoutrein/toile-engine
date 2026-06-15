@@ -21,6 +21,12 @@ pub enum ConditionKind {
     IfVariable { name: String, op: CompareOp, value: f64 },
     /// Fires periodically at the given interval (seconds).
     EveryNSeconds { interval: f64 },
+    /// True while the entity is standing on the ground (Platform behavior). ADR-038 Phase 5.
+    OnGrounded,
+    /// True on the frame the entity's current non-looping animation finishes.
+    OnAnimationFinished,
+    /// Compare the entity's horizontal velocity (vx) against a value.
+    IfVelocityX { op: CompareOp, value: f64 },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
