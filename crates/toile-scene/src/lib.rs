@@ -273,6 +273,10 @@ pub struct EntityData {
     pub light: Option<LightData>,
     #[serde(default = "default_visible")]
     pub visible: bool,
+    /// Locked entities can't be selected/dragged in the viewport (manage via the
+    /// hierarchy). Additive field — defaults to false for older scenes (ADR-037).
+    #[serde(default)]
+    pub locked: bool,
 }
 
 fn default_scale() -> f32 { 1.0 }
@@ -302,6 +306,7 @@ impl Default for EntityData {
             preview_frame: None,
             light: None,
             visible: true,
+            locked: false,
         }
     }
 }

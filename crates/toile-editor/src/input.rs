@@ -232,9 +232,16 @@ impl EditorApp {
                 && self.resizing.is_none()
                 && !self.rotating
             {
+                // A locked selected entity (selected via the hierarchy) can't be
+                // resized/rotated/dragged — skip its handles entirely.
+                let selected_locked = self.selected_id
+                    .and_then(|id| self.scene.entities.iter().find(|e| e.id == id))
+                    .map(|e| e.locked)
+                    .unwrap_or(false);
+
                 // First check: are we clicking on a resize handle of the selected entity?
                 let mut hit_handle = None;
-                if let Some(sel_id) = self.selected_id {
+                if let Some(sel_id) = self.selected_id.filter(|_| !selected_locked) {
                     if let Some(entity) = self.scene.entities.iter().find(|e| e.id == sel_id) {
                         let hw = entity.width * entity.scale_x * 0.5;
                         let hh = entity.height * entity.scale_y * 0.5;
@@ -272,7 +279,7 @@ impl EditorApp {
                 // Check rotation handle (diamond above top edge, rotated)
                 let mut hit_rotate = false;
                 if hit_handle.is_none() {
-                    if let Some(sel_id) = self.selected_id {
+                    if let Some(sel_id) = self.selected_id.filter(|_| !selected_locked) {
                         if let Some(entity) = self.scene.entities.iter().find(|e| e.id == sel_id) {
                             let hh = entity.height * entity.scale_y * 0.5;
                             let rot = entity.rotation;
