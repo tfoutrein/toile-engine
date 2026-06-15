@@ -259,6 +259,14 @@ impl EditorApp {
                                     } else {
                                         file.to_string_lossy().to_string()
                                     };
+                                    // Browse sets a plain sprite from a raw file (no metadata).
+                                    // Reset the previous sheet/animations so nothing stays
+                                    // misaligned with the new image; use “Setup Sprite &
+                                    // Animations” or the Asset Browser to add animations (ADR-038).
+                                    entity.sprite_sheet = None;
+                                    entity.animations.clear();
+                                    entity.default_animation = None;
+                                    entity.animation_states = None;
                                 }
                             }
                             ui.label("");

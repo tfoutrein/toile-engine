@@ -11,6 +11,42 @@ pub(crate) fn get_image_dimensions(sprite_path: &str, pdir: &Option<PathBuf>) ->
     image::image_dimensions(&full).ok()
 }
 
+/// Auto-populate `animation_states` bindings from the entity's animation names, so
+/// the editor state slots reflect what will actually play (ADR-038 Phase 4). Only
+/// fills states that aren't already bound; matches names case-insensitively via a
+/// synonym table (mirrors the runtime fallback).
+pub(crate) fn auto_bind_animation_states(entity: &mut EntityData) {
+    if entity.animations.is_empty() {
+        return;
+    }
+    let states: [(toile_scene::AnimState, &[&str]); 5] = [
+        (toile_scene::AnimState::Idle, &["idle", "repos", "stand", "default", "wait"]),
+        (toile_scene::AnimState::Walk, &["walk", "marche", "move", "moving"]),
+        (toile_scene::AnimState::Run, &["run", "course", "sprint"]),
+        (toile_scene::AnimState::Jump, &["jump", "saut", "sauter", "rise"]),
+        (toile_scene::AnimState::Fall, &["fall", "chute", "tomber"]),
+    ];
+    let mut map = entity.animation_states.take().unwrap_or_default();
+    for (state, syns) in states {
+        if map.anim_for(&state).is_some() {
+            continue; // keep an existing explicit binding
+        }
+        if let Some(a) = entity
+            .animations
+            .iter()
+            .find(|a| syns.iter().any(|s| a.name.eq_ignore_ascii_case(s)))
+        {
+            map.set_binding(state, a.name.clone());
+        }
+    }
+    // Only attach a map if it actually carries something (keeps legacy scenes clean).
+    if !map.bindings.is_empty() {
+        entity.animation_states = Some(map);
+    } else {
+        entity.animation_states = None;
+    }
+}
+
 /// Try to auto-detect sprite sheet layout from image dimensions.
 /// Tests common frame sizes and picks the best fit.
 pub(crate) fn auto_detect_sprite_sheet(sprite_path: &str, pdir: &Option<PathBuf>) -> toile_scene::SpriteSheetData {
@@ -235,4 +271,45 @@ pub(crate) fn hsv_to_rgb(h: f32, s: f32, v: f32) -> (u8, u8, u8) {
         _ => (v, p, q),
     };
     ((r * 255.0) as u8, (g * 255.0) as u8, (b * 255.0) as u8)
+}
+
+#[cfg(test)]
+mod auto_bind_tests {
+    use super::*;
+    use toile_scene::{AnimState, AnimationData};
+
+    fn anim(name: &str) -> AnimationData {
+        AnimationData { name: name.into(), frames: vec![0], fps: 8.0, looping: true, sprite_file: None, strip_frames: None }
+    }
+
+    #[test]
+    fn maps_animation_names_to_states_case_insensitively() {
+        let mut e = EntityData::default();
+        e.animations = vec![anim("Idle"), anim("course"), anim("Walk")];
+        auto_bind_animation_states(&mut e);
+        let m = e.animation_states.expect("bindings created");
+        assert_eq!(m.anim_for(&AnimState::Idle), Some("Idle"));
+        assert_eq!(m.anim_for(&AnimState::Run), Some("course")); // synonym of run
+        assert_eq!(m.anim_for(&AnimState::Walk), Some("Walk"));
+        assert_eq!(m.anim_for(&AnimState::Jump), None); // no jump-like anim present
+    }
+
+    #[test]
+    fn keeps_existing_binding_and_skips_when_no_match() {
+        let mut e = EntityData::default();
+        e.animations = vec![anim("custom_walk_anim")]; // matches no synonym
+        let mut map = toile_scene::AnimationStateMap::default();
+        map.set_binding(AnimState::Walk, "custom_walk_anim".into());
+        e.animation_states = Some(map);
+        auto_bind_animation_states(&mut e);
+        let m = e.animation_states.expect("kept");
+        assert_eq!(m.anim_for(&AnimState::Walk), Some("custom_walk_anim")); // preserved
+    }
+
+    #[test]
+    fn no_animations_clears_to_none() {
+        let mut e = EntityData::default();
+        auto_bind_animation_states(&mut e);
+        assert_eq!(e.animation_states, None);
+    }
 }

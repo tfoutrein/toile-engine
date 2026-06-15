@@ -225,6 +225,7 @@ impl EditorApp {
                                         if ui.small_button("+ pick").clicked() {
                                             self.show_frame_picker = true;
                                             self.frame_picker_anim = anim.name.clone();
+                                            self.frame_picker_last = None;
                                         }
                                     }
                                 });
@@ -462,6 +463,7 @@ impl EditorApp {
                                             if ui.small_button("+ pick").clicked() {
                                                 self.show_frame_picker = true;
                                                 self.frame_picker_anim = anim.name.clone();
+                                                self.frame_picker_last = None;
                                             }
                                         }
                                     });
@@ -536,7 +538,8 @@ impl EditorApp {
                             // Render the sprite sheet as a grid of clickable frame buttons
                             let cell_size = 64.0_f32;
                             let total = cols * rows;
-                            let mut clicked_frame: Option<u32> = None;
+                            // (frame index, shift held) — shift adds the range from the last pick.
+                            let mut clicked_frame: Option<(u32, bool)> = None;
 
                             // Get current frames for highlighting
                             let current_frames: Vec<u32> = self.scene.entities.iter()
@@ -592,20 +595,32 @@ impl EditorApp {
                                             }
 
                                             if response.clicked() {
-                                                clicked_frame = Some(frame_idx);
+                                                let shift = ui.input(|i| i.modifiers.shift);
+                                                clicked_frame = Some((frame_idx, shift));
                                             }
                                         }
                                     });
                                 }
                             });
 
-                            // Apply clicked frame
-                            if let Some(frame) = clicked_frame {
+                            // Apply clicked frame. Shift+click appends the whole range from the
+                            // last picked frame (multi-select) — ADR-038 Phase 4.
+                            if let Some((frame, shift)) = clicked_frame {
+                                let last = self.frame_picker_last;
                                 if let Some(entity) = self.scene.entities.iter_mut().find(|e| e.id == id) {
                                     if let Some(anim) = entity.animations.iter_mut().find(|a| a.name == anim_name) {
-                                        anim.frames.push(frame);
+                                        match (shift, last) {
+                                            (true, Some(l)) => {
+                                                let (a, b) = if l <= frame { (l, frame) } else { (frame, l) };
+                                                for f in a..=b {
+                                                    if f != l { anim.frames.push(f); } // l already added
+                                                }
+                                            }
+                                            _ => anim.frames.push(frame),
+                                        }
                                     }
                                 }
+                                self.frame_picker_last = Some(frame);
                             }
 
                             // Show current sequence — each frame is a button that

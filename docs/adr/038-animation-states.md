@@ -1,6 +1,6 @@
 # ADR-038 : State machine état→animation pilotée par les behaviors + UX « Animation States »
 
-- **Statut :** Proposee — Phase 0 implementee
+- **Statut :** Proposee — Phases 0-4 implementees (Phase 5 optionnelle restante)
 - **Date :** 2026-06-15
 - **Concerne :** v0.5+ (editeur + runner)
 
@@ -149,8 +149,24 @@ des frames). Aucune migration : les scenes v0.5 chargent et tournent a l'identiq
 - Directions 4/8-way pour TopDown des le MVP ou plus tard ?
 - Transitions (blend/duree) : v0.5 ou v1.x ? (MVP = switch instantane + garde Once.)
 - `AnimationLibrary` reutilisable (copier un set idle/walk/jump entre entites) ?
-- Corriger les chemins `Browse` / `Set sprite of selection` pour remplir `animations`
-  (coherence forte) ou se contenter d'un avertissement « slot vide » ?
+
+## Phase 4 — decisions & report (implementee)
+
+- **Cohérence des chemins (tranchée)** : « Add to Scene » et « Set as sprite of
+  selection » importent desormais sprite_sheet + animations depuis les metadonnees
+  de l'asset, puis pre-remplissent les bindings via `auto_bind_animation_states`.
+  « Set sprite » fait un **reset propre** (sheet/anims/default/bindings) avant de
+  repeupler, donc plus d'animations periemees desalignees. Le bouton **« Browse »**
+  de l'inspecteur reste volontairement un **sprite simple** : c'est un selecteur de
+  fichier brut (sans metadonnees), il pose le sprite et **reinitialise** les anims
+  (pas de slot perime) ; pour des animations on passe par le navigateur d'assets ou
+  « Setup Sprite & Animations ». Pas d'incoherence silencieuse.
+- **Auto-bind** : a l'import, les bindings d'etats sont deduits des noms d'anims
+  (table de synonymes, insensible a la casse) → les slots refletent ce qui jouera.
+- **Frame Picker** : multi-selection par **Shift+clic** (ajoute la plage depuis la
+  derniere frame ; l'ancre est reinitialisee a l'ouverture du picker).
+- **Reporte** (acceptable, trace) : drag-drop asset→slot ; reorder des frames par
+  glisser dans le picker ; auto-detection systematique strip vs grille au Browse.
 
 ## Validation
 

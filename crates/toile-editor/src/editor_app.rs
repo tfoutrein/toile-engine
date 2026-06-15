@@ -103,6 +103,8 @@ pub struct EditorApp {
     pub(crate) frame_picker_anim: String,
     pub(crate) frame_picker_egui_tex: Option<egui::TextureHandle>,
     pub(crate) frame_picker_loaded_path: String,
+    /// Last frame picked in the Frame Picker, for Shift+click range selection (ADR-038).
+    pub(crate) frame_picker_last: Option<u32>,
     pub(crate) show_sprite_editor: bool,
     pub(crate) sprite_editor_preview_anim: Option<(String, f32)>, // (anim_name, elapsed_frame)
     pub(crate) clipboard_entity: Option<EntityData>,
@@ -250,6 +252,7 @@ impl EditorApp {
             frame_picker_anim: String::new(),
             frame_picker_egui_tex: None,
             frame_picker_loaded_path: String::new(),
+            frame_picker_last: None,
             show_sprite_editor: false,
             sprite_editor_preview_anim: None,
             clipboard_entity: None,
