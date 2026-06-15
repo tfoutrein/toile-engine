@@ -123,7 +123,61 @@ impl EditorApp {
                         ui.label(egui::RichText::new("Animations").strong().size(14.0));
                         ui.separator();
 
+                        // Set after the entity borrow ends → drives the live preview (ADR-038).
+                        let mut preview_request: Option<String> = None;
                         if let Some(entity) = self.scene.entities.iter_mut().find(|e| e.id == id) {
+                            // ── Animation States: bind each motion state to an animation ──
+                            let has_platform = entity.behaviors.iter().any(|b| matches!(b, toile_behaviors::BehaviorConfig::Platform(_)));
+                            let has_topdown = entity.behaviors.iter().any(|b| matches!(b, toile_behaviors::BehaviorConfig::TopDown(_)));
+                            let states: Vec<(toile_scene::AnimState, &str)> = if has_platform {
+                                vec![
+                                    (toile_scene::AnimState::Idle, "Idle"),
+                                    (toile_scene::AnimState::Walk, "Walk"),
+                                    (toile_scene::AnimState::Run, "Run"),
+                                    (toile_scene::AnimState::Jump, "Jump"),
+                                    (toile_scene::AnimState::Fall, "Fall"),
+                                ]
+                            } else if has_topdown {
+                                vec![(toile_scene::AnimState::Idle, "Idle"), (toile_scene::AnimState::Walk, "Walk")]
+                            } else {
+                                Vec::new()
+                            };
+                            egui::CollapsingHeader::new("🎬 Animation States").default_open(true).show(ui, |ui| {
+                                if states.is_empty() {
+                                    ui.label(egui::RichText::new("Add a movement behavior (e.g. ‘Make Player’ in the Inspector) so idle/walk/jump play automatically.").size(11.0).color(egui::Color32::from_gray(150)));
+                                } else {
+                                    let mut auto = entity.animation_states.as_ref().map_or(true, |m| m.auto);
+                                    if ui.checkbox(&mut auto, "Auto-play these states in game").changed() {
+                                        entity.animation_states.get_or_insert_with(Default::default).auto = auto;
+                                    }
+                                    let anim_names: Vec<String> = entity.animations.iter().map(|a| a.name.clone()).collect();
+                                    egui::Grid::new("anim_states_grid").num_columns(2).spacing([8.0, 4.0]).show(ui, |ui| {
+                                        for (state, label) in &states {
+                                            ui.label(*label);
+                                            let current: String = entity.animation_states.as_ref()
+                                                .and_then(|m| m.anim_for(state)).unwrap_or("").to_string();
+                                            let mut selected = current.clone();
+                                            egui::ComboBox::from_id_salt(format!("anim_state_{label}"))
+                                                .selected_text(if selected.is_empty() { "(none)".to_string() } else { selected.clone() })
+                                                .show_ui(ui, |ui| {
+                                                    if ui.selectable_label(selected.is_empty(), "(none)").clicked() { selected = String::new(); }
+                                                    for n in &anim_names {
+                                                        if ui.selectable_label(&selected == n, n.as_str()).clicked() { selected = n.clone(); }
+                                                    }
+                                                });
+                                            if selected != current {
+                                                entity.animation_states.get_or_insert_with(Default::default)
+                                                    .set_binding(state.clone(), selected.clone());
+                                                if !selected.is_empty() { preview_request = Some(selected.clone()); }
+                                            }
+                                            ui.end_row();
+                                        }
+                                    });
+                                    ui.label(egui::RichText::new("Empty states fall back to anims named idle/walk/jump… (case-insensitive).").size(10.0).color(egui::Color32::from_gray(120)));
+                                }
+                            });
+                            ui.separator();
+
                             if entity.animations.is_empty() {
                                 ui.label(egui::RichText::new("No animations yet.\nUse Import on the left.").color(egui::Color32::from_gray(130)));
                             }
@@ -199,6 +253,10 @@ impl EditorApp {
                                     }
                                 }
                             });
+                        }
+                        // Preview the state's anim we just bound (entity borrow has ended).
+                        if let Some(name) = preview_request {
+                            self.sprite_editor_preview_anim = Some((name, 0.0));
                         }
                     });
                 });
