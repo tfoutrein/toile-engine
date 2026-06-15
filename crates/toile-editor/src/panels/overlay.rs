@@ -190,6 +190,13 @@ impl EditorApp {
                                     self.workspace_dir = dir;
                                 }
                             }
+                            if ui.small_button("\u{2728} Replay intro")
+                                .on_hover_text("Replay the startup animation")
+                                .clicked()
+                            {
+                                self.show_splash = true;
+                                self.splash_timer = crate::editor_app::SPLASH_DURATION;
+                            }
                         });
                     });
                 });
@@ -354,6 +361,13 @@ impl EditorApp {
                     if ui.button("Reset Camera").clicked() {
                         self.camera_pos = Vec2::ZERO;
                         self.camera_zoom = 1.0;
+                        ui.close_menu();
+                    }
+                    ui.separator();
+                    if ui.button("\u{2728} Replay Intro").clicked() {
+                        // Re-trigger the animated splash from the start.
+                        self.show_splash = true;
+                        self.splash_timer = crate::editor_app::SPLASH_DURATION;
                         ui.close_menu();
                     }
                 });

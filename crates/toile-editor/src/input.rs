@@ -14,8 +14,14 @@ impl EditorApp {
             self.splash_timer -= _dt as f32;
             if self.splash_timer <= 0.0 || ctx.input.is_key_just_pressed(Key::Space) || ctx.input.is_key_just_pressed(Key::Escape) {
                 self.show_splash = false;
+                // Start the cross-fade so the app reveals smoothly instead of popping in.
+                self.splash_fade_in = crate::editor_app::SPLASH_FADE;
             }
             return;
+        }
+        // Cross-fade the app in over the next screen's bg color (drawn in render_overlay).
+        if self.splash_fade_in > 0.0 {
+            self.splash_fade_in = (self.splash_fade_in - _dt as f32).max(0.0);
         }
 
         // Camera zoom with scroll

@@ -5,28 +5,71 @@ use toile_graphics::sprite_renderer::pack_color;
 
 use toile_behaviors::BehaviorConfig;
 
-use crate::editor_app::{EditorApp, EditorMode};
+use crate::editor_app::{EditorApp, EditorMode, SPLASH_DURATION};
+
+// ── Splash-screen animation helpers ────────────────────────────────────────
+fn c01(x: f32) -> f32 { x.clamp(0.0, 1.0) }
+fn ease_out_cubic(t: f32) -> f32 { let t = c01(t); 1.0 - (1.0 - t).powi(3) }
+fn ease_in_cubic(t: f32) -> f32 { let t = c01(t); t * t * t }
 
 impl EditorApp {
     /// Draw the entire viewport: grid, background tiles, viewport guide,
     /// tilemap layers, entities, selection handles, and particles.
     pub(crate) fn draw_viewport(&mut self, ctx: &mut GameContext) {
-        // Splash screen: centered logo
+        // Splash screen: the whole logo (spiral + "TOILE") is built from sampled pixels that stream
+        // in from the LEFT and assemble fluidly (no rotation), shimmer, then stream back off to the
+        // left to reveal the app. See the per-particle choreography below.
         if self.show_splash {
-            if let Some(logo) = self.logo_tex {
-                let fade = ((2.5 - self.splash_timer) * 2.0).clamp(0.0, 1.0); // fade in
-                let alpha = (fade * 255.0) as u8;
-                let size = 256.0;
-                ctx.draw_sprite(Sprite {
-                    texture: logo,
-                    position: Vec2::ZERO,
-                    size: Vec2::new(size, size),
-                    rotation: 0.0,
-                    color: pack_color(255, 255, 255, alpha),
-                    layer: 100,
-                    uv_min: Vec2::ZERO,
-                    uv_max: Vec2::ONE,
-                });
+            if let Some(white) = self.white_tex {
+                let total = SPLASH_DURATION;
+                let e = (total - self.splash_timer).max(0.0); // elapsed seconds
+
+                // Dissolve over the last ~0.85s: pixels stream back off + fade.
+                let diss = ease_in_cubic((e - 1.95) / 0.85);
+                let diss_alpha = 1.0 - diss;
+
+                // ── The WHOLE logo (spiral + "TOILE") forms from fluid pixels streaming IN FROM
+                //    THE LEFT — no rotation. Spiral: right-first so the left trail arrives last
+                //    (the logo's fanned trail). Text: reveals left→right ("T"…"E"). Then every
+                //    pixel streams back off to the left on dissolve. ──
+                for p in self.splash_particles.iter() {
+                    let xn = ((p.target.x + 128.0) / 256.0).clamp(0.0, 1.0); // 0=left, 1=right
+                    let (delay, in_dist, form_dur) = if p.is_text {
+                        (0.55 + xn * 0.45 + p.seed * 0.06, 70.0 + p.seed * 50.0, 0.40)
+                    } else {
+                        (
+                            (1.0 - xn) * 0.5 + p.seed * 0.1,
+                            110.0 + (1.0 - xn) * 250.0 + p.seed * 60.0,
+                            0.55,
+                        )
+                    };
+                    let pf = ease_out_cubic((e - delay) / form_dur);
+                    let alpha = c01(pf) * diss_alpha;
+                    if alpha <= 0.01 {
+                        continue;
+                    }
+                    // Arrival from the left (trail pixels start furthest → longer streak).
+                    let form_off = Vec2::new(
+                        -in_dist * (1.0 - pf),
+                        (p.seed - 0.5) * 42.0 * (1.0 - pf),
+                    );
+                    // Dissolve — stream back off to the left + vertical spread.
+                    let out = Vec2::new(-(260.0 + p.seed * 240.0), (p.seed - 0.5) * 150.0)
+                        * ease_in_cubic(diss);
+                    let settled = pf * (1.0 - diss);
+                    let wob = settled * (e * 5.0 + p.seed * 25.0).sin() * 1.1; // alive shimmer
+                    let pos = p.target + form_off + out + Vec2::new(0.0, wob);
+                    ctx.draw_sprite(Sprite {
+                        texture: white,
+                        position: pos,
+                        size: Vec2::splat(4.5 * (1.0 - 0.3 * diss)),
+                        rotation: 0.0,
+                        color: pack_color(p.color[0], p.color[1], p.color[2], (alpha * 255.0) as u8),
+                        layer: 99,
+                        uv_min: Vec2::ZERO,
+                        uv_max: Vec2::ONE,
+                    });
+                }
             }
             return;
         }
