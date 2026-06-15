@@ -81,6 +81,8 @@ pub struct EditorApp {
     /// True when egui owns the pointer this frame (over a panel/menu); read next frame
     /// in handle_update so a viewport right-click never opens under an egui panel.
     pub(crate) egui_consumed_pointer: bool,
+    /// Project pending a delete confirmation (welcome screen right-click → Delete).
+    pub(crate) confirm_delete_project: Option<PathBuf>,
     /// Logo spiral sampled into fluid pixels (built once in init).
     pub(crate) splash_particles: Vec<SplashParticle>,
     // Tilemap editor
@@ -234,6 +236,7 @@ impl EditorApp {
             pending_context_menu: None,
             context_menu_anchor: None,
             egui_consumed_pointer: false,
+            confirm_delete_project: None,
             splash_particles: Vec::new(),
             tilemap_editor: TilemapEditor::new(),
             background_tex: None,
