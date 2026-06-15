@@ -3,6 +3,20 @@
 use crate::types::AssetType;
 use super::AssetBrowserApp;
 
+/// Reveal a file in the OS file manager (selects it on macOS, opens its folder elsewhere).
+fn reveal_in_finder(path: &std::path::Path) {
+    #[cfg(target_os = "macos")]
+    {
+        let _ = std::process::Command::new("open").arg("-R").arg(path).spawn();
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        if let Some(parent) = path.parent() {
+            let _ = open::that(parent);
+        }
+    }
+}
+
 /// All filterable asset types.
 const FILTER_TYPES: &[(AssetType, &str)] = &[
     (AssetType::Sprite, "Sprite"),
@@ -198,6 +212,28 @@ pub fn show_browser_panel(
                             app.selected_asset = Some(asset_id.clone());
                             app.preview_loaded_path.clear();
                         }
+
+                        // Right-click: read-only conveniences (ADR-037 Phase 1). Scene-mutating
+                        // items (Add to Scene, Set as sprite of selection) come in Phase 3.
+                        response.context_menu(|ui| {
+                            ui.set_min_width(170.0);
+                            if let Some(asset) =
+                                app.library.assets.iter().find(|a| &a.id == asset_id).cloned()
+                            {
+                                if let Some(abs) = app.library.absolute_path(&asset) {
+                                    if ui.button("📂 Reveal in Finder").clicked() {
+                                        reveal_in_finder(&abs);
+                                        ui.close_menu();
+                                    }
+                                    if ui.button("📋 Copy path").clicked() {
+                                        ui.ctx().copy_text(abs.to_string_lossy().to_string());
+                                        ui.close_menu();
+                                    }
+                                } else {
+                                    ui.label("(no file path)");
+                                }
+                            }
+                        });
                     }
                 });
             }
