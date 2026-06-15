@@ -154,6 +154,25 @@ impl EditorApp {
                         ui.label(egui::RichText::new(role_hint).size(10.0).color(egui::Color32::from_gray(140)));
                     }
 
+                    // One-click "Make Player": Player tag + Platform behavior. With a movement
+                    // behavior present, anims named idle/walk/jump (or Fall/Run) play automatically
+                    // in-game (ADR-038). Shown only when the entity isn't already a platformer player.
+                    let is_platformer_player = entity.tags.iter().any(|t| t.eq_ignore_ascii_case("player"))
+                        && entity.behaviors.iter().any(|b| matches!(b, BehaviorConfig::Platform(_)));
+                    if !is_platformer_player {
+                        if ui.button("🎮 Make Player (Platformer)")
+                            .on_hover_text("Adds the Player tag + Platform behavior. Animations named idle/walk/jump (or Fall/Run) then play automatically in-game.")
+                            .clicked()
+                        {
+                            if !entity.tags.iter().any(|t| t.eq_ignore_ascii_case("player")) {
+                                entity.tags.push("Player".to_string());
+                            }
+                            if !entity.behaviors.iter().any(|b| matches!(b, BehaviorConfig::Platform(_))) {
+                                entity.behaviors.insert(0, BehaviorConfig::Platform(Default::default()));
+                            }
+                        }
+                    }
+
                     ui.add_space(8.0);
                     ui.label(egui::RichText::new("Transform").strong());
                     ui.separator();

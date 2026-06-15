@@ -379,7 +379,24 @@ impl EditorApp {
 
             // Compute UV from sprite sheet (show first frame or idle frame 0)
             let (uv_min, uv_max) = if let Some(ref sheet) = entity.sprite_sheet {
-                let frame_idx = entity.preview_frame.unwrap_or_else(|| {
+                // Live animated preview (transient, ADR-038): for the selected entity in
+                // SpriteAnim mode, drive the frame from the preview timer instead of the
+                // persisted preview_frame — so the scene data isn't mutated.
+                let live_frame = if selected && self.editor_mode == EditorMode::SpriteAnim {
+                    self.sprite_editor_preview_anim.as_ref().and_then(|(name, elapsed)| {
+                        entity.animations.iter().find(|a| a.name == *name).and_then(|a| {
+                            if a.frames.is_empty() {
+                                None
+                            } else {
+                                let i = (*elapsed * a.fps) as usize % a.frames.len();
+                                a.frames.get(i).copied()
+                            }
+                        })
+                    })
+                } else {
+                    None
+                };
+                let frame_idx = live_frame.or(entity.preview_frame).unwrap_or_else(|| {
                     entity.default_animation.as_ref()
                         .and_then(|anim_name| entity.animations.iter().find(|a| a.name == *anim_name))
                         .and_then(|a| a.frames.first().copied())

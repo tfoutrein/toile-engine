@@ -92,6 +92,90 @@ fn is_player(data: &EntityData) -> bool {
     data.tags.iter().any(|t| t.eq_ignore_ascii_case("player"))
 }
 
+/// Movement behavior that can drive automatic idle/walk/jump animations (ADR-038).
+#[derive(Clone, Copy, PartialEq)]
+enum MotionKind { Platform, TopDown }
+
+fn motion_kind(data: &EntityData) -> Option<MotionKind> {
+    for b in &data.behaviors {
+        match b {
+            toile_behaviors::BehaviorConfig::Platform(_) => return Some(MotionKind::Platform),
+            toile_behaviors::BehaviorConfig::TopDown(_) => return Some(MotionKind::TopDown),
+            _ => {}
+        }
+    }
+    None
+}
+
+/// Synonyms for a canonical animation state — matched case-insensitively, so an
+/// anim named "Idle", "marche" or "course" still maps to its state (ADR-038).
+fn state_synonyms(state: &str) -> &'static [&'static str] {
+    match state {
+        "idle" => &["idle", "repos", "stand", "default", "wait"],
+        "walk" => &["walk", "marche", "move", "moving"],
+        "run" => &["run", "course", "sprint"],
+        "jump" => &["jump", "saut", "sauter", "rise"],
+        "fall" => &["fall", "chute", "tomber"],
+        _ => &[],
+    }
+}
+
+/// First state in `wanted` (priority order) that maps to an existing animation.
+fn pick_state_anim(anims: &[toile_scene::AnimationData], wanted: &[&str]) -> Option<String> {
+    wanted.iter().find_map(|state| {
+        let syns = state_synonyms(state);
+        anims
+            .iter()
+            .find(|a| syns.iter().any(|s| a.name.eq_ignore_ascii_case(s)))
+            .map(|a| a.name.clone())
+    })
+}
+
+#[cfg(test)]
+mod anim_state_tests {
+    use super::*;
+
+    fn anim(name: &str) -> toile_scene::AnimationData {
+        toile_scene::AnimationData {
+            name: name.into(),
+            frames: vec![0, 1],
+            fps: 8.0,
+            looping: true,
+            sprite_file: None,
+            strip_frames: None,
+        }
+    }
+
+    #[test]
+    fn resolves_case_insensitively_and_via_synonyms() {
+        let anims = vec![anim("Idle"), anim("Marche"), anim("JUMP")];
+        assert_eq!(pick_state_anim(&anims, &["idle"]).as_deref(), Some("Idle"));
+        // "marche" is a synonym of walk, matched case-insensitively.
+        assert_eq!(pick_state_anim(&anims, &["walk"]).as_deref(), Some("Marche"));
+        assert_eq!(pick_state_anim(&anims, &["jump"]).as_deref(), Some("JUMP"));
+        // No "run" (nor synonym) present.
+        assert_eq!(pick_state_anim(&anims, &["run"]), None);
+    }
+
+    #[test]
+    fn falls_back_through_priority_list() {
+        let anims = vec![anim("jump"), anim("walk")];
+        // No "fall" anim → falls back to "jump".
+        assert_eq!(pick_state_anim(&anims, &["fall", "jump"]).as_deref(), Some("jump"));
+        // No "run" anim → falls back to "walk".
+        assert_eq!(pick_state_anim(&anims, &["run", "walk"]).as_deref(), Some("walk"));
+    }
+
+    #[test]
+    fn legacy_exact_names_still_match() {
+        // Non-regression: the classic idle/walk/jump names still resolve.
+        let anims = vec![anim("idle"), anim("walk"), anim("jump")];
+        assert_eq!(pick_state_anim(&anims, &["idle"]).as_deref(), Some("idle"));
+        assert_eq!(pick_state_anim(&anims, &["walk"]).as_deref(), Some("walk"));
+        assert_eq!(pick_state_anim(&anims, &["jump"]).as_deref(), Some("jump"));
+    }
+}
+
 fn has_solid_behavior(ent: &RuntimeEntity) -> bool {
     ent.behaviors.iter().any(|b| matches!(b, BehaviorRuntime::Solid))
 }
@@ -724,40 +808,56 @@ impl Game for GameRunner {
         for ent in &mut self.entities {
             if !ent.alive || ent.data.animations.is_empty() { continue; }
 
-            // For non-player entities: play default animation if no current animation
-            if !is_player(&ent.data) {
-                if ent.current_anim.is_none() {
-                    if let Some(ref default) = ent.data.default_animation {
-                        ent.current_anim = Some(default.clone());
-                        ent.anim_frame = 0.0;
-                    } else if let Some(first) = ent.data.animations.first() {
-                        // No default set — play first animation
-                        ent.current_anim = Some(first.name.clone());
-                        ent.anim_frame = 0.0;
+            // Auto-select the animation from motion state for ANY entity that has a
+            // movement behavior (Platform/TopDown) — not just the player (ADR-038 Phase 0).
+            // World +y is up: velocity.y > 0 means rising (jump), < 0 means falling (fall).
+            match motion_kind(&ent.data) {
+                Some(kind) => {
+                    let vx = ent.es.velocity.x;
+                    let vy = ent.es.velocity.y;
+                    let on_ground = ent.es.on_ground;
+                    // Canonical states to try in priority order; first that maps to an
+                    // existing anim (by name, case-insensitive + synonyms) wins.
+                    let wanted: &[&str] = match kind {
+                        MotionKind::Platform => {
+                            if !on_ground && vy >= 0.0 { &["jump"] }
+                            else if !on_ground { &["fall", "jump"] }
+                            else if vx.abs() > 120.0 { &["run", "walk"] }
+                            else if vx.abs() > 5.0 { &["walk"] }
+                            else { &["idle"] }
+                        }
+                        MotionKind::TopDown => {
+                            if vx != 0.0 || vy != 0.0 { &["walk"] } else { &["idle"] }
+                        }
+                    };
+                    // Track facing from horizontal velocity (generalised to all entities).
+                    if vx > 5.0 { ent.facing_left = false; }
+                    else if vx < -5.0 { ent.facing_left = true; }
+
+                    if let Some(new_anim) = pick_state_anim(&ent.data.animations, wanted) {
+                        if ent.current_anim.as_deref() != Some(new_anim.as_str()) {
+                            ent.current_anim = Some(new_anim);
+                            ent.anim_frame = 0.0;
+                        }
+                    } else if ent.current_anim.is_none() {
+                        // No state anim matched — fall back so something plays.
+                        if let Some(name) = ent.data.default_animation.clone()
+                            .or_else(|| ent.data.animations.first().map(|a| a.name.clone()))
+                        {
+                            ent.current_anim = Some(name);
+                            ent.anim_frame = 0.0;
+                        }
                     }
                 }
-            }
-
-            // Auto-select animation for player entities based on state
-            if is_player(&ent.data) {
-                let vx = ent.es.velocity.x;
-                let on_ground = ent.es.on_ground;
-                let new_anim = if !on_ground {
-                    "jump"
-                } else if vx.abs() > 5.0 {
-                    "walk"
-                } else {
-                    "idle"
-                };
-                // Track facing direction
-                if vx > 5.0 { ent.facing_left = false; }
-                else if vx < -5.0 { ent.facing_left = true; }
-
-                // Switch animation if different
-                if ent.current_anim.as_deref() != Some(new_anim) {
-                    if ent.data.animations.iter().any(|a| a.name == new_anim) {
-                        ent.current_anim = Some(new_anim.to_string());
-                        ent.anim_frame = 0.0;
+                None => {
+                    // No movement behavior: play the default (or first) animation, once.
+                    if ent.current_anim.is_none() {
+                        if let Some(name) = ent.data.default_animation.clone()
+                            .or_else(|| ent.data.animations.first().map(|a| a.name.clone()))
+                        {
+                            ent.current_anim = Some(name);
+                            ent.anim_frame = 0.0;
+                        }
                     }
                 }
             }
