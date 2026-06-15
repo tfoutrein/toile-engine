@@ -213,10 +213,30 @@ pub fn show_browser_panel(
                             app.preview_loaded_path.clear();
                         }
 
-                        // Right-click: read-only conveniences (ADR-037 Phase 1). Scene-mutating
-                        // items (Add to Scene, Set as sprite of selection) come in Phase 3.
+                        // Right-click menu (ADR-037). Scene-mutating items set a pending_*
+                        // field drained by the editor (it owns the scene); read-only items act here.
                         response.context_menu(|ui| {
-                            ui.set_min_width(170.0);
+                            ui.set_min_width(200.0);
+                            let is_visual = !matches!(
+                                asset_type,
+                                AssetType::Audio | AssetType::Font | AssetType::Data
+                            );
+                            if is_visual {
+                                if ui.button("➕ Add to Scene").clicked() {
+                                    app.pending_add_to_scene = Some(asset_id.clone());
+                                    ui.close_menu();
+                                }
+                                if ui.button("🖼 Set as sprite of selection").clicked() {
+                                    app.pending_set_sprite_of_selection = Some(asset_id.clone());
+                                    ui.close_menu();
+                                }
+                                if ui.button("🌄 Set as background").clicked() {
+                                    app.pending_set_background = Some(asset_id.clone());
+                                    ui.close_menu();
+                                }
+                                ui.separator();
+                            }
+                            // Read-only conveniences.
                             if let Some(asset) =
                                 app.library.assets.iter().find(|a| &a.id == asset_id).cloned()
                             {

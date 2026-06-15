@@ -7,6 +7,22 @@ use crate::scene_data::SceneData;
 use crate::tilemap_tool::{self, TileTool};
 use crate::helpers::*;
 
+/// Recursively copy a directory tree (used by the welcome-screen "Duplicate project").
+fn copy_dir_recursive(src: &Path, dst: &Path) -> std::io::Result<()> {
+    std::fs::create_dir_all(dst)?;
+    for entry in std::fs::read_dir(src)? {
+        let entry = entry?;
+        let from = entry.path();
+        let to = dst.join(entry.file_name());
+        if entry.file_type()?.is_dir() {
+            copy_dir_recursive(&from, &to)?;
+        } else {
+            std::fs::copy(&from, &to)?;
+        }
+    }
+    Ok(())
+}
+
 impl EditorApp {
     /// Show all overlay panels: welcome dialog, menu bar, hierarchy, inspector
     /// delegations, scene settings, tilemap tools, and status bar.
@@ -54,6 +70,8 @@ impl EditorApp {
         if self.project_dir.is_none() {
             let mut action_create: Option<PathBuf> = None;
             let mut action_open: Option<PathBuf> = None;
+            let mut action_duplicate: Option<PathBuf> = None;
+            let mut action_delete: Option<PathBuf> = None;
 
             egui::CentralPanel::default().show(ctx, |ui| {
                 let panel_width = 420.0_f32;
@@ -151,9 +169,24 @@ impl EditorApp {
                                 ui.label(egui::RichText::new("Projects in workspace:").size(11.0).color(egui::Color32::from_gray(140)));
                                 for (name, path) in &found_projects {
                                     let path_str = path.to_string_lossy().to_string();
-                                    if ui.selectable_label(self.project_path_input == path_str, name).clicked() {
+                                    let pr = ui.selectable_label(self.project_path_input == path_str, name);
+                                    if pr.clicked() {
                                         self.project_path_input = path_str;
                                     }
+                                    pr.context_menu(|ui| {
+                                        ui.set_min_width(170.0);
+                                        if ui.button("📂 Open").clicked() { action_open = Some(path.clone()); ui.close_menu(); }
+                                        if ui.button("🔍 Reveal in Finder").clicked() {
+                                            crate::context_menu::reveal_in_finder(path);
+                                            ui.close_menu();
+                                        }
+                                        ui.separator();
+                                        if ui.button("⧉ Duplicate").clicked() { action_duplicate = Some(path.clone()); ui.close_menu(); }
+                                        if ui.button(egui::RichText::new("🗑 Delete").color(egui::Color32::from_rgb(220, 90, 90))).clicked() {
+                                            action_delete = Some(path.clone());
+                                            ui.close_menu();
+                                        }
+                                    });
                                 }
                             }
 
@@ -218,6 +251,55 @@ impl EditorApp {
                     self.open_project(dir);
                 } else {
                     self.status_msg = format!("No Toile.toml found in '{}'", dir.display());
+                }
+            }
+            if let Some(src) = action_duplicate {
+                let base = src.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+                let dest = src.with_file_name(format!("{base}_copy"));
+                if dest.exists() {
+                    self.status_msg = format!("'{}' already exists", dest.display());
+                } else {
+                    match copy_dir_recursive(&src, &dest) {
+                        Ok(()) => self.status_msg = format!("Duplicated project to '{base}_copy'"),
+                        Err(e) => self.status_msg = format!("Duplicate failed: {e}"),
+                    }
+                }
+            }
+            if let Some(target) = action_delete {
+                self.confirm_delete_project = Some(target);
+            }
+
+            // Delete-project confirmation modal (destructive → explicit confirm, ADR-037).
+            if let Some(target) = self.confirm_delete_project.clone() {
+                let mut do_delete = false;
+                let mut cancel = false;
+                egui::Window::new("Delete project?")
+                    .collapsible(false)
+                    .resizable(false)
+                    .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+                    .show(ctx, |ui| {
+                        ui.label(format!("Permanently delete '{}' and all its files?", target.display()));
+                        ui.label(egui::RichText::new("This cannot be undone.").color(egui::Color32::from_rgb(230, 150, 150)).size(11.0));
+                        ui.add_space(6.0);
+                        ui.horizontal(|ui| {
+                            if ui.button("Cancel").clicked() { cancel = true; }
+                            if ui.button(egui::RichText::new("Delete").color(egui::Color32::from_rgb(230, 90, 90))).clicked() {
+                                do_delete = true;
+                            }
+                        });
+                    });
+                if do_delete {
+                    match std::fs::remove_dir_all(&target) {
+                        Ok(()) => self.status_msg = format!("Deleted project '{}'", target.display()),
+                        Err(e) => self.status_msg = format!("Delete failed: {e}"),
+                    }
+                    if self.project_path_input == target.to_string_lossy() {
+                        self.project_path_input.clear();
+                    }
+                    self.confirm_delete_project = None;
+                }
+                if cancel {
+                    self.confirm_delete_project = None;
                 }
             }
             return;
@@ -703,6 +785,64 @@ impl EditorApp {
                     self.status_msg = format!("Added '{}' to scene", asset.name);
                 }
             }
+
+            // Set the selected entity's sprite from an asset (browser right-click).
+            if let Some(asset_id) = self.asset_browser.pending_set_sprite_of_selection.take() {
+                let asset = self.asset_browser.library.assets.iter().find(|a| a.id == asset_id).cloned();
+                if let Some(asset) = asset {
+                    if let Some(sel) = self.selected_id {
+                        let abs_path = self.asset_browser.library.absolute_path(&asset);
+                        let sprite_path = match (&pdir, &abs_path) {
+                            (Some(pd), Some(abs)) => abs.strip_prefix(pd).map(|p| p.to_string_lossy().to_string()).unwrap_or_else(|_| abs.to_string_lossy().to_string()),
+                            _ => abs_path.as_ref().map(|p| p.to_string_lossy().to_string()).unwrap_or_default(),
+                        };
+                        self.push_undo();
+                        if let Some(e) = self.scene.find_entity_mut(sel) {
+                            e.sprite_path = sprite_path;
+                            if let toile_asset_library::AssetMetadata::Sprite(ref sm) = asset.metadata {
+                                if sm.frame_count > 1 {
+                                    e.sprite_sheet = Some(toile_scene::SpriteSheetData {
+                                        frame_width: sm.frame_width,
+                                        frame_height: sm.frame_height,
+                                        columns: sm.columns,
+                                        rows: sm.rows,
+                                    });
+                                }
+                                e.width = sm.frame_width as f32;
+                                e.height = sm.frame_height as f32;
+                            }
+                        }
+                        self.sprite_cache.clear();
+                        self.editor_mode = EditorMode::Entity;
+                        self.status_msg = format!("Set sprite of selection to '{}'", asset.name);
+                    } else {
+                        self.status_msg = "Select an entity first to set its sprite".to_string();
+                    }
+                }
+            }
+
+            // Set the current scene's background from an asset (browser right-click).
+            if let Some(asset_id) = self.asset_browser.pending_set_background.take() {
+                let asset = self.asset_browser.library.assets.iter().find(|a| a.id == asset_id).cloned();
+                if let Some(asset) = asset {
+                    let abs_path = self.asset_browser.library.absolute_path(&asset);
+                    let rel = match (&pdir, &abs_path) {
+                        (Some(pd), Some(abs)) => abs.strip_prefix(pd).map(|p| p.to_string_lossy().to_string()).unwrap_or_else(|_| abs.to_string_lossy().to_string()),
+                        _ => abs_path.as_ref().map(|p| p.to_string_lossy().to_string()).unwrap_or_default(),
+                    };
+                    if !rel.is_empty() {
+                        self.push_undo();
+                        self.scene.settings.background_image = Some(rel);
+                        if self.scene.settings.background_tiles.is_empty() {
+                            let cam = self.scene.settings.camera_position;
+                            self.scene.settings.background_tiles.push(cam);
+                        }
+                        self.background_path_loaded.clear();
+                        self.background_tex = None;
+                        self.status_msg = format!("Set background to '{}'", asset.name);
+                    }
+                }
+            }
         }
 
         // ── AI Copilot (full-screen mode) ────────────────────────────────
@@ -967,6 +1107,12 @@ impl EditorApp {
                         ui.label(egui::RichText::new("No output yet. Press ▶ Play to run the game.")
                             .color(egui::Color32::from_gray(130)));
                     } else {
+                        // Right-click a line → Copy line / Copy all / Save / Clear (ADR-037).
+                        // Mutations are deferred to after the read-only loop.
+                        let mut copy_line: Option<String> = None;
+                        let mut copy_all = false;
+                        let mut save_logs = false;
+                        let mut clear_logs = false;
                         egui::ScrollArea::vertical()
                             .auto_shrink([false, false])
                             .stick_to_bottom(true)
@@ -979,9 +1125,31 @@ impl EditorApp {
                                     } else {
                                         egui::Color32::from_gray(210)
                                     };
-                                    ui.label(egui::RichText::new(line).monospace().size(11.0).color(color));
+                                    let resp = ui.add(egui::Label::new(
+                                        egui::RichText::new(line).monospace().size(11.0).color(color),
+                                    ).sense(egui::Sense::click()));
+                                    resp.context_menu(|ui| {
+                                        if ui.button("📋 Copy line").clicked() { copy_line = Some(line.clone()); ui.close_menu(); }
+                                        if ui.button("📋 Copy all").clicked() { copy_all = true; ui.close_menu(); }
+                                        ui.separator();
+                                        if ui.button("💾 Save to file…").clicked() { save_logs = true; ui.close_menu(); }
+                                        if ui.button("🗑 Clear").clicked() { clear_logs = true; ui.close_menu(); }
+                                    });
                                 }
                             });
+                        if let Some(l) = copy_line { ui.ctx().copy_text(l); }
+                        if copy_all { ui.ctx().copy_text(self.game_logs.join("\n")); }
+                        if save_logs {
+                            if let Some(path) = rfd::FileDialog::new()
+                                .set_title("Save Game Output")
+                                .add_filter("Text", &["txt", "log"])
+                                .set_file_name("game-output.txt")
+                                .save_file()
+                            {
+                                let _ = std::fs::write(&path, self.game_logs.join("\n"));
+                            }
+                        }
+                        if clear_logs { self.game_logs.clear(); }
                     }
                 });
             self.show_game_output = open;

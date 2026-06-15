@@ -233,6 +233,10 @@ pub struct AssetBrowserApp {
     pub highlight_needs_scroll: bool,  // true only on first frame after "Go to file"
     /// Set by "Add to Scene" button — the editor picks this up and creates an entity.
     pub pending_add_to_scene: Option<String>, // asset ID to add
+    /// Set by "Set as sprite of selection" — the editor applies it to the selected entity.
+    pub pending_set_sprite_of_selection: Option<String>, // asset ID
+    /// Set by "Set as background" — the editor applies it to the current scene.
+    pub pending_set_background: Option<String>, // asset ID
     surface_format: Option<wgpu::TextureFormat>,
     preview_loaded_path: String,
     tex_counter: u64,
@@ -278,6 +282,8 @@ impl AssetBrowserApp {
             highlight_file: None,
             highlight_needs_scroll: false,
             pending_add_to_scene: None,
+            pending_set_sprite_of_selection: None,
+            pending_set_background: None,
             surface_format: None,
             preview_loaded_path: String::new(),
             tex_counter: 0,
