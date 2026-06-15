@@ -592,6 +592,8 @@ impl EditorApp {
         }
         // Modal "Add Animation" dialog (ADR-039 Phase 2).
         self.show_add_animation_dialog(ctx, pdir);
+        // Modal "Replace base sprite" dialog (ADR-039 Phase 3).
+        self.show_replace_sprite_dialog(ctx);
         if do_undo { self.undo(); }
         if do_redo { self.redo(); }
         if add_entity {
@@ -865,59 +867,71 @@ impl EditorApp {
                 }
             }
 
-            // Set the selected entity's sprite from an asset (browser right-click).
+            // Replace the selected entity's base sprite from an asset (ADR-039 Phase 3):
+            // build the new sprite source, then begin_sprite_replace decides whether to
+            // apply directly (no clips to lose) or open the Keep / Replace-all dialog.
             if let Some(asset_id) = self.asset_browser.pending_set_sprite_of_selection.take() {
                 let asset = self.asset_browser.library.assets.iter().find(|a| a.id == asset_id).cloned();
                 if let Some(asset) = asset {
-                    if let Some(sel) = self.selected_id {
+                    if self.selected_id.is_some() {
                         let abs_path = self.asset_browser.library.absolute_path(&asset);
                         let sprite_path = match (&pdir, &abs_path) {
                             (Some(pd), Some(abs)) => abs.strip_prefix(pd).map(|p| p.to_string_lossy().to_string()).unwrap_or_else(|_| abs.to_string_lossy().to_string()),
                             _ => abs_path.as_ref().map(|p| p.to_string_lossy().to_string()).unwrap_or_default(),
                         };
-                        self.push_undo();
-                        if let Some(e) = self.scene.find_entity_mut(sel) {
-                            e.sprite_path = sprite_path;
-                            // Replacing the sprite invalidates the previous sheet/animations/
-                            // bindings → reset unconditionally (fresh start, like Add to Scene),
-                            // then repopulate from the new asset's metadata (ADR-038 Phase 4).
-                            e.sprite_sheet = None;
-                            e.animations.clear();
-                            e.default_animation = None;
-                            e.animation_states = None;
-                            if let toile_asset_library::AssetMetadata::Sprite(ref sm) = asset.metadata {
-                                if sm.frame_count > 1 {
-                                    e.sprite_sheet = Some(toile_scene::SpriteSheetData {
-                                        frame_width: sm.frame_width,
-                                        frame_height: sm.frame_height,
-                                        columns: sm.columns,
-                                        rows: sm.rows,
-                                    });
-                                }
-                                e.width = sm.frame_width as f32;
-                                e.height = sm.frame_height as f32;
-                                for anim in &sm.animations {
-                                    e.animations.push(toile_scene::AnimationData {
-                                        name: anim.name.clone(),
-                                        frames: anim.frames.clone(),
-                                        fps: anim.fps,
-                                        looping: anim.looping,
-                                        sprite_file: None,
-                                        strip_frames: None,
-                                    });
-                                }
-                                e.default_animation = e.animations.first().map(|a| a.name.clone());
+                        let mut source = crate::panels::sprite_replace::SpriteSource {
+                            sprite_path, sheet: None, width: 0.0, height: 0.0, anims: Vec::new(),
+                        };
+                        if let toile_asset_library::AssetMetadata::Sprite(ref sm) = asset.metadata {
+                            if sm.frame_count > 1 {
+                                source.sheet = Some(toile_scene::SpriteSheetData {
+                                    frame_width: sm.frame_width,
+                                    frame_height: sm.frame_height,
+                                    columns: sm.columns,
+                                    rows: sm.rows,
+                                });
                             }
-                            // Rebuild state bindings from the new animations (None if none).
-                            crate::helpers::auto_populate_missing_bindings(e);
+                            source.width = sm.frame_width as f32;
+                            source.height = sm.frame_height as f32;
+                            for anim in &sm.animations {
+                                source.anims.push(toile_scene::AnimationData {
+                                    name: anim.name.clone(),
+                                    frames: anim.frames.clone(),
+                                    fps: anim.fps,
+                                    looping: anim.looping,
+                                    sprite_file: None,
+                                    strip_frames: None,
+                                });
+                            }
                         }
-                        self.sprite_cache.clear();
-                        self.editor_mode = EditorMode::Entity;
-                        self.status_msg = format!("Set sprite of selection to '{}'", asset.name);
+                        if source.width <= 1.0 || source.height <= 1.0 {
+                            if let Some(ref abs) = abs_path {
+                                if let Ok((w, h)) = image::image_dimensions(abs) {
+                                    source.width = w as f32;
+                                    source.height = h as f32;
+                                }
+                            }
+                        }
+                        let name = asset.name.clone();
+                        self.begin_sprite_replace(source, name);
                     } else {
                         self.status_msg = "Select an entity first to set its sprite".to_string();
                     }
                 }
+            }
+
+            // Inspector "Replace base sprite…" picker (raw file → static sprite). Deferred
+            // so it runs outside the inspector's `&mut entity` borrow (ADR-039 Phase 3).
+            if let Some(file) = self.pending_replace_sprite_file.take() {
+                let sprite_path = pdir.as_ref()
+                    .and_then(|pd| file.strip_prefix(pd).ok().map(|p| p.to_string_lossy().to_string()))
+                    .unwrap_or_else(|| file.to_string_lossy().to_string());
+                let (w, h) = image::image_dimensions(&file).unwrap_or((1, 1));
+                let name = file.file_name().map(|s| s.to_string_lossy().to_string()).unwrap_or_else(|| sprite_path.clone());
+                let source = crate::panels::sprite_replace::SpriteSource {
+                    sprite_path, sheet: None, width: w as f32, height: h as f32, anims: Vec::new(),
+                };
+                self.begin_sprite_replace(source, name);
             }
 
             // Set the current scene's background from an asset (browser right-click).

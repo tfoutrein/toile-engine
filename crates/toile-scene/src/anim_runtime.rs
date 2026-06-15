@@ -136,6 +136,42 @@ pub fn state_synonyms(state: &AnimState) -> &'static [&'static str] {
     }
 }
 
+/// How an entity's animations get their pixels (ADR-039 Phase 3). A *grid* clip indexes
+/// the entity's shared `sprite_sheet` (and renders from the entity's base texture); a
+/// *strip* clip carries its own `sprite_file` and is autonomous. This drives the
+/// "Replace base sprite" guard: replacing the base sprite/sheet can misalign GRID clips
+/// (their frame indices point into the old sheet) but never touches STRIP clips.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum SourcingModel {
+    /// No animations.
+    None,
+    /// All clips index the entity's shared sprite sheet.
+    Grid,
+    /// All clips carry their own `sprite_file`.
+    Strip,
+    /// A mix of grid and strip clips.
+    Mixed,
+}
+
+/// Classify how an entity's animations are sourced (see [`SourcingModel`]).
+pub fn detect_sourcing_model(anims: &[AnimationData]) -> SourcingModel {
+    let mut has_grid = false;
+    let mut has_strip = false;
+    for a in anims {
+        if a.sprite_file.is_some() {
+            has_strip = true;
+        } else {
+            has_grid = true;
+        }
+    }
+    match (has_grid, has_strip) {
+        (false, false) => SourcingModel::None,
+        (true, false) => SourcingModel::Grid,
+        (false, true) => SourcingModel::Strip,
+        (true, true) => SourcingModel::Mixed,
+    }
+}
+
 /// Resolve the first state that maps to an existing animation: explicit binding
 /// (`animation_states`) first, then the case-insensitive name-synonym fallback.
 pub fn resolve_state_to_anim(
@@ -291,5 +327,15 @@ mod tests {
     fn custom_states_have_no_synonyms() {
         assert!(state_synonyms(&AnimState::Custom("attack".into())).is_empty());
         assert_eq!(state_synonyms(&AnimState::Walk), &["walk", "marche", "move", "moving"]);
+    }
+
+    #[test]
+    fn detect_sourcing_model_classifies() {
+        let grid = AnimationData { name: "g".into(), frames: vec![0], fps: 8.0, looping: true, sprite_file: None, strip_frames: None };
+        let strip = AnimationData { name: "s".into(), frames: vec![0], fps: 8.0, looping: true, sprite_file: Some("s.png".into()), strip_frames: Some(1) };
+        assert_eq!(detect_sourcing_model(&[]), SourcingModel::None);
+        assert_eq!(detect_sourcing_model(&[grid.clone()]), SourcingModel::Grid);
+        assert_eq!(detect_sourcing_model(&[strip.clone()]), SourcingModel::Strip);
+        assert_eq!(detect_sourcing_model(&[grid, strip]), SourcingModel::Mixed);
     }
 }

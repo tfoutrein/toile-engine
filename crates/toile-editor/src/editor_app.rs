@@ -78,6 +78,11 @@ pub struct EditorApp {
     /// with push_undo outside the inspector's `&mut entity` borrow.
     pub(crate) show_add_anim_dialog: bool,
     pub(crate) add_anim_form: crate::panels::anim_states_ui::AddAnimForm,
+    /// Modal "Replace base sprite" dialog state (ADR-039 Phase 3).
+    pub(crate) show_replace_sprite_dialog: bool,
+    pub(crate) replace_sprite_form: crate::panels::sprite_replace::ReplaceSpriteForm,
+    /// Set by the inspector "Replace base sprite…" picker — drained next frame.
+    pub(crate) pending_replace_sprite_file: Option<PathBuf>,
     /// Open viewport context menu (right-click), rendered as an egui Area (ADR-037).
     pub(crate) pending_context_menu: Option<crate::context_menu::ContextMenuKind>,
     /// Anchor (egui points) captured the first frame the viewport menu opens.
@@ -241,6 +246,9 @@ impl EditorApp {
             splash_fade_in: 0.0,
             show_add_anim_dialog: false,
             add_anim_form: crate::panels::anim_states_ui::AddAnimForm::default(),
+            show_replace_sprite_dialog: false,
+            replace_sprite_form: crate::panels::sprite_replace::ReplaceSpriteForm::default(),
+            pending_replace_sprite_file: None,
             pending_context_menu: None,
             context_menu_anchor: None,
             egui_consumed_pointer: false,

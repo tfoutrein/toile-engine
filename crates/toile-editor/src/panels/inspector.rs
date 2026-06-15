@@ -491,6 +491,15 @@ impl EditorApp {
                                         self.show_add_anim_dialog = true;
                                         self.add_anim_form = Default::default();
                                     }
+                                    if ui.button("🖼 Replace base sprite…").on_hover_text("Swap the base image — you'll choose whether to keep or replace existing animations").clicked() {
+                                        if let Some(file) = rfd::FileDialog::new()
+                                            .set_title("Replace base sprite")
+                                            .add_filter("Images", &["png", "jpg", "jpeg", "bmp"])
+                                            .pick_file()
+                                        {
+                                            self.pending_replace_sprite_file = Some(file);
+                                        }
+                                    }
                                     if ui.button("Edit Sprite & Animations...").clicked() {
                                         self.editor_mode = EditorMode::SpriteAnim;
                                     }

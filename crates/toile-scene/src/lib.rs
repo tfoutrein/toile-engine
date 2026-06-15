@@ -4,9 +4,9 @@ pub mod prefab;
 // Re-export the animation state machine at the crate root (ADR-039 Phase 0.5) so both
 // the runtime and the editor share one source of truth for states and their conditions.
 pub use anim_runtime::{
-    condition_for, motion_kind, resolve_state_to_anim, select_states, state_synonyms,
-    ConditionDescription, MotionKind, MotionSnapshot, DEFAULT_MOVE_THRESHOLD,
-    RUN_THRESHOLD_MULTIPLIER,
+    condition_for, detect_sourcing_model, motion_kind, resolve_state_to_anim, select_states,
+    state_synonyms, ConditionDescription, MotionKind, MotionSnapshot, SourcingModel,
+    DEFAULT_MOVE_THRESHOLD, RUN_THRESHOLD_MULTIPLIER,
 };
 
 use std::collections::HashMap;

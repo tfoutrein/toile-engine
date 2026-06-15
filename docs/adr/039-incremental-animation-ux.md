@@ -1,6 +1,6 @@
 # ADR-039 : Ajout incrémental d'animations à une entité (flux entité-d'abord, asset browser désambiguïsé, helper additif unique)
 
-- **Statut :** Acceptée — Phases 0, 0.5, 1 & 2 livrées
+- **Statut :** Acceptée — Phases 0, 0.5, 1, 2 & 3 livrées (Phase 4 reportée)
 - **Date :** 2026-06-15
 - **Concerne :** v0.5+ (editeur)
 
@@ -84,7 +84,7 @@ une UI de règles qui n'existe pas encore.
 | **0.5 — Conditions drift-proof** ✅ | State machine centralisée dans `toile-scene::anim_runtime` (`MotionKind`/`motion_kind`/`MotionSnapshot`/`select_states`/`state_synonyms`/`resolve_state_to_anim` + const `RUN_THRESHOLD_MULTIPLIER`) ; enum `ConditionDescription` + `condition_for` d'où l'éditeur dérive ses labels (plus de `state_condition_label` codé en dur ni de table de synonymes dupliquée) ; **test anti-dérive** liant `condition_for` ↔ `select_states` (seuils exacts `>`, bascule `vy>=0`) | L |
 | **1 — Ajout additif** (cœur) ✅ | `add_animation_to_entity` unifié (KeepBoth idempotent / Replace) ; action browser « Add as animation to «X» » (libellée + désactivée hors sélection) + drain ; bouton « + Add Animation » inspecteur (différé → push_undo) ; IA + importers Strip/Aseprite/quick-add routés sur le helper ; garde-fou grille `rows>1` (refus + message). Dialogue **modal** Add Animation (fps/loop/collision) reporté en Phase 2. | L |
 | **2 — Inspecteur Animation States** ✅ | Section binding + conditions (au rang de Behaviors/Collision) ; widget partagé `anim_states_ui::animation_states_editor` (Inspecteur ↔ Sprite editor, anti-drift) ; **dialogue modal Add Animation** (nom/fps/loop/bind-state/collision Keep-both·Replace) | M |
-| **3 — Replace sprite + garde-fou grille/strip** | Dialogue Keep/Replace unique (browser + Browse) ; `detect_sourcing_model` | M |
+| **3 — Replace sprite + garde-fou grille/strip** ✅ | Dialogue **Keep animations / Replace all / Cancel** (browser + bouton inspecteur « Replace base sprite ») via `sprite_replace::{SpriteSource, apply_sprite_replacement, begin_sprite_replace}` ; `toile_scene::detect_sourcing_model` (Grid/Strip/Mixed) ; **Keep ne change que le sprite de base** (préserve sheet/dims → clips grid jamais orphelins) ; entité cible capturée ; IA `set_entity_sprite` documentée (ReplaceAll volontaire, pas de modal) | M |
 | **4 — Arbre État>Anim>Frames** (option, reportée) | Jugé régressif par 2 revues → seulement si besoin confirmé ; nécessite d'extraire d'abord le frame picker en composant | L |
 
 ## Consequences
