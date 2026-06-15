@@ -35,6 +35,7 @@ pub(crate) struct ContextMenuActions {
     pub rename: Option<u64>,
     pub focus_camera: Option<u64>,
     pub toggle_visibility: Option<u64>,
+    pub toggle_lock: Option<u64>,
     pub bring_to_front: Option<u64>,
     pub send_to_back: Option<u64>,
     pub reset_transform: Option<u64>,
@@ -75,8 +76,12 @@ fn menu_btn(ui: &mut egui::Ui, label: &str, shortcut: &str) -> bool {
 
 impl EditorApp {
     /// Rotation-aware top-most entity under a world position (shared by selection + menu).
+    /// Locked entities are click-through (manage them via the hierarchy).
     pub(crate) fn hit_test_entity(&self, world: Vec2) -> Option<u64> {
         for entity in self.scene.entities.iter().rev() {
+            if entity.locked {
+                continue;
+            }
             let hw = entity.width * entity.scale_x * 0.5;
             let hh = entity.height * entity.scale_y * 0.5;
             // Transform the world point into the entity's local space (undo rotation).
@@ -120,6 +125,11 @@ impl EditorApp {
         let visible = entity.map(|e| e.visible).unwrap_or(true);
         if ui.button(if visible { "Hide" } else { "Show" }).clicked() {
             a.toggle_visibility = Some(id);
+            a.close = true;
+        }
+        let locked = entity.map(|e| e.locked).unwrap_or(false);
+        if ui.button(if locked { "🔓 Unlock" } else { "🔒 Lock" }).clicked() {
+            a.toggle_lock = Some(id);
             a.close = true;
         }
         if menu_btn(ui, "Focus Camera", &format!("{m}+0")) { a.focus_camera = Some(id); a.close = true; }
@@ -365,6 +375,17 @@ impl EditorApp {
             self.push_undo();
             if let Some(e) = self.scene.find_entity_mut(id) {
                 e.visible = !e.visible;
+            }
+        }
+        if let Some(id) = a.toggle_lock {
+            self.push_undo();
+            if let Some(e) = self.scene.find_entity_mut(id) {
+                e.locked = !e.locked;
+                self.status_msg = if e.locked {
+                    format!("Locked '{}'", e.name)
+                } else {
+                    format!("Unlocked '{}'", e.name)
+                };
             }
         }
         if let Some(world) = a.add_entity_at {

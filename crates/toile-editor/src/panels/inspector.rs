@@ -219,6 +219,12 @@ impl EditorApp {
                             ui.checkbox(&mut entity.visible, "");
                             ui.end_row();
 
+                            ui.label("Lock");
+                            ui.checkbox(&mut entity.locked, "").on_hover_text("Locked entities can't be selected/dragged in the viewport");
+                            ui.label("");
+                            ui.label("");
+                            ui.end_row();
+
                             ui.label("Sprite");
                             ui.add_sized([120.0, 18.0], egui::TextEdit::singleline(&mut entity.sprite_path));
                             if ui.small_button("Browse").clicked() {

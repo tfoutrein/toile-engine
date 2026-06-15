@@ -158,9 +158,12 @@ puis `apply_context_actions(&mut self)` applique **tout apres** le bloc egui, av
 
 ## Questions ouvertes (hors scope immediat)
 
-- **Lock/Unlock entite** : tres utile mais exige un champ `locked: bool` sur
-  `EntityData` → **changement de format de scene** (relevant d'ADR-031). A traiter
-  dans un avenant ou un ADR dedie.
+- ~~**Lock/Unlock entite**~~ → **IMPLEMENTE**. Champ `locked: bool` ajoute a
+  `EntityData` (`#[serde(default)]`, donc **additif et retrocompatible** — pas de
+  rupture de format, aucun avenant ADR-031 necessaire). Les entites lockees sont
+  click-through dans le viewport (`hit_test_entity` les ignore) et leurs gestes
+  (drag/resize/rotate) sont bloques ; toggle via le menu contextuel (Lock/Unlock)
+  + case dans l'inspecteur ; icone 🔒 dans la hierarchie.
 - Menus sur les **calques de tilemap** (Duplicate/Rename/Merge Down) : suppose de
   clarifier d'abord comment l'utilisateur choisit le « calque actif ».
 - Modes **AICopilot** et editeur d'**event-sheets** : menus specifiques a evaluer

@@ -937,7 +937,8 @@ impl EditorApp {
                                                                     if r.lost_focus() { commit_rename = Some((entity.id, buf.clone())); }
                                                                 }
                                                             } else {
-                                                                let r = ui.selectable_label(selected, egui::RichText::new(format!("{icon} {}", entity.name)).color(color));
+                                                                let lock = if entity.locked { " 🔒" } else { "" };
+                                                                let r = ui.selectable_label(selected, egui::RichText::new(format!("{icon} {}{lock}", entity.name)).color(color));
                                                                 if r.clicked() { click_id = Some(entity.id); }
                                                                 if r.double_clicked() { start_rename = Some(entity.id); }
                                                                 r.context_menu(|ui| self.entity_menu_items(ui, entity.id, Vec2::new(entity.x, entity.y), &mut hierarchy_menu));
@@ -977,7 +978,8 @@ impl EditorApp {
                                                             if r.lost_focus() { commit_rename = Some((entity.id, buf.clone())); }
                                                         }
                                                     } else {
-                                                        let r = ui.selectable_label(selected, egui::RichText::new(format!("  {icon} {}", entity.name)).color(color));
+                                                        let lock = if entity.locked { " 🔒" } else { "" };
+                                                        let r = ui.selectable_label(selected, egui::RichText::new(format!("  {icon} {}{lock}", entity.name)).color(color));
                                                         if r.clicked() { click_id = Some(entity.id); }
                                                         if r.double_clicked() { start_rename = Some(entity.id); }
                                                         r.context_menu(|ui| self.entity_menu_items(ui, entity.id, Vec2::new(entity.x, entity.y), &mut hierarchy_menu));
