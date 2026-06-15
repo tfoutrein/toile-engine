@@ -181,6 +181,21 @@ impl EditorApp {
                             ui.end_row();
                         });
 
+                    // Quick reset buttons (decided over per-field context menus, ADR-037).
+                    ui.horizontal(|ui| {
+                        if ui.small_button("⟲ Pos").on_hover_text("Reset position to 0,0").clicked() {
+                            entity.x = 0.0;
+                            entity.y = 0.0;
+                        }
+                        if ui.small_button("⟲ Rot").on_hover_text("Reset rotation to 0°").clicked() {
+                            entity.rotation = 0.0;
+                        }
+                        if ui.small_button("⟲ Scale").on_hover_text("Reset scale to 1.0").clicked() {
+                            entity.scale_x = 1.0;
+                            entity.scale_y = 1.0;
+                        }
+                    });
+
                     // ── Sprite & Display ──────────────────────────────────
                     ui.add_space(8.0);
                     ui.label(egui::RichText::new("Display").strong());
@@ -255,19 +270,31 @@ impl EditorApp {
 
                     // ── Behaviors ─────────────────────────────────────────
                     ui.add_space(8.0);
-                    egui::CollapsingHeader::new(egui::RichText::new("Behaviors").strong())
+                    // Right-click a behavior label → Reset/Remove; right-click the section header
+                    // → "Add Behavior ▸" (filtered to behaviors not already present). ADR-037.
+                    let mut add_beh_via_menu: Option<String> = None;
+                    let beh_section = egui::CollapsingHeader::new(egui::RichText::new("Behaviors").strong())
                         .default_open(true)
                         .show(ui, |ui| {
                             let mut remove_idx: Option<usize> = None;
+                            let mut reset_idx: Option<usize> = None;
                             for (i, beh) in entity.behaviors.iter_mut().enumerate() {
                                 ui.horizontal(|ui| {
-                                    ui.label(behavior_label(beh));
+                                    let lbl = ui.add(egui::Label::new(behavior_label(beh)).sense(egui::Sense::click()));
+                                    lbl.context_menu(|ui| {
+                                        if ui.button("Reset to defaults").clicked() { reset_idx = Some(i); ui.close_menu(); }
+                                        if ui.button("Remove").clicked() { remove_idx = Some(i); ui.close_menu(); }
+                                    });
                                     if ui.small_button("x").clicked() {
                                         remove_idx = Some(i);
                                     }
                                 });
                                 behavior_inspector(ui, beh, i);
                                 ui.separator();
+                            }
+                            if let Some(idx) = reset_idx {
+                                let name = behavior_label(&entity.behaviors[idx]);
+                                entity.behaviors[idx] = default_behavior_config(name);
                             }
                             if let Some(idx) = remove_idx {
                                 entity.behaviors.remove(idx);
@@ -287,6 +314,19 @@ impl EditorApp {
                                 entity.behaviors.push(default_behavior_config(&add_choice));
                             }
                         });
+                    beh_section.header_response.context_menu(|ui| {
+                        ui.label(egui::RichText::new("Add behavior").size(11.0).color(egui::Color32::from_gray(160)));
+                        for name in ["Platform", "TopDown", "Bullet", "Sine", "Fade", "Wrap", "Solid"] {
+                            let present = entity.behaviors.iter().any(|b| behavior_label(b) == name);
+                            if ui.add_enabled(!present, egui::Button::new(name)).clicked() {
+                                add_beh_via_menu = Some(name.to_string());
+                                ui.close_menu();
+                            }
+                        }
+                    });
+                    if let Some(name) = add_beh_via_menu {
+                        entity.behaviors.push(default_behavior_config(&name));
+                    }
 
                     // ── Tags ─────────────────────────────────────────────
                     ui.add_space(4.0);

@@ -710,6 +710,9 @@ impl EditorApp {
             self.show_ai_copilot(ctx);
         }
 
+        // Accumulates right-click actions from the hierarchy (entity + scene rows), applied
+        // after the panel closes so we can mutate self without fighting the egui borrow (ADR-037).
+        let mut hierarchy_menu = crate::context_menu::ContextMenuActions::default();
         if self.editor_mode != EditorMode::Particle && self.editor_mode != EditorMode::SpriteAnim && self.editor_mode != EditorMode::AssetBrowser {
         egui::SidePanel::left("hierarchy").default_width(200.0).show(ctx, |ui| {
             egui::ScrollArea::vertical().show(ui, |ui| {
@@ -743,11 +746,24 @@ impl EditorApp {
                                     .show_header(ui, |ui| {
                                         let icon = if is_current { "\u{1f4c4}" } else { "\u{1f4c4}" };
                                         let color = if is_current { egui::Color32::YELLOW } else { egui::Color32::from_gray(200) };
-                                        if ui.selectable_label(is_current, egui::RichText::new(format!("{icon} {scene_name}")).color(color)).clicked() {
-                                            if !is_current {
-                                                switch_scene = Some(scene_file.clone());
-                                            }
+                                        let sr = ui.selectable_label(is_current, egui::RichText::new(format!("{icon} {scene_name}")).color(color));
+                                        if sr.clicked() && !is_current {
+                                            switch_scene = Some(scene_file.clone());
                                         }
+                                        sr.context_menu(|ui| {
+                                            ui.set_min_width(160.0);
+                                            if !is_current && ui.button("\u{1f4c2} Open Scene").clicked() {
+                                                switch_scene = Some(scene_file.clone());
+                                                ui.close_menu();
+                                            }
+                                            if ui.button("\u{1f50d} Reveal in Finder").clicked() {
+                                                let path = pdir.as_ref()
+                                                    .map(|d| d.join(scene_file))
+                                                    .unwrap_or_else(|| PathBuf::from(scene_file));
+                                                hierarchy_menu.reveal_path = Some(path);
+                                                ui.close_menu();
+                                            }
+                                        });
                                     })
                                     .body(|ui| {
                                         if is_current {
@@ -784,6 +800,7 @@ impl EditorApp {
                                                                 let r = ui.selectable_label(selected, egui::RichText::new(format!("{icon} {}", entity.name)).color(color));
                                                                 if r.clicked() { click_id = Some(entity.id); }
                                                                 if r.double_clicked() { start_rename = Some(entity.id); }
+                                                                r.context_menu(|ui| self.entity_menu_items(ui, entity.id, Vec2::new(entity.x, entity.y), &mut hierarchy_menu));
                                                             }
                                                         })
                                                         .body(|ui| {
@@ -823,6 +840,7 @@ impl EditorApp {
                                                         let r = ui.selectable_label(selected, egui::RichText::new(format!("  {icon} {}", entity.name)).color(color));
                                                         if r.clicked() { click_id = Some(entity.id); }
                                                         if r.double_clicked() { start_rename = Some(entity.id); }
+                                                        r.context_menu(|ui| self.entity_menu_items(ui, entity.id, Vec2::new(entity.x, entity.y), &mut hierarchy_menu));
                                                     }
                                                 }
                                             }
@@ -904,6 +922,8 @@ impl EditorApp {
             }); // end ScrollArea
         });
         } // end hierarchy panel
+        // Apply right-click actions collected from the hierarchy (entity/scene menus).
+        self.apply_context_actions(ctx, hierarchy_menu);
 
         // ── Sprite & Animation Editor (full-screen mode) ─────────────────
         self.show_sprite_anim_panels(ctx, pdir);
