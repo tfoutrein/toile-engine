@@ -123,6 +123,29 @@ impl EditorApp {
                 }
             }
 
+            // Cmd+X — Cut selected entity (menu: ADR-037 Phase 5)
+            if ctx.input.is_key_just_pressed(Key::KeyX) {
+                if let Some(id) = self.selected_id { self.cut_entity(id); }
+            }
+            // Cmd+0 — Focus camera on the selection
+            if ctx.input.is_key_just_pressed(Key::Digit0) {
+                if let Some(id) = self.selected_id { self.focus_camera_on(id); }
+            }
+            // Cmd+R — Reset transform of the selection
+            if ctx.input.is_key_just_pressed(Key::KeyR) {
+                if let Some(id) = self.selected_id { self.reset_entity_transform(id); }
+            }
+            // Cmd+Shift+] / Cmd+Shift+[ — Z-order (bring to front / send to back)
+            {
+                let shift = ctx.input.is_key_down(Key::ShiftLeft) || ctx.input.is_key_down(Key::ShiftRight);
+                if shift && ctx.input.is_key_just_pressed(Key::BracketRight) {
+                    if let Some(id) = self.selected_id { self.bring_to_front(id); }
+                }
+                if shift && ctx.input.is_key_just_pressed(Key::BracketLeft) {
+                    if let Some(id) = self.selected_id { self.send_to_back(id); }
+                }
+            }
+
             // Cmd+S / Ctrl+S — Quick Save
             if ctx.input.is_key_just_pressed(Key::KeyS) {
                 if !self.current_file.is_empty() {

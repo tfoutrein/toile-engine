@@ -1,6 +1,6 @@
 # ADR-037 : Menus contextuels (clic droit) intelligents et adaptatifs
 
-- **Statut :** Proposee
+- **Statut :** Acceptee — implementee (Phases 0-5, PR #6 a #10)
 - **Date :** 2026-06-15
 - **Concerne :** v0.5+ (editeur)
 
