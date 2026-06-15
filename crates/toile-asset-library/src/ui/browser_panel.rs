@@ -222,11 +222,11 @@ pub fn show_browser_panel(
                                 AssetType::Audio | AssetType::Font | AssetType::Data
                             );
                             if is_visual {
-                                if ui.button("➕ Add to Scene").clicked() {
+                                if ui.button("➕ Create new entity from asset").clicked() {
                                     app.pending_add_to_scene = Some(asset_id.clone());
                                     ui.close_menu();
                                 }
-                                if ui.button("🖼 Set as sprite of selection").clicked() {
+                                if ui.button("🖼 Replace sprite of selection…").clicked() {
                                     app.pending_set_sprite_of_selection = Some(asset_id.clone());
                                     ui.close_menu();
                                 }

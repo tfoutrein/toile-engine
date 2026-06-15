@@ -563,6 +563,9 @@ impl EditorApp {
                                                 entity.default_animation = Some(anim_name.to_string());
                                             }
 
+                                            // Pre-fill any missing state bindings, like the human path (ADR-039).
+                                            crate::helpers::auto_bind_animation_states(entity);
+
                                             serde_json::json!({
                                                 "added": true,
                                                 "entity_id": eid,

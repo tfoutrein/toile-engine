@@ -61,9 +61,10 @@ pub fn show_detail_panel(
         });
     });
 
-    // Add to Scene button
+    // Create-new-entity button (entity-first flow: to add an animation to an existing
+    // entity, use the thumbnail's right-click "Add as animation to selection" — ADR-039).
     if ui.add_sized([ui.available_width(), 28.0],
-        egui::Button::new(egui::RichText::new("➕ Add to Scene").strong().color(egui::Color32::from_rgb(80, 220, 120)))
+        egui::Button::new(egui::RichText::new("➕ Create new entity from asset").strong().color(egui::Color32::from_rgb(80, 220, 120)))
     ).clicked() {
         app.pending_add_to_scene = Some(selected_id.clone());
     }

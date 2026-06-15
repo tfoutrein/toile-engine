@@ -946,7 +946,9 @@ impl EditorApp {
                                                     || entity.light.is_some()
                                                     || entity.particle_emitter.is_some()
                                                     || entity.event_sheet.is_some()
-                                                    || entity.collider.is_some();
+                                                    || entity.collider.is_some()
+                                                    || !entity.animations.is_empty()
+                                                    || entity.animation_states.is_some();
 
                                                 if has_children {
                                                     let ent_node_id = ui.make_persistent_id(format!("ent_{}", entity.id));
@@ -989,6 +991,26 @@ impl EditorApp {
                                                                     toile_scene::ColliderData::Circle { .. } => "Circle",
                                                                 };
                                                                 ui.label(egui::RichText::new(format!("    \u{1f532} {shape}")).size(11.0).color(dim));
+                                                            }
+                                                            // Animation States: binding + trigger condition + ⚠ broken (ADR-039).
+                                                            if let Some(ref map) = entity.animation_states {
+                                                                if !map.bindings.is_empty() {
+                                                                    let topdown = entity.behaviors.iter().any(|b| matches!(b, toile_behaviors::BehaviorConfig::TopDown(_)));
+                                                                    ui.label(egui::RichText::new("    States").size(10.0).color(egui::Color32::from_gray(110)));
+                                                                    for b in &map.bindings {
+                                                                        let warn = if entity.animations.iter().any(|a| a.name == b.anim) { "" } else { " \u{26a0}" };
+                                                                        let cond = crate::helpers::state_condition_label(&b.state, map.move_threshold, topdown);
+                                                                        ui.label(egui::RichText::new(format!("      {} \u{2192} {}{}   [{}]", crate::helpers::anim_state_label(&b.state), b.anim, warn, cond)).size(11.0).color(dim));
+                                                                    }
+                                                                }
+                                                            }
+                                                            // Animations: one line per clip with source tag (ADR-039).
+                                                            if !entity.animations.is_empty() {
+                                                                ui.label(egui::RichText::new(format!("    \u{1f3ac} Animations ({})", entity.animations.len())).size(10.0).color(egui::Color32::from_gray(110)));
+                                                                for a in &entity.animations {
+                                                                    let loops = if a.looping { "loop" } else { "once" };
+                                                                    ui.label(egui::RichText::new(format!("      {} \u{2014} {}f {:.0}fps {} [{}]", a.name, a.frames.len(), a.fps, loops, crate::helpers::anim_source_tag(a))).size(11.0).color(dim));
+                                                                }
                                                             }
                                                         });
                                                 } else {
