@@ -598,6 +598,37 @@ impl EditorApp {
             }
         }
 
+        // Live animated preview in the Sprite & Animation editor (ADR-038 Phase 0).
+        // Advances a TRANSIENT elapsed timer (sprite_editor_preview_anim) that the viewport
+        // reads to show the selected entity's animation playing — without mutating the scene.
+        if self.editor_mode == EditorMode::SpriteAnim {
+            let cur = self.sprite_editor_preview_anim.as_ref().map(|(n, _)| n.clone());
+            let resolved: Option<String> = self.selected_id
+                .and_then(|id| self.scene.entities.iter().find(|e| e.id == id))
+                .and_then(|e| {
+                    // Keep the current preview anim if it still exists on this entity…
+                    if let Some(n) = &cur {
+                        if e.animations.iter().any(|a| &a.name == n) {
+                            return Some(n.clone());
+                        }
+                    }
+                    // …otherwise fall back to the default (or first) animation.
+                    e.default_animation.clone()
+                        .or_else(|| e.animations.first().map(|a| a.name.clone()))
+                });
+            match resolved {
+                Some(name) if cur.as_deref() == Some(name.as_str()) => {
+                    if let Some((_, elapsed)) = &mut self.sprite_editor_preview_anim {
+                        *elapsed += _dt as f32;
+                    }
+                }
+                Some(name) => self.sprite_editor_preview_anim = Some((name, 0.0)),
+                None => self.sprite_editor_preview_anim = None,
+            }
+        } else if self.sprite_editor_preview_anim.is_some() {
+            self.sprite_editor_preview_anim = None;
+        }
+
         // ── Apply pending input map mutations ──
         if let Some((action_name, binding)) = self.input_map_pending_add_binding.take() {
             ctx.actions.add_binding(&action_name, binding);
