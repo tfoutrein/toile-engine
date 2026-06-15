@@ -39,6 +39,8 @@ pub(crate) struct ContextMenuActions {
     pub reset_camera: bool,
     pub toggle_grid: bool,
     pub copy_text: Option<String>,
+    /// Reveal this path in the OS file manager (hierarchy scene rows, etc.).
+    pub reveal_path: Option<std::path::PathBuf>,
     /// Set by any item when clicked → closes the menu.
     pub close: bool,
 }
@@ -46,6 +48,22 @@ pub(crate) struct ContextMenuActions {
 /// Platform-correct modifier label for shortcut hints ("Cmd" on macOS, else "Ctrl").
 pub(crate) fn m_label() -> &'static str {
     if cfg!(target_os = "macos") { "Cmd" } else { "Ctrl" }
+}
+
+/// Reveal a path in the OS file manager (selects it on macOS/Windows, opens its
+/// folder on other Unix). Uses platform commands so no extra crate dependency.
+pub(crate) fn reveal_in_finder(path: &std::path::Path) {
+    #[cfg(target_os = "macos")]
+    let spawned = std::process::Command::new("open").arg("-R").arg(path).spawn();
+    #[cfg(target_os = "windows")]
+    let spawned = std::process::Command::new("explorer")
+        .arg(format!("/select,{}", path.display()))
+        .spawn();
+    #[cfg(all(unix, not(target_os = "macos")))]
+    let spawned = std::process::Command::new("xdg-open")
+        .arg(path.parent().unwrap_or(path))
+        .spawn();
+    let _ = spawned;
 }
 
 fn menu_btn(ui: &mut egui::Ui, label: &str, shortcut: &str) -> bool {
@@ -277,6 +295,9 @@ impl EditorApp {
         if let Some(text) = a.copy_text {
             ctx.copy_text(text);
             self.status_msg = "Copied to clipboard".to_string();
+        }
+        if let Some(path) = a.reveal_path {
+            reveal_in_finder(&path);
         }
     }
 }
