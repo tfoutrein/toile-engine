@@ -1,11 +1,11 @@
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use glam::Vec2;
 use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
 use winit::event::WindowEvent;
-use winit::event_loop::{ActiveEventLoop, EventLoop};
+use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::window::{Window, WindowAttributes, WindowId};
 
 use toile_assets::font::Font;
@@ -364,6 +364,15 @@ pub trait Game {
 
     /// Optional egui UI built each frame. Called during render_overlay by EguiGameApp helper.
     fn egui_ui(&mut self, _ctx: &egui::Context, _game_ctx: &mut GameContext) {}
+
+    /// How long the event loop may sleep before the next redraw when otherwise idle.
+    /// `Duration::ZERO` (the default) redraws every frame — correct for games that
+    /// simulate continuously. A reactive UI (the editor) returns a longer interval when
+    /// nothing is animating so a static screen doesn't peg the CPU/GPU. Input events
+    /// always trigger an immediate redraw regardless of this value.
+    fn redraw_after(&self) -> std::time::Duration {
+        std::time::Duration::ZERO
+    }
 }
 
 /// Re-export egui for use in game examples without adding it as a direct dependency.
@@ -500,6 +509,15 @@ macro_rules! make_ctx {
 }
 
 impl ApplicationHandler for AppHandler {
+    fn new_events(&mut self, _event_loop: &ActiveEventLoop, cause: winit::event::StartCause) {
+        // The reactive idle timer (ControlFlow::WaitUntil) elapsed → draw the next frame.
+        if matches!(cause, winit::event::StartCause::ResumeTimeReached { .. }) {
+            if let Some(window) = &self.window {
+                window.request_redraw();
+            }
+        }
+    }
+
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         if self.window.is_some() {
             return;
@@ -577,6 +595,9 @@ impl ApplicationHandler for AppHandler {
                         ls.resize(gpu.device(), w, h, &pp.tex_bgl, &pp.sampler);
                     }
                 }
+                if let Some(window) = &self.window {
+                    window.request_redraw();
+                }
             }
             // Let overlay (egui) consume events first
             ref e @ (WindowEvent::KeyboardInput { .. }
@@ -611,6 +632,11 @@ impl ApplicationHandler for AppHandler {
                         }
                         _ => {}
                     }
+                }
+                // Any input must wake an immediate redraw so the reactive editor stays
+                // responsive even when it was otherwise idle (perf fix).
+                if let Some(window) = &self.window {
+                    window.request_redraw();
                 }
             }
             WindowEvent::RedrawRequested => {
@@ -757,8 +783,16 @@ impl ApplicationHandler for AppHandler {
 
                 self.input.end_frame(ticks > 0);
 
+                // Reactive redraw: games (redraw_after == ZERO) keep rendering every frame;
+                // a reactive UI (the editor) lets the loop sleep until its requested interval
+                // or the next input, so a static screen no longer pegs the CPU (perf fix).
                 if let Some(window) = &self.window {
-                    window.request_redraw();
+                    let after = self.game.redraw_after();
+                    if after.is_zero() {
+                        window.request_redraw();
+                    } else {
+                        event_loop.set_control_flow(ControlFlow::WaitUntil(Instant::now() + after));
+                    }
                 }
             }
             _ => {}

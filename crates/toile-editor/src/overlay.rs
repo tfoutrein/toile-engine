@@ -7,6 +7,9 @@ pub struct EguiOverlay {
     ctx: egui::Context,
     state: egui_winit::State,
     renderer: egui_wgpu::Renderer,
+    /// How long egui wants before its next repaint (from the last frame's output).
+    /// `Duration::MAX` means "idle — nothing to repaint until input" (ADR-039 perf).
+    repaint_after: std::time::Duration,
 }
 
 impl EguiOverlay {
@@ -30,7 +33,15 @@ impl EguiOverlay {
             ctx,
             state,
             renderer,
+            repaint_after: std::time::Duration::ZERO,
         }
+    }
+
+    /// How long the caller may sleep before egui needs to repaint (driven by the last
+    /// frame: `ZERO` while animating, `MAX` when idle). Used to throttle the editor's
+    /// redraw loop so a static UI doesn't peg the CPU (ADR-039 perf).
+    pub fn repaint_after(&self) -> std::time::Duration {
+        self.repaint_after
     }
 
     pub fn handle_event(&mut self, window: &Window, event: &WindowEvent) -> bool {
@@ -59,6 +70,14 @@ impl EguiOverlay {
         screen_size: (u32, u32),
     ) {
         let full_output = self.ctx.end_frame();
+
+        // Remember how long egui wants before its next repaint, so the editor's event
+        // loop can sleep instead of rendering an unchanging screen at full rate.
+        self.repaint_after = full_output
+            .viewport_output
+            .get(&egui::ViewportId::ROOT)
+            .map(|v| v.repaint_delay)
+            .unwrap_or(std::time::Duration::MAX);
 
         self.state
             .handle_platform_output(window, full_output.platform_output);
