@@ -654,6 +654,27 @@ impl Game for EditorApp {
             false
         }
     }
+
+    /// Throttle the redraw loop so a static editor screen stops pegging the CPU/GPU
+    /// (perf fix — was ~27% idle from rendering every frame). Keep rendering every frame
+    /// only while something is actually animating; otherwise follow egui's own repaint
+    /// timing, capped at 100 ms so async results (game logs, asset loads, AI replies)
+    /// still surface promptly. Input always forces an immediate redraw (see AppHandler).
+    fn redraw_after(&self) -> std::time::Duration {
+        use std::time::Duration;
+        let animating = self.splash_fade_in > 0.0
+            || self.sprite_editor_preview_anim.is_some()
+            || self.asset_browser.ai_analyzing
+            || self.ai_loading; // keep the Copilot stream + spinner smooth, not capped to 10fps
+        if animating {
+            return Duration::ZERO;
+        }
+        self.overlay
+            .as_ref()
+            .map(|o| o.repaint_after())
+            .unwrap_or(Duration::ZERO)
+            .min(Duration::from_millis(100))
+    }
 }
 
 /// Launch the editor.
